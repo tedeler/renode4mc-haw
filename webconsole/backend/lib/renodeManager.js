@@ -2,6 +2,7 @@
 
 const { spawn, spawnSync } = require('child_process');
 const { EventEmitter } = require('events');
+const net = require('net');
 const readline = require('readline');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -29,6 +30,9 @@ class RenodeManager extends EventEmitter {
     const msg = `[renode${stream === 'stderr' ? ':err' : ''}] ${line}`;
     if (stream === 'stderr') console.error(msg);
     else console.log(msg);
+    // .NET-Stackframes nur auf die Konsole: Sie verdrängen sonst die eigentliche
+    // Fehlermeldung (z.B. "Address already in use") aus dem Log-Ausschnitt fürs Frontend.
+    if (/^\s+at |^\s*--- End of /.test(line)) return;
     this.logTail.push(line);
     if (this.logTail.length > 80) this.logTail.shift();
     this.emit('log', line);
@@ -118,4 +122,37 @@ class RenodeManager extends EventEmitter {
   }
 }
 
-module.exports = { RenodeManager };
+/** true, wenn auf 127.0.0.1:<port> gerade niemand lauscht. */
+function portFree(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.listen({ port, host: '127.0.0.1', exclusive: true }, () => srv.close(() => resolve(true)));
+  });
+}
+
+/**
+ * Prüft vor dem Renode-Start, ob die von Renode geöffneten Ports frei sind.
+ * Renode selbst bricht bei einem belegten Port (z.B. LED-Bridge 9000) mit einer
+ * unbehandelten SocketException ab – mit über 100 Zeilen Stacktrace und ohne klaren Hinweis.
+ * @param {{port:number, name:string}[]} ports
+ */
+async function assertPortsFree(ports, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const busy = [];
+    for (const p of ports) if (!(await portFree(p.port))) busy.push(p);
+    if (!busy.length) return;
+    if (Date.now() >= deadline) {
+      const list = busy.map((p) => `${p.port} (${p.name})`).join(', ');
+      throw new Error(
+        `Port ${list} ist bereits belegt. Läuft noch eine andere Renode-Instanz ` +
+          `(z.B. ucsim/Visualizer) oder ein anderer Dienst auf diesem Port? ` +
+          `Prüfen mit: ss -ltnp | grep -E ':(${busy.map((p) => p.port).join('|')})\\b'`,
+      );
+    }
+    await sleep(250); // Ports eines eben beendeten Renode werden evtl. noch freigegeben
+  }
+}
+
+module.exports = { RenodeManager, assertPortsFree };
