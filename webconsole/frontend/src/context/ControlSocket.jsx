@@ -11,6 +11,19 @@ function decodeFrame(msg) {
   return { width: msg.width, height: msg.height, on: msg.on, invert: msg.invert, data };
 }
 
+/** Pendeldisplay: { columns, lr, rl } – je ein Byte pro Spalte, Bit n = LED n */
+function decodePendulum(msg) {
+  const bin = atob(msg.data);
+  const n = msg.columns;
+  const lr = new Uint8Array(n);
+  const rl = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    lr[i] = bin.charCodeAt(i);
+    rl[i] = bin.charCodeAt(n + i);
+  }
+  return { columns: n, lr, rl };
+}
+
 /**
  * Stellt den Control-WebSocket (Renode-Monitor-Bridge) allen Widgets zur Verfügung.
  * LED-Zustände liegen im React-State; Framebuffer werden an Subscriber
@@ -22,10 +35,17 @@ export function ControlSocketProvider({ children }) {
   const [lastError, setLastError] = useState(null);
   const frameListeners = useRef(new Set());
   const lastFrame = useRef(null);
+  const pendulumListeners = useRef(new Set());
+  const lastPendulum = useRef(null);
 
   const emitFrame = (frame) => {
     lastFrame.current = frame;
     frameListeners.current.forEach((fn) => fn(frame));
+  };
+
+  const emitPendulum = (pd) => {
+    lastPendulum.current = pd;
+    pendulumListeners.current.forEach((fn) => fn(pd));
   };
 
   const onMessage = useCallback((ev) => {
@@ -40,12 +60,16 @@ export function ControlSocketProvider({ children }) {
         setRenodeState(msg.renode);
         setLeds(msg.leds || {});
         if (msg.fb) emitFrame(decodeFrame(msg.fb));
+        if (msg.pd) emitPendulum(decodePendulum(msg.pd));
         break;
       case 'leds':
         setLeds({ ...msg.states });
         break;
       case 'fb':
         emitFrame(decodeFrame(msg));
+        break;
+      case 'pd':
+        emitPendulum(decodePendulum(msg));
         break;
       case 'renode':
         setRenodeState(msg.state);
@@ -69,9 +93,24 @@ export function ControlSocketProvider({ children }) {
     return () => frameListeners.current.delete(fn);
   }, []);
 
+  const subscribePendulum = useCallback((fn) => {
+    pendulumListeners.current.add(fn);
+    if (lastPendulum.current) fn(lastPendulum.current);
+    return () => pendulumListeners.current.delete(fn);
+  }, []);
+
   const value = useMemo(
-    () => ({ status, renodeState, leds, send, subscribeFrame, lastError, clearError: () => setLastError(null) }),
-    [status, renodeState, leds, send, subscribeFrame, lastError],
+    () => ({
+      status,
+      renodeState,
+      leds,
+      send,
+      subscribeFrame,
+      subscribePendulum,
+      lastError,
+      clearError: () => setLastError(null),
+    }),
+    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

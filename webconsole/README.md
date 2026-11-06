@@ -22,7 +22,8 @@ Dann im Browser **http://localhost:3000** öffnen.
    läuft im Terminal.
 
 Zum Ausprobieren: [Lab 03 – Web-Konsole](../examples/lab03_webkonsole/README.md) nutzt alle
-Bedienelemente.
+Bedienelemente von Versuch 1, [Lab 04 – Pendeldisplay](../examples/lab04_pendeldisplay/README.md)
+das Pendeldisplay von Versuch 2.
 
 | Bedienelement | Wirkung in der Simulation |
 |---|---|
@@ -31,6 +32,7 @@ Bedienelemente.
 | Schieberegler | Messwert des Ultraschallsensors (I2C0, 0x70) in cm |
 | Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier |
 | LEDs, OLED | zeigen den Zustand von PN1/PN0/PF4/PF0 bzw. des SSD1306 (I2C0, 0x3C) |
+| Pendeldisplay (Versuch 2) | Nachleuchtbild der 8 LEDs an PM0–PM7; Auswahl: beide Schwünge oder nur eine Richtung |
 
 ## Ordner
 
@@ -47,13 +49,14 @@ webconsole/
 │   │   ├── monitorClient.js  Telnet-Client für den Renode-Monitor (Befehlswarteschlange)
 │   │   ├── uartBridge.js     UART-TCP ⇄ WebSocket :3333
 │   │   └── controlBridge.js  Monitor/LED-Bridge ⇄ WebSocket :3334 (JSON)
-│   └── test/e2e.js       Ende-zu-Ende-Test mit Lab-03-Firmware
+│   └── test/             e2e.js (Versuch 1, Lab 03), e2e_versuch2.js (Versuch 2, Lab 04)
 └── frontend/             React (Vite)
     └── src/
         ├── hooks/useReconnectingWebSocket.js
         ├── context/ControlSocket.jsx
         └── components/  SetupBar, ControlPanel, UartMonitor (xterm.js), Led, PushButton,
-                         OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung)
+                         OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung),
+                         PendulumDisplay (Canvas, Nachleuchtbild)
 ```
 
 ## Ports
@@ -74,6 +77,7 @@ cd ../backend && npm install
 RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 # Test (zweites Terminal):
 node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
+node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
 ```
 
 Mit `npm run dev` im Frontend läuft Vite auf Port 5173 und leitet `/upload` und `/api` an

@@ -6,22 +6,25 @@ const experiments = require('./experiments');
 
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
+const PD_RE = /PD:(\d+):([A-Za-z0-9+/=]+)/;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
  *
  *  Browser --JSON--> Backend --Monitor-Befehl--> Renode (Telnet-Monitor, Port 1234)
  *  Renode  --LED-Bridge (ws://127.0.0.1:9000, sim/models/WebSocketBridge.cs)--> Backend --JSON--> Browser
- *  Renode  --Polling (OLED-Framebuffer, LEDs mit "path")--> Backend --JSON--> Browser
+ *  Renode  --Polling (OLED-Framebuffer, Pendeldisplay, LEDs mit "path")--> Backend --JSON--> Browser
  *
  * Client -> Server
  *   { type: "button", id, pressed }            Taster (id aus der Versuchs-JSON)
  *   { type: "keypad", row, col, pressed }      Keypad: Zeile/Spalte der Matrix, nicht die Taste
  *   { type: "sensor", value }                  Distanz in cm
  * Server -> Client
- *   { type: "hello", experiment, renode, leds, fb }
+ *   { type: "hello", experiment, renode, leds, fb, pd }
  *   { type: "leds", states: { [id]: boolean } }
  *   { type: "fb", width, height, on, invert, data }   data = Base64, SSD1306-Page-Format
+ *   { type: "pd", columns, data }                     Pendeldisplay: data = Base64, erst alle Spalten
+ *                                                     links->rechts, dann rechts->links (Bit n = LED n)
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -34,6 +37,7 @@ class ControlBridge {
     this.experiment = null; // vollständige Konfiguration (mit Renode-Pfaden)
     this.ledStates = {};
     this.lastFrame = null;
+    this.lastPendulum = null;
     this.pollTimer = null;
     this.polling = false;
     this.ledSocket = null;
@@ -64,6 +68,7 @@ class ControlBridge {
       renode: this.attached ? 'running' : 'stopped',
       leds: this.ledStates,
       fb: this.lastFrame,
+      pd: this.lastPendulum,
     };
   }
 
@@ -139,6 +144,7 @@ class ControlBridge {
     this.experiment = experiment;
     this.ledStates = Object.fromEntries((experiment.leds || []).map((l) => [l.id, false]));
     this.lastFrame = null;
+    this.lastPendulum = null;
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -252,6 +258,15 @@ class ControlBridge {
             data: m[5],
           };
           this._broadcast(this.lastFrame);
+        }
+      }
+
+      if (exp.pendulum) {
+        const out = await mon.execute(`${exp.pendulum.path} GetFrameIfChanged`);
+        const m = PD_RE.exec(out);
+        if (m) {
+          this.lastPendulum = { type: 'pd', columns: +m[1], data: m[2] };
+          this._broadcast(this.lastPendulum);
         }
       }
     } catch (e) {

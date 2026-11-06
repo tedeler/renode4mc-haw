@@ -5,6 +5,7 @@ import PushButton from './PushButton.jsx';
 import OledDisplay from './OledDisplay.jsx';
 import DistanceSensor from './DistanceSensor.jsx';
 import Keypad from './Keypad.jsx';
+import PendulumDisplay from './PendulumDisplay.jsx';
 import Widget from './Widget.jsx';
 
 function Panel({ experiment }) {
@@ -36,6 +37,10 @@ function Panel({ experiment }) {
             height={experiment.oled.height}
             label={experiment.oled.label}
           />
+        )}
+
+        {experiment.pendulum && (
+          <PendulumDisplay label={experiment.pendulum.label} frequency={experiment.pendulum.frequency} />
         )}
 
         {(experiment.leds?.length > 0 || experiment.buttons?.length > 0) && (

@@ -112,12 +112,19 @@ namespace Antmicro.Renode.Peripherals.Timers
                 ticks = (((ulong)ilr[half] & 0xFFFF) + 1) * ((pr[half] & 0xFF) + 1);
             }
 
+            bool wasRunning = timer.Enabled;
             timer.Enabled = false;
             timer.Limit = ticks;
             bool oneShot = (mr[half] & 3) == 1;
             timer.Mode = oneShot ? WorkMode.OneShot : WorkMode.Periodic;
             if(enable)
             {
+                // Wie auf dem Chip: Einschalten (TnEN 0 -> 1) lädt den Zähler aus TnILR, z. B. beim
+                // erneuten Start eines Einmal-Timers. Läuft der Timer schon, zählt er weiter.
+                if(!wasRunning || timer.Value > ticks)
+                {
+                    timer.ResetValue(); // abwärts zählend: Zähler = Limit
+                }
                 timer.Enabled = true;
             }
         }
