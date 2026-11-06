@@ -101,6 +101,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 lock(clients)
                 {
                     clients.Add(stream);
+                    keepAlive.Add(client); // sonst schließt der Garbage-Collector die Verbindung
                     for(int i = 0; i < 8; i++)
                     {
                         var f = Frame(Message(i));
@@ -113,6 +114,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         private readonly TcpListener listener;
         private readonly List<NetworkStream> clients;
+        private readonly List<TcpClient> keepAlive = new List<TcpClient>();
         private bool[] state;
     }
 }

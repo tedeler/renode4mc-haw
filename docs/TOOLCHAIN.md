@@ -152,10 +152,11 @@ Falls CCS-Theia die Erweiterung nicht annimmt, bleibt Variante 2 (VS Code mit id
 
 ## Nachtrag: Umsetzung in diesem Repository
 
-- Startup (`common/startup_tm4c1294.c`), Linker-Skript (`common/tm4c1294.cmd`) und Ersatz für
-  `driverlib/cpu.c` (`common/cpu_clang.c`) sind eigene Dateien und werden von CCS **und** vom
-  Makefile gleichermaßen verwendet; das erzeugte `.out` läuft unverändert im Simulator.
-- TivaWare wird als **Quellcode** in das Projekt gelinkt (Pfadvariable `TIVAWARE_ROOT`), weil die
-  vorkompilierte `driverlib.lib` für den alten TI-Compiler gebaut ist. Compiler-Define `-Dgcc`
-  wählt in TivaWare die clang-kompatiblen Inline-Assembler-Zweige (`SysCtlDelay`).
+- Startup (`common/startup_tm4c1294.c`) und Linker-Skript (`common/tm4c1294.cmd`) sind eigene
+  Dateien und werden von CCS **und** vom Makefile gleichermaßen verwendet; das erzeugte `.out`
+  läuft unverändert im Simulator.
+- Die Beispiele nutzen **reinen Registerzugriff** (Lehrkonzept: Studierende arbeiten mit dem
+  Datenblatt); TivaWare/`driverlib` ist nicht eingebunden und nicht installationspflichtig. (Der Simulator
+  unterstützt `driverlib`-Programme weiterhin: TIs `blinky.out` und eine früher auf `driverlib` basierende
+  Fassung der Labs liefen.)
 - Simulator starten: `ucsim [--debug] programm.out`; `--debug` öffnet den GDB-Server (Port 3333).

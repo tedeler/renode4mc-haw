@@ -23,34 +23,53 @@ währenddessen schlafen. Erst im **Simulator**, dann auf dem **echten Board**.
   („Time-out“). Im **periodischen Modus** beginnt er danach selbst wieder von vorn.
 - Ein **Interrupt** unterbricht das Hauptprogramm und ruft eine **Interrupt-Routine (ISR)** auf. Danach
   läuft das Hauptprogramm weiter.
-- Die Freigabe eines Interrupts besteht aus **drei Schaltern**: im Peripherie-Modul (Timer), im
-  Interrupt-Controller NVIC (`IntEnable`) und global in der CPU (`IntMasterEnable`).
-- Das **Interrupt-Flag** muss in der ISR gelöscht werden, sonst springt die CPU sofort wieder hinein.
-- Timer haben – wie GPIO – ein **Clock-Gating** (`SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0)`).
+- Die Freigabe eines Interrupts besteht aus **drei Schaltern**: im Peripherie-Modul (Register
+  `GPTMIMR`), im Interrupt-Controller NVIC (Register `ISER0`) und global in der CPU (Befehl `cpsie i`).
+- Das **Interrupt-Flag** muss in der ISR gelöscht werden (Register `GPTMICR`), sonst springt die CPU
+  sofort wieder hinein.
+- Timer haben – wie GPIO – ein **Clock-Gating** (Register `RCGCTIMER`, Bit 0 = Timer0).
 
 ## 2. Das Programm verstehen (`main.c`)
 
+Alle Registeradressen stehen oben in `main.c` als `#define`. Jede Adresse ist **Basisadresse + Offset**
+aus dem Datenblatt (Kapitel „General-Purpose Timers“, Registerübersicht).
+
+| Register | Adresse | Wirkung hier |
+|---|---|---|
+| `RCGCTIMER` | `0x400FE604` | Bit 0 = 1: Timer0 bekommt Takt |
+| `PRTIMER` | `0x400FEA04` | Bit 0 = 1: Timer0 ist bereit |
+| `GPTMCFG` | `0x40030000` | 0 = ein 32-Bit-Timer |
+| `GPTMTAMR` | `0x40030004` | Bits 1:0 = 2: periodisch (zählt abwärts) |
+| `GPTMCTL` | `0x4003000C` | Bit 0 (`TAEN`) = 1: Timer läuft |
+| `GPTMIMR` | `0x40030018` | Bit 0 (`TATOIM`) = 1: Time-out löst Interrupt aus |
+| `GPTMICR` | `0x40030024` | Bit 0 = 1 schreiben: Time-out-Flag löschen |
+| `GPTMTAILR` | `0x40030028` | Startwert |
+| `NVIC ISER0` | `0xE000E100` | Bit 19 = 1: Interrupt Nr. 19 (Timer0A) freigeben |
+
 Startwert für 0,5 s: **16 000 000 Takte/s × 0,5 s = 8 000 000** Takte. Der Timer zählt
-von `Startwert` bis 0, das sind `Startwert + 1` Takte; deshalb `TimerLoadSet(... , 8 000 000 − 1)`.
+von `Startwert` bis 0, das sind `Startwert + 1` Takte; deshalb `8 000 000 − 1`.
 
 ```c
-SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);    // Takt für Port N
-SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);   // Takt für Timer0
-GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, GPIO_PIN_1);
+SYSCTL_RCGCGPIO  |= PORT_N;                    // Takt für Port N
+SYSCTL_RCGCTIMER |= 1;                         // Takt für Timer0
+while ((SYSCTL_PRGPIO & PORT_N) == 0 || (SYSCTL_PRTIMER & 1) == 0) {}   // bereit?
+GPION_DIR |= PIN1;  GPION_DEN |= PIN1;         // PN1 = digitaler Ausgang
 
-TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);          // 32 Bit, periodisch
-TimerLoadSet(TIMER0_BASE, TIMER_A, 8000000 - 1);          // 0,5 s
-TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);          // Schalter 1: im Timer
-IntEnable(INT_TIMER0A);                                   // Schalter 2: im NVIC
-IntMasterEnable();                                        // Schalter 3: in der CPU
-TimerEnable(TIMER0_BASE, TIMER_A);                        // los!
+TIMER0_CTL   = 0;                              // Timer zum Konfigurieren ausschalten
+TIMER0_CFG   = 0;                              // 32 Bit
+TIMER0_TAMR  = 2;                              // periodisch
+TIMER0_TAILR = 8000000 - 1;                    // 0,5 s
+TIMER0_IMR  |= 1;                              // Schalter 1: im Timer
+NVIC_ISER0   = 1u << 19;                       // Schalter 2: im NVIC
+__asm volatile("cpsie i");                     // Schalter 3: in der CPU
+TIMER0_CTL  |= 1;                              // los!
 
-while(1) { __asm volatile("wfi"); }                       // CPU schläft bis zum Interrupt
+while (1) { __asm volatile("wfi"); }           // CPU schläft bis zum Interrupt
 
-void TIMER0A_Handler(void)                                // die ISR
+void TIMER0A_Handler(void)                     // die ISR
 {
-    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);       // Flag löschen
-    ... PN1 umschalten ...
+    TIMER0_ICR = 1;                            // Flag löschen
+    GPION_DATA ^= PIN1;                        // PN1 umschalten
 }
 ```
 
@@ -74,8 +93,8 @@ Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer).
 ### Selbst ausprobieren
 
 - Ändern Sie `/ 2u` in `/ 10u` (0,1 s): `make`, `ucsim` neu starten.
-- Entfernen Sie `TimerIntClear(...)`: Die ISR wird dauernd neu aufgerufen (die LED flimmert). Warum?
-- Entfernen Sie `SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0)`: Der Simulator warnt
+- Entfernen Sie die Zeile `TIMER0_ICR = ICR_TATOCINT;` in der ISR: Sie wird dauernd neu aufgerufen (die LED flimmert). Warum?
+- Entfernen Sie `SYSCTL_RCGCTIMER |= …`: Der Simulator warnt
   *„Timer: Zugriff ohne Takt!“*.
 
 ### Debuggen im Simulator (Haltepunkt in der ISR)
@@ -95,12 +114,12 @@ $ gdb-multiarch lab02_timer_blink.out       # Terminal 2
 ## 4. Variante B: Auf dem Board mit CCS
 
 1. **Import:** In CCS **File → Import Projects…** und
-   `examples/lab02_timer_blink/lab02_timer_blink.projectspec` wählen. Die Pfadvariable
-   `TIVAWARE_ROOT` muss auf Ihre TivaWare zeigen (siehe Lab 01, Abschnitt 4.1).
+   `examples/lab02_timer_blink/lab02_timer_blink.projectspec` wählen. Es sind keine weiteren
+   Einstellungen nötig (keine Bibliothek).
    Ohne Oberfläche: `tools/ccs-import.sh examples/lab02_timer_blink`.
 2. **Bauen:** Rechtsklick auf das Projekt → **Build Project**; am Ende **0 errors**.
 3. **Board:** USB am Port **DEBUG**; **Run → Debug**; dann **Resume**. **D1** blinkt.
-4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `TimerIntClear(...)` in
+4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `GPION_DATA ^= PIN1;` in
    `TIMER0A_Handler`, dann Resume – CCS hält bei jedem Interrupt an.
    Im Fenster **Registers** sehen Sie die Timer0-Register (`GPTM`), z. B. `GPTMRIS`.
 
@@ -119,7 +138,7 @@ $ gdb-multiarch lab02_timer_blink.out       # Terminal 2
 
 1. Lassen Sie **D1 mit 1 Hz** und zusätzlich **D2 (PN0)** mit 2 Hz blinken – mit **einem** Timer.
    (Tipp: Der Timer löst alle 125 ms aus; D2 wird bei jedem 2., D1 bei jedem 4. Aufruf umgeschaltet – mit einem Zähler in der ISR.)
-2. Verwenden Sie statt `TIMER_CFG_PERIODIC` den Modus `TIMER_CFG_ONE_SHOT`. Was passiert?
+2. Stellen Sie `GPTMTAMR` auf den Modus **One-Shot** (Wert 1). Was passiert?
 3. Berechnen Sie den Startwert für 250 ms und für 5 s (Achtung: der Startwert muss in 32 Bit passen).
 
 ## 7. Hinweise zum Simulator

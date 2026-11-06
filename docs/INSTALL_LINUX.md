@@ -5,11 +5,13 @@ Diese Anleitung richtet alles ein, was Sie für das Mikrocontroller-Praktikum br
 | Was | Wofür |
 |---|---|
 | **Code Composer Studio (CCS)** | Programmieren, Übersetzen, Programm auf das Board laden, Debuggen |
-| **TivaWare** | Bibliothek von TI für den TM4C1294 (`GPIOPinWrite`, `TimerEnable` …) |
 | **Renode + `ucsim`** | Simulator: Programm ohne Board ausführen, LEDs im Browser anzeigen |
 | **udev-Regel** | Erlaubt Ihnen den USB-Zugriff auf das Board (ohne `sudo`) |
 
-Getestet mit: CCS 20.4 (Linux x64), TivaWare 2.2.0.295, Renode 1.17.0, Ubuntu/Debian-artiges Linux.
+Die Beispiele greifen **direkt auf die Register** zu (Datenblatt statt Bibliothek) – TivaWare/driverlib
+wird **nicht** benötigt.
+
+Getestet mit: CCS 20.4 (Linux x64), Renode 1.17.0, Ubuntu/Debian-artiges Linux.
 Rechnen Sie mit ca. 1 h und rund 6 GB freiem Plattenplatz. Die Anleitung geht davon aus, dass Sie
 alles in Ihrem Home-Verzeichnis unter `~/ti` installieren – das braucht keine Administratorrechte
 (nur Schritt 5 benötigt `sudo`).
@@ -57,25 +59,12 @@ sein, z. B. über `gh auth login`.)
 5. Bei „Debug Probes“ den **Stellaris/Tiva ICDI** (bzw. „TI XDS/ICDI“) angehakt lassen.
 
 Die Programmiersprache C wird von **TI Arm Clang** übersetzt; er ist in CCS enthalten
-(`~/ti/ccs2040/ccs/tools/compiler/ti-cgt-armllvm_*`).
+## 4. Datenblatt besorgen (statt TivaWare)
 
-## 4. TivaWare installieren
-
-TivaWare ist die Hardware-Bibliothek zum Board (Quellcode). Aufgrund der TI-Lizenz liegt sie
-**nicht** in diesem Repository.
-
-1. <https://www.ti.com/tool/SW-TM4C> → **Download** → „SW-TM4C-2.2.0.295 … .exe“ (Windows-Installer,
-   enthält ein selbstentpackendes Archiv). Unter Linux entpacken Sie es mit:
-   ```bash
-   $ mkdir -p ~/ti/TivaWare_C_Series-2.2.0.295 && cd ~/ti/TivaWare_C_Series-2.2.0.295
-   $ unzip -o ~/Downloads/SW-TM4C-2.2.0.295.exe
-   ```
-   (`sudo apt install unzip`, falls der Befehl fehlt. Dieser Entpack-Weg ist **nicht** getestet;
-   falls er scheitert, entpacken Sie die `.exe` auf einem Windows-Rechner oder mit `7z x`.)
-2. Kontrolle: Es muss die Datei `~/ti/TivaWare_C_Series-2.2.0.295/driverlib/gpio.c` geben.
-
-> Hinweis: Wenn die Beispiele Ihre TivaWare an anderer Stelle finden sollen, setzen Sie die Variable
-> `TIVAWARE_ROOT` (siehe Schritt 7 und die Beispiel-READMEs).
+Im Praktikum programmieren Sie **ohne Bibliothek** direkt über die Register. Dafür brauchen Sie das
+Datenblatt: <https://www.ti.com/product/TM4C1294NCPDT> → *Technical documents* →
+„Tiva TM4C1294NCPDT Microcontroller Data Sheet“ (PDF). Adressen und Bitnummern in den Beispielen
+stammen von dort. Zusätzlich hilfreich: das Board-Handbuch „EK-TM4C1294XL User's Guide“.
 
 ## 5. USB-Zugriff auf das Board (udev-Regel)
 
@@ -120,7 +109,6 @@ Die letzte Zeile muss `Renode, version 1.17.0 …` ausgeben. (Auf ARM-Rechnern: 
 $ mkdir -p ~/bin
 $ ln -sf ~/praktikum/renode4mc-haw/sim/ucsim ~/bin/ucsim
 $ echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-$ echo 'export TIVAWARE_ROOT="$HOME/ti/TivaWare_C_Series-2.2.0.295"' >> ~/.bashrc
 $ source ~/.bashrc
 ```
 
@@ -156,13 +144,12 @@ Wenn a)–c) funktionieren, ist die Installation fertig. Weiter mit
 | Meldung / Problem | Lösung |
 |---|---|
 | `make: tiarmclang: Datei nicht gefunden` | `CCS_ROOT` stimmt nicht: `make CCS_ROOT=$HOME/ti/ccs2040/ccs` |
-| `fatal error: 'inc/hw_memmap.h' file not found` | TivaWare nicht gefunden: `export TIVAWARE_ROOT=…` (Schritt 7) |
 | `renode nicht gefunden` | Schritt 6 wiederholen oder `export RENODE=…` |
 | Browser zeigt „Nicht verbunden“ | `ucsim` läuft nicht (mehr); Terminal prüfen |
 | CCS: „Could not open device“ / Board nicht gefunden | udev-Regel (Schritt 5), anderes Kabel, Port „DEBUG“ benutzen |
-| Simulator-Warnung „Zugriff … ohne Takt“ | Im Programm fehlt `SysCtlPeripheralEnable(...)` – genau der Fehler, der auf dem Board einen HardFault auslösen würde |
+| Simulator-Warnung „Zugriff … ohne Takt“ | Im Programm fehlt das Einschalten des Takts (`SYSCTL_RCGCGPIO \|= …`) – genau der Fehler, der auf dem Board einen HardFault auslösen würde |
 
-> **Hinweis zum Test-Stand:** Die Installation von CCS/TivaWare/Renode, das Bauen mit CCS (ohne
+> **Hinweis zum Test-Stand:** Die Installation von CCS/Renode, das Bauen mit CCS (ohne
 > Oberfläche) und die Simulation wurden getestet. Das Programmieren und Debuggen des echten
 > Boards und die Klickfolgen der CCS-Oberfläche in dieser Anleitung wurden von uns noch nicht am
 > realen Gerät geprüft – bei Abweichungen bitte melden.

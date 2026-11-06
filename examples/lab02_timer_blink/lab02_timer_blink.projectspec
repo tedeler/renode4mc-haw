@@ -8,22 +8,15 @@
         outputFormat="ELF"
         outputType="executable"
         launchWizard="false"
-        compilerBuildOptions="-mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -Oz -g -ffunction-sections -fdata-sections -Wall -Dgcc -DPART_TM4C1294NCPDT -DTARGET_IS_TM4C129_RA1 -I${TIVAWARE_ROOT}"
+        compilerBuildOptions="-mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -Oz -g -ffunction-sections -fdata-sections -Wall"
         linkerBuildOptions="--rom_model --stack_size=2048 --diag_suppress=10063"
         description="lab02_timer_blink (HAW Mikrocontroller-Praktikum, EK-TM4C1294XL)">
 
         <!-- eigener Quellcode des Beispiels -->
         <file path="main.c" openOnCreation="true" excludeFromBuild="false" action="copy"/>
 
-        <!-- gemeinsame Dateien: Startup (Vektortabelle), Linker-Skript, CPU-Ersatzfunktionen -->
+        <!-- gemeinsame Dateien: Startup (Vektortabelle), Linker-Skript -->
         <file path="../../common/startup_tm4c1294.c" targetDirectory="common" action="link"/>
-        <file path="../../common/cpu_clang.c" targetDirectory="common" action="link"/>
         <file path="../../common/tm4c1294.cmd" targetDirectory="common" action="link"/>
-
-        <!-- TivaWare driverlib (Quellcode, Pfadvariable TIVAWARE_ROOT) -->
-        <file path="TIVAWARE_ROOT/driverlib/gpio.c" targetDirectory="driverlib" action="link"/>
-        <file path="TIVAWARE_ROOT/driverlib/sysctl.c" targetDirectory="driverlib" action="link"/>
-        <file path="TIVAWARE_ROOT/driverlib/timer.c" targetDirectory="driverlib" action="link"/>
-        <file path="TIVAWARE_ROOT/driverlib/interrupt.c" targetDirectory="driverlib" action="link"/>
     </project>
 </projectSpec>

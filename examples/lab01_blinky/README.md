@@ -16,29 +16,43 @@ abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echt
 
 ## 1. Was Sie lernen
 
-- Ein Mikrocontroller-Pin ist ein Anschluss, den das Programm über **Register** steuert.
+- Ein Mikrocontroller-Pin ist ein Anschluss, den das Programm über **Register** steuert. Ein Register
+  ist ein 32-Bit-Wert an einer festen Adresse; Schreiben auf diese Adresse stellt Hardware um.
 - Bevor man ein Peripherie-Modul (z. B. einen GPIO-Port) benutzt, muss man seinen **Takt
   einschalten** („Clock Gating“, Register `RCGCGPIO`). Ohne Takt löst jeder Zugriff einen Fehler aus.
-- Pins müssen als **Ausgang** konfiguriert werden, bevor man sie schreibt.
-- Mit einer **Warteschleife** (`SysCtlDelay`) verzögert man den Ablauf – die CPU ist dabei
+- Pins müssen als **Ausgang** (`DIR`) und **digital** (`DEN`) konfiguriert werden, bevor man sie schreibt (`DATA`).
+- **Bitoperationen** (`|=`, `&= ~`, `^=`) ändern einzelne Bits, ohne die anderen anzufassen.
+- Mit einer **Warteschleife** verzögert man den Ablauf – die CPU ist dabei
   voll beschäftigt (das verbessert Lab 02 mit einem Timer).
 
 ## 2. Das Programm verstehen (`main.c`)
 
+Es wird **keine Bibliothek** verwendet. Oben in `main.c` stehen die Registeradressen als `#define`;
+jede Adresse ist **Basisadresse + Offset** aus dem Datenblatt:
+
+| Register | Adresse | Wirkung hier |
+|---|---|---|
+| `RCGCGPIO` | `0x400FE608` | Bit 12 = 1: Port N bekommt Takt (Bit *n* = Port *n*, A = 0 … N = 12) |
+| `PRGPIO` | `0x400FEA08` | Bit 12 = 1: Port N ist bereit |
+| `GPIODIR` (Port N) | `0x40064400` | Bit = 1: Pin ist Ausgang |
+| `GPIODEN` (Port N) | `0x4006451C` | Bit = 1: Pin digital aktiv |
+| `GPIODATA` (Port N) | `0x400643FC` | Pegel der Pins (Bit 0 = PN0, Bit 1 = PN1) |
+
 ```c
-SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);           // 1. Takt für Port N an
-while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPION)) {}  // 2. warten, bis Port bereit
-GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, GPIO_PIN_0 | GPIO_PIN_1); // 3. PN0, PN1 = Ausgänge
-GPIOPinWrite(..., GPIO_PIN_1);                         // Start: D1 an, D2 aus
-while(1) {
-    SysCtlDelay(HALBE_SEKUNDE);                        // 4. 0,5 s warten
-    ... beide Pins invertieren ...                     // 5. LEDs umschalten
+SYSCTL_RCGCGPIO |= PORT_N;                        // 1. Takt für Port N an (Bit 12 setzen)
+while ((SYSCTL_PRGPIO & PORT_N) == 0) {}          // 2. warten, bis Port bereit
+GPION_DIR |= PIN0 | PIN1;                         // 3. PN0, PN1 = Ausgänge
+GPION_DEN |= PIN0 | PIN1;                         //    und digital
+GPION_DATA = PIN1;                                // Start: D1 an, D2 aus
+while (1) {
+    warten(HALBE_SEKUNDE);                        // 4. ca. 0,5 s warten
+    GPION_DATA ^= PIN0 | PIN1;                    // 5. beide LEDs umschalten (XOR)
 }
 ```
 
-`SysCtlPeripheralEnable`, `GPIOPinTypeGPIOOutput` usw. kommen aus **TivaWare/driverlib**, der
-Bibliothek von TI. `SysCtlDelay(n)` ist eine kleine Schleife, die 3 Taktzyklen pro Durchlauf
-braucht; bei 16 MHz sind `16 000 000 / 3 / 2` Durchläufe etwa eine halbe Sekunde.
+Die Wartezeit ist eine leere Zählschleife (`volatile`, damit der Compiler sie nicht entfernt). Ein
+Durchlauf braucht etwa 12 Takte, bei 16 MHz sind `HALBE_SEKUNDE` ≈ 700 000 Durchläufe knapp eine halbe Sekunde.
+Die genaue Zeit hängt vom Compiler und von der Optimierung ab – deshalb nimmt man in Lab 02 einen Timer.
 
 ---
 
@@ -55,8 +69,8 @@ $ cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
 $ make
 ```
 
-Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ oder „inc/hw_memmap.h
-nicht gefunden“ → Abschnitt *Häufige Probleme* in der Installationsanleitung.
+Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ → Abschnitt
+*Häufige Probleme* in der Installationsanleitung.
 
 *Alternativ* können Sie die `.out`-Datei in CCS bauen (Abschnitt 4) und diese simulieren.
 
@@ -74,8 +88,8 @@ Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 
 
 ### 3.3 Selbst ausprobieren
 
-- Ändern Sie `HALBE_SEKUNDE` auf `(16000000u / 3u / 10u)` (0,1 s), `make`, `ucsim` neu starten.
-- Entfernen Sie testweise die Zeile `SysCtlPeripheralEnable(...)` und simulieren Sie erneut: Im
+- Ändern Sie `HALBE_SEKUNDE` auf `70000u` (ca. 0,05 s), `make`, `ucsim` neu starten.
+- Entfernen Sie testweise die Zeile `SYSCTL_RCGCGPIO |= PORT_N;` und simulieren Sie erneut: Im
   Terminal erscheint die Warnung *„GPIO Port N: Zugriff … ohne Takt!“*, die LEDs bleiben aus. Auf dem
   Board würde das Programm im HardFault landen – ein sehr häufiger Anfängerfehler.
 
@@ -89,9 +103,7 @@ Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 
 2. Menü **File → Import Projects…** (bzw. in der Ansicht „CCS Project Explorer“ → *Import*), den
    Typ **CCS Projects** wählen und die Datei
    `~/praktikum/renode4mc-haw/examples/lab01_blinky/lab01_blinky.projectspec` auswählen.
-3. **Pfadvariable `TIVAWARE_ROOT`** setzen, falls CCS danach fragt oder Dateien als „nicht
-   gefunden“ markiert: Wert `~/ti/TivaWare_C_Series-2.2.0.295` (ausgeschrieben, z. B.
-   `/home/IHRNAME/ti/TivaWare_C_Series-2.2.0.295`).
+3. Das Projekt braucht keine weiteren Einstellungen (keine Bibliothek, keine Pfadvariablen).
 
 **Wenn die Oberfläche nicht wie beschrieben reagiert**, importieren Sie im Terminal – das
 funktioniert ohne Klicken und ist von uns getestet:
@@ -149,7 +161,7 @@ Das Debuggen mit der CCS-Oberfläche gegen den Simulator ist in `docs/TOOLCHAIN.
 
 ## 7. Aufgaben
 
-1. Lassen Sie **D3 (PF4)** und **D4 (PF0)** zusätzlich blinken (Port F: `SYSCTL_PERIPH_GPIOF`,
-   `GPIO_PORTF_BASE`). Welche Zeile fehlt, wenn die LEDs dunkel bleiben?
+1. Lassen Sie **D3 (PF4)** und **D4 (PF0)** zusätzlich blinken (Port F = Bit 5 in `RCGCGPIO`,
+   Basisadresse `0x4005D000`; Offsets von `DIR`/`DEN`/`DATA` wie bei Port N – im Datenblatt nachschlagen). Welche Zeile fehlt, wenn die LEDs dunkel bleiben?
 2. Erzeugen Sie ein **Lauflicht** über alle vier LEDs.
 3. Messen Sie mit einer Stoppuhr, wie genau 0,5 s auf dem Board sind. Warum weicht der Wert ab?

@@ -3,7 +3,8 @@
 Lehrmaterial für das Mikrocontroller-Praktikum an der HAW mit dem **EK-TM4C1294XL**
 (TI Tiva C, ARM Cortex-M4F).
 
-- **Programmieren wie von TI empfohlen:** Code Composer Studio (CCS) + TI Arm Clang + TivaWare.
+- **Programmieren wie von TI empfohlen:** Code Composer Studio (CCS) + TI Arm Clang. Die Beispiele
+  nutzen **reinen Registerzugriff** (Datenblatt, keine driverlib).
 - **Zusätzlich simulieren:** Dieselbe `.out`-Datei läuft ohne Board im Simulator
   ([Renode](https://renode.io)); die LEDs erscheinen in einer HTML-Seite im Browser.
 
@@ -29,7 +30,7 @@ cd examples/lab01_blinky && make && ucsim lab01_blinky.out
 | Pfad | Inhalt |
 |---|---|
 | `examples/lab01_blinky`, `examples/lab02_timer_blink` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
-| `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294), `cpu_clang.c` (Ersatz für TivaWare-`cpu.c`) – **identisch für Board und Simulator** |
+| `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294) – **identisch für Board und Simulator** |
 | `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, WebSocket-Brücke), LED-Anzeige `visualizer/ek-tm4c1294xl.html` |
 | `tools/ccs-import.sh` | CCS-Projekt ohne Oberfläche importieren und bauen |
 | `docs/` | `INSTALL_LINUX.md`, `TOOLCHAIN.md` (Konzept, CCS-Debugging des Simulators), `ROADMAP.md` (weitere Peripherie) |
@@ -39,7 +40,7 @@ cd examples/lab01_blinky && make && ucsim lab01_blinky.out
 | Baustein | Stand |
 |---|---|
 | Cortex-M4F, NVIC, 1 MB Flash, 256 KB SRAM, Bit-Banding | ✔ |
-| SYSCTL: Clock-Gating (`RCGC*`/`PR*`), Warnung bei fehlendem Takt | ✔ (PLL/`SysCtlClockFreqSet` nicht; Takt fest 16 MHz) |
+| SYSCTL: Clock-Gating (`RCGC*`/`PR*`), Warnung bei fehlendem Takt | ✔ (PLL/Takt-Umschaltung nicht; Takt fest 16 MHz) |
 | GPIO A–Q: Ausgänge, Eingänge, Pull-up/-down, Interrupts | ✔ |
 | Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, Interrupt | ✔ (Timer 4–7 ohne NVIC-Verdrahtung) |
 | UART, ADC, SysTick-Test, Taster-Eingabe im Browser | geplant (`docs/ROADMAP.md`) |
