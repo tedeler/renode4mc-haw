@@ -89,6 +89,7 @@ function compare(pd, text) {
   // 2. WebSockets
   let uart = '';
   let pd = null;
+  const phases = [];
   const errors = [];
   const u = new WebSocket(`ws://${host}:3333`);
   u.on('message', (d) => (uart += d.toString()));
@@ -98,7 +99,11 @@ function compare(pd, text) {
     const p = m.type === 'pd' ? m : m.type === 'hello' ? m.pd : null;
     if (p) {
       const bin = Buffer.from(p.data, 'base64');
-      pd = { columns: p.columns, periodUs: p.periodUs, lr: bin.subarray(0, p.columns), rl: bin.subarray(p.columns) };
+      pd = {
+        columns: p.columns, periodUs: p.periodUs, phase: p.phase, leds: p.leds,
+        lr: bin.subarray(0, p.columns), rl: bin.subarray(p.columns),
+      };
+      phases.push(p.phase);
     }
     if (m.type === 'error') errors.push(m.message);
   });
@@ -125,14 +130,22 @@ function compare(pd, text) {
   }
 
   // Pendelfrequenz verstellen: Modell übernimmt sie, Firmware misst sie nach, Bild bleibt richtig
-  for (const [hz, ms] of [[15, '66,6'], [4, '250,0'], [25, '40,0'], [10, '100,0']]) {
+  check('Frame enthält Phase (0..19999) und LED-Zustand', await waitFor(() => phases.length > 5, 3000) &&
+    phases.every((x) => Number.isInteger(x) && x >= 0 && x < 20000) && new Set(phases).size > 3 &&
+    Number.isInteger(pd.leds), `${phases.length} Frames`);
+
+  // gemeldete Periode in ms (Komma), Toleranz 0,1 ms (Messung über eine halbe Schwingung)
+  const reported = (text) => (text.match(/Pendelperiode: ([\d,]+) ms/g) || [])
+    .map((m) => Number(m.replace(/[^\d,]/g, '').replace(',', '.')));
+  for (const [hz, ms] of [[15, '66,7'], [1, '1000,0'], [20, '50,0'], [10, '100,0']]) {
     const mark = uart.length;
     send({ type: 'pendulum', frequency: hz });
     check(`Frequenz ${hz} Hz -> Modell`, await waitFor(() => pd && Math.abs(1e6 / pd.periodUs - hz) < 0.01, 3000),
       pd ? `${(1e6 / pd.periodUs).toFixed(2)} Hz` : '');
     check(`Frequenz ${hz} Hz -> Firmware misst ${ms} ms`,
-      await waitFor(() => uart.slice(mark).includes(`Pendelperiode: ${ms} ms`), 4000));
-    await sleep(1000); // Bild ein paar Schwünge lang mit der neuen Periode zeichnen lassen
+      await waitFor(() => reported(uart.slice(mark)).some((v) => Math.abs(v - Number(ms.replace(',', '.'))) <= 0.1001), 5000),
+      (uart.slice(mark).match(/Pendelperiode: [\d,]+ ms/g) || []).join(' | '));
+    await sleep(Math.max(1000, 2500 / hz)); // Bild ein paar Schwünge lang mit der neuen Periode zeichnen lassen
     await checkImage('7CM', ` bei ${hz} Hz`);
   }
 

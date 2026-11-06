@@ -6,7 +6,7 @@ const experiments = require('./experiments');
 
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
-const PD_RE = /PD:(\d+):(\d+):([A-Za-z0-9+/=]+)/;
+const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -24,7 +24,10 @@ const PD_RE = /PD:(\d+):(\d+):([A-Za-z0-9+/=]+)/;
  *   { type: "hello", experiment, renode, leds, fb, pd }
  *   { type: "leds", states: { [id]: boolean } }
  *   { type: "fb", width, height, on, invert, data }   data = Base64, SSD1306-Page-Format
- *   { type: "pd", columns, periodUs, data }           Pendeldisplay: data = Base64, erst alle Spalten
+ *   { type: "pd", columns, periodUs, phase, leds, data }
+ *                                                     Pendeldisplay: phase = 1/10000 halbe Schwingung
+ *                                                     (0..19999), leds = LED-Zustand jetzt,
+ *                                                     data = Base64, erst alle Spalten
  *                                                     links->rechts, dann rechts->links (Bit n = LED n)
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
@@ -274,10 +277,11 @@ class ControlBridge {
       }
 
       if (exp.pendulum) {
-        const out = await mon.execute(`${exp.pendulum.path} GetFrameIfChanged`);
+        // Immer abfragen: Phase und LED-Zustand ändern sich laufend (Animation des Pendelstabs)
+        const out = await mon.execute(`${exp.pendulum.path} GetFrame`);
         const m = PD_RE.exec(out);
         if (m) {
-          this.lastPendulum = { type: 'pd', columns: +m[1], periodUs: +m[2], data: m[3] };
+          this.lastPendulum = { type: 'pd', columns: +m[1], periodUs: +m[2], phase: +m[3], leds: +m[4], data: m[5] };
           this._broadcast(this.lastPendulum);
         }
       }

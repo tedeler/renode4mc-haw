@@ -1,6 +1,7 @@
 // Versuch 2 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
 //
-//   Pendeldisplay (POV)      8 LEDs an PM0..PM7 (Ausgänge), LED 0 am Drehpunkt, LED 7 an der Spitze
+//   Pendeldisplay (POV)      stehendes Pendel, Drehpunkt unten; 8 LEDs an PM0..PM7 (Ausgänge),
+//                            LED 0 oben an der Spitze, LED 7 unten (nahe dem Drehpunkt)
 //                            Sync-Signal an PL0 (Eingang): HIGH = Pendel rechts, LOW = links
 //                            10 Schwingungen pro Sekunde (Periode 100 ms); zur Laufzeit einstellbar
 //                            mit  sysbus.gpioM.pendel PeriodUs <us>  (Web-Konsole: Schieberegler)

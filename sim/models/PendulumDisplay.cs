@@ -1,9 +1,10 @@
 // Pendeldisplay (POV, "persistence of vision"): 8 LEDs auf einem schwingenden Pendel.
 //
-// Aufbau:
+// Aufbau (stehendes Pendel wie ein Metronom: Drehpunkt UNTEN, Spitze oben):
 //   * 8 LED-Eingänge (0..7) kommen von GPIO-AUSGÄNGEN des Mikrocontrollers:
 //       gpioM:  0 -> pendel@0  ...  7 -> pendel@7
-//     LED 0 sitzt am Drehpunkt, LED 7 an der Pendelspitze.
+//     LED 0 sitzt an der Pendelspitze (oben), LED 7 am nächsten zum Drehpunkt (unten).
+//     So ist Bit 0 eines Bildbytes die oberste Bildzeile, wie beim OLED-Zeichensatz.
 //   * Ausgang Sync geht auf einen GPIO-EINGANG (z.B.  Sync -> gpioL@0):
 //       HIGH, solange das Pendel RECHTS von der Mitte steht, LOW, solange es LINKS steht.
 //       Steigende Flanke = Pendel läuft nach rechts durch die Mitte,
@@ -14,7 +15,7 @@
 //     Das Pendel ist in der Mitte am schnellsten und an den Umkehrpunkten am langsamsten.
 //
 // Frequenz zur Laufzeit ändern:
-//   sysbus.gpioM.pendel PeriodUs 80000      (Periode in us, 10000..1000000 = 100 Hz .. 1 Hz)
+//   sysbus.gpioM.pendel PeriodUs 80000      (Periode in us, 10000..20000000 = 100 Hz .. 0,05 Hz)
 //   Die neue Periode gilt ab dem nächsten Durchgang durch die Mitte. Dort ist die Auslenkung bei
 //   jeder Frequenz null, das Pendel läuft also ohne Sprung weiter.
 //
@@ -27,8 +28,11 @@
 //   wie schnell der Rechner die Simulation ausführt.
 //
 // Bedienung im Renode-Monitor:
-//   sysbus.gpioM.pendel GetFrame            -> "PD:<columns>:<periodUs>:<Base64>"  (alle Bytes
-//                                               links->rechts, dann rechts->links; Bit n = LED n)
+//   sysbus.gpioM.pendel GetFrame            -> "PD:<columns>:<periodUs>:<phase>:<leds>:<Base64>"
+//       phase  = aktuelle Phase in 1/10000 halber Schwingungen, 0..19999 (0 = Mitte, nach rechts;
+//                5000 = ganz rechts; 10000 = Mitte, nach links; 15000 = ganz links)
+//       leds   = aktueller LED-Zustand (Bit n = LED n)
+//       Base64 = Nachleuchtbild: alle Bytes links->rechts, dann rechts->links (Bit n = LED n)
 //   sysbus.gpioM.pendel GetFrameIfChanged   -> wie oben oder "PD:SAME"
 //   sysbus.gpioM.pendel SyncLevel           -> aktueller Pegel des Sync-Ausgangs
 //   sysbus.gpioM.pendel Leds                -> aktueller LED-Zustand (Bit n = LED n)
@@ -44,7 +48,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
     public class PendulumDisplay : IGPIOReceiver
     {
         public const uint MinPeriodUs = 10000;     // 100 Hz
-        public const uint MaxPeriodUs = 1000000;   // 1 Hz
+        public const uint MaxPeriodUs = 20000000;  // 0,05 Hz
 
         public PendulumDisplay(IMachine machine, uint periodUs = 100000, int columns = 120)
         {
@@ -116,7 +120,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             lock(sync)
             {
                 PaintUntil(Phase());
-                if(version == lastReported)
+                if(version == lastReported && Phase() == lastReportedPhase)
                 {
                     return "PD:SAME";
                 }
@@ -228,6 +232,9 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         private string Encode()
         {
+            double phase = Phase();
+            lastReportedPhase = phase;
+            int phaseQ = (int)Math.Floor((phase % 2.0) * 10000) % 20000;
             var bytes = new byte[2 * Columns];
             for(int d = 0; d < 2; d++)
             {
@@ -236,7 +243,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     bytes[d * Columns + c] = image[d, c];
                 }
             }
-            return string.Format("PD:{0}:{1}:{2}", Columns, 2 * halfUs, Convert.ToBase64String(bytes));
+            return "PD:" + Columns + ":" + (2 * halfUs) + ":" + phaseQ + ":" + leds + ":" + Convert.ToBase64String(bytes);
         }
 
         private readonly object sync = new object();
@@ -250,5 +257,6 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private double lastPaintPhase;
         private ulong version;
         private ulong lastReported = ulong.MaxValue;
+        private double lastReportedPhase = -1;
     }
 }

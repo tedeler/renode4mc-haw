@@ -7,7 +7,8 @@
  *   Baustein                 Anschluss                          Verwendung im Programm
  *   ------------------------ ---------------------------------- -------------------------------------
  *   Pendeldisplay, 8 LEDs    PM0..PM7 (Ausgang),                 eine Bildspalte = ein Byte auf Port M
- *                            PM0 = LED am Drehpunkt (oben)
+ *                            Drehpunkt unten, PM0 = LED an der
+ *                            Spitze (oben), PM7 = LED unten
  *   Pendel-Signal            PL0 (Eingang)                       HIGH = Pendel rechts, LOW = links;
  *                                                                Interrupt bei beiden Flanken
  *   UART0 (Virtual COM)      PA0 = RX, PA1 = TX, 115200 8N1      Meldungen (Abstand, Pendelperiode)
@@ -19,7 +20,7 @@
  *
  * Prinzip (POV = persistence of vision):
  *   Das Pendel schwingt 10-mal pro Sekunde (Periode T = 100 ms; in der Web-Konsole einstellbar,
- *   die Firmware misst T laufend nach und akzeptiert 2..50 Hz). Wechselt die Firmware die
+ *   die Firmware misst T laufend nach und akzeptiert 0,1..50 Hz). Wechselt die Firmware die
  *   LEDs genau dann, wenn das Pendel an der richtigen Stelle ist, sieht das Auge ein stehendes
  *   Bild aus 40 Spalten zu 8 Punkten. Bezugspunkt ist der Nulldurchgang (Flanke an PL0):
  *   Eine halbe Periode nach jeder Flanke läuft das Pendel wieder durch die Mitte, diesmal in
@@ -153,7 +154,7 @@ static const int16_t spaltenZeit_q16[SPALTEN + 1] = {
 
 #define PERIODE_SOLL        (SYSTEM_CLOCK_HZ / 10u)        /* 10 Hz: 100 ms = 1 600 000 Takte */
 #define PERIODE_MIN         (SYSTEM_CLOCK_HZ / 50u)        /* schnellstes Pendel: 50 Hz */
-#define PERIODE_MAX         (SYSTEM_CLOCK_HZ / 2u)         /* langsamstes Pendel: 2 Hz */
+#define PERIODE_MAX         (SYSTEM_CLOCK_HZ * 10u)        /* langsamstes Pendel: 0,1 Hz (10 s) */
 
 static volatile uint8_t  bild[SPALTEN];                    /* Bit n = LED n (PMn), Bit 0 oben */
 static volatile uint32_t periode = PERIODE_SOLL;           /* gemessene Pendelperiode in Takten */
@@ -233,36 +234,34 @@ static void schwung_planen(void)
 /* Flanke am Pendel-Signal (PL0) = Pendel läuft durch die Mitte */
 void GPIOL_Handler(void)
 {
-    static uint32_t letzteSteigende;
-    static bool     gemessen;                              /* eine steigende Flanke schon gesehen */
-    static bool     gemeldet;                              /* Periode schon per UART gemeldet */
+    static bool gemessen;                                  /* schon eine Flanke gesehen */
+    static bool gemeldet;                                  /* Periode schon per UART gemeldet */
 
     uint32_t jetzt = TIMER_TAV(TIMER2_BASE);               /* Timer2 zählt abwärts */
     GPIO_ICR(GPIOL_BASE) = PENDEL_SYNC;
-    bool rechts = (GPIO_DATA_M(GPIOL_BASE, PENDEL_SYNC) & PENDEL_SYNC) != 0;
 
-    if (rechts)
+    /*
+     * Periode = 2 x Abstand zweier aufeinanderfolgender Flanken (eine halbe Schwingung).
+     * Das rastet doppelt so schnell ein wie die Messung von steigender zu steigender Flanke -
+     * wichtig bei langsamen Pendeln (0,1 Hz: 10 s pro Schwingung).
+     */
+    uint32_t t = 2u * (letzteKante - jetzt);               /* Abwärtszähler: alt - neu */
+    if (gemessen && t >= PERIODE_MIN && t <= PERIODE_MAX)  /* Störungen ignorieren */
     {
-        /* Periode = Abstand zweier steigender Flanken (Abwärtszähler: alt - neu) */
-        uint32_t t = letzteSteigende - jetzt;
-        letzteSteigende = jetzt;
-        if (gemessen && t >= PERIODE_MIN && t <= PERIODE_MAX)   /* Störungen ignorieren */
+        uint32_t abweichung = (t > periode) ? t - periode : periode - t;
+        if (abweichung > periode / 1000u)                  /* mehr als 0,1 % geändert */
         {
-            uint32_t abweichung = (t > periode) ? t - periode : periode - t;
-            if (abweichung > periode / 1000u)              /* mehr als 0,1 % geändert */
-            {
-                periode = t;
-                zeitplan_berechnen(t);                     /* Zeitplan an die echte Periode anpassen */
-                gemeldet = false;
-            }
-            if (!gemeldet)
-            {
-                neuePeriode = t;
-                gemeldet = true;
-            }
+            periode = t;
+            zeitplan_berechnen(t);                         /* Zeitplan an die echte Periode anpassen */
+            gemeldet = false;
         }
-        gemessen = true;
+        if (!gemeldet)
+        {
+            neuePeriode = t;
+            gemeldet = true;
+        }
     }
+    gemessen = true;
 
     letzteKante = jetzt;
     if (!laeuft)
@@ -423,7 +422,7 @@ static bool sonar_read(uint32_t *cm)
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Text -> Bild. 5x7-Zeichensatz (Spalten, Bit 0 = oben = LED am Drehpunkt)
+ * Text -> Bild. 5x7-Zeichensatz (Spalten, Bit 0 = oben = LED an der Pendelspitze)
  * ------------------------------------------------------------------------------------------- */
 static const uint8_t font5x7[][5] = {
     { 0x3E, 0x51, 0x49, 0x45, 0x3E },   /* 0 */
@@ -588,7 +587,8 @@ int main(void)
         {
             uint32_t p = neuePeriode;
             neuePeriode = 0;
-            int n = utoa(p / (SYSTEM_CLOCK_HZ / 10000u), text); /* in 0,1 ms */
+            const uint32_t takteJe100us = SYSTEM_CLOCK_HZ / 10000u;
+            int n = utoa((p + takteJe100us / 2u) / takteJe100us, text); /* in 0,1 ms, gerundet */
             uart_puts("Pendelperiode: ");
             for (int i = 0; i < n - 1; i++) uart_putc(text[i]);
             uart_putc(',');
