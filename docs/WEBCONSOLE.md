@@ -124,7 +124,7 @@ Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Versuch 
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
-| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang); stehendes Pendel, Drehpunkt unten, PM0 oben an der Spitze | `PendulumDisplay` | schwingender Stab (dunkelgrau) mit LEDs, Nachleuchtbild als Kreisbogen |
+| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang); stehendes Pendel, Drehpunkt unten, PM0 oben an der Spitze | `PendulumDisplay` | schwingender Stab (dunkelgrau) mit LEDs und abklingender Leuchtspur (Nachleuchtdauer einstellbar) |
 | Pendel-Signal | PL0 (Eingang): HIGH = rechts, LOW = links | `PendulumDisplay.Sync` | – |
 | Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
 
@@ -228,8 +228,12 @@ und Phase `phi` (1/10000 halbe Schwingung, fortlaufend), dazu den Jetzt-Zustand 
 merkt sich die Wechsel (`GetEvents`), das Backend holt sie mit jedem Poll ab (10/s). Das Frontend
 spielt damit Stab, LEDs und Leuchtspur **200 ms verzögert, aber zeitlich exakt** wieder: Zwischen
 zwei Stützstellen läuft die Phase mit `2/Periode` weiter, der LED-Zustand gilt bis zum nächsten
-Wechsel. Jede leuchtende LED hinterlässt dort, wo der Stab gerade ist, einen Punkt, der in 10 ms
-verblasst. Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
+Wechsel. Das Bild entsteht nur aus der Leuchtspur: Jede leuchtende LED zeichnet den Bogen, den sie
+überstreicht, und die Spur klingt exponentiell ab, so dass sie nach der eingestellten
+**Nachleuchtdauer** (Regler 1 ms – 1 s, Standard 10 ms) unter 5 % liegt. Mit 10 ms sieht man bei
+jeder Frequenz nur ein kurzes Stück Spur hinter dem Stab; ein stehendes Bild wie für das Auge
+entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattdessen das Bild aus
+`pd.data` (letzter Schwung je Richtung, ohne Abklingen). Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
 (Zeit beginnt bei 0), wird die Zeitlinie verworfen.
 
 ### Reconnect

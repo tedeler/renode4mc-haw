@@ -13,8 +13,31 @@ const THETA_MAX = (30 * Math.PI) / 180; // größte Auslenkung (Winkel)
 const LED_RGB = '255, 84, 64';
 const ROD_COLOR = '#4b5058'; // dunkelgrau vor schwarzem Grund
 const DELAY_US = 200000; // Wiedergabe so weit hinter der Simulation (Daten kommen 10-mal pro Sekunde)
-const FADE_US = 10000; // Leuchtpunkte der Stab-LEDs verblassen in 10 ms
-const TRAIL_STEP_US = 100; // Abtastschritt der Leuchtspur
+const MAX_ARC_STEP = 0.03; // Leuchtspur in Stücken von höchstens so viel Winkel (rad) zeichnen
+
+// Nachleuchtdauer: Regler logarithmisch von 1 ms bis 1 s
+const AFTERGLOW_MIN_MS = 1;
+const AFTERGLOW_MAX_MS = 1000;
+const AFTERGLOW_DEFAULT_MS = 10;
+const sliderToMs = (v) => AFTERGLOW_MIN_MS * (AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS) ** (v / 1000);
+const msToSlider = (ms) => (1000 * Math.log(ms / AFTERGLOW_MIN_MS)) / Math.log(AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS);
+
+const VIEWS = [
+  { id: 'both', label: 'Leuchtspur, beide Schwünge' },
+  { id: 'lr', label: 'Leuchtspur, nur links → rechts' },
+  { id: 'rl', label: 'Leuchtspur, nur rechts → links' },
+  { id: 'still', label: 'Standbild (letzter Schwung je Richtung)' },
+];
+
+const ledRadius = (led) => R_TIP - led * ROW_STEP;
+// Winkel theta (0 = senkrecht nach oben, positiv = nach rechts) -> Canvas-Winkel
+const canvasAngle = (theta) => theta - Math.PI / 2;
+const thetaOf = (phi) => THETA_MAX * Math.sin(Math.PI * phi);
+
+const fmt = (v, digits = 1) =>
+  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const fmtPeriod = (hz) => (hz < 1 ? `${fmt(1 / hz, 1)} s` : `${fmt(1000 / hz, 1)} ms`);
+const fmtMs = (ms) => (ms < 10 ? `${fmt(ms, 1)} ms` : `${fmt(ms, 0)} ms`);
 
 /**
  * Zeitlinie der Simulation für die Wiedergabe: Stützstellen (virtuelle Zeit t in us, Phase phi in
@@ -25,20 +48,24 @@ class Timeline {
   constructor() {
     this.s = [];
     this.offset = null; // Wanduhr (us) - virtuelle Zeit (us)
+    this.generation = 0; // zählt Neustarts von Renode
   }
 
   add(msg) {
     const wall = performance.now() * 1000;
     const [t, phiQ, leds, periodUs] = msg.now;
     const last = this.s[this.s.length - 1];
-    if (last && t < last.t) this.s = []; // Renode neu gestartet: Zeit beginnt bei 0
+    if (last && t < last.t) {
+      this.s = []; // Renode neu gestartet: Zeit beginnt bei 0
+      this.generation++;
+    }
     const measured = wall - t;
     if (this.offset === null || !this.s.length || Math.abs(measured - this.offset) > 1e6) this.offset = measured;
     else this.offset += 0.05 * (measured - this.offset); // Schwankungen der Übertragung glätten
     for (const [et, ep, el, eper] of msg.ev) this.s.push({ t: et, phi: ep / 10000, leds: el, period: eper });
     this.s.push({ t, phi: phiQ / 10000, leds, period: periodUs });
-    // Ältere Stützstellen als 2 s (virtuell) verwerfen, eine davor behalten
-    const keepFrom = t - 2e6;
+    // Ältere Stützstellen als 3 s (virtuell) verwerfen, eine davor behalten
+    const keepFrom = t - 3e6;
     let i = 0;
     while (i < this.s.length - 1 && this.s[i + 1].t < keepFrom) i++;
     if (i) this.s.splice(0, i);
@@ -48,19 +75,38 @@ class Timeline {
     return this.s.length ? this.s[this.s.length - 1].t : 0;
   }
 
-  /** Lage (phi) und LED-Zustand zur virtuellen Zeit t */
-  at(t) {
+  /** Index der letzten Stützstelle mit Zeit <= t (0, falls t davor liegt) */
+  index(t) {
     const s = this.s;
     let lo = 0;
     let hi = s.length - 1;
-    if (t <= s[0].t) return { phi: s[0].phi, leds: s[0].leds };
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
       if (s[mid].t <= t) lo = mid;
       else hi = mid - 1;
     }
-    const p = s[lo];
-    return { phi: p.phi + ((t - p.t) * 2) / p.period, leds: p.leds };
+    return lo;
+  }
+
+  phiAt(p, t) {
+    return p.phi + ((t - p.t) * 2) / p.period;
+  }
+
+  /** Lage (phi) und LED-Zustand zur virtuellen Zeit t */
+  at(t) {
+    const p = this.s[this.index(t)];
+    return { phi: this.phiAt(p, Math.max(t, p.t)), leds: p.leds };
+  }
+
+  /** Abschnitte mit gleichem LED-Zustand im Zeitraum [t0, t1]: Aufruf fn(a, b, stützstelle) */
+  forEachSegment(t0, t1, fn) {
+    const s = this.s;
+    for (let i = this.index(t0); i < s.length; i++) {
+      const a = Math.max(t0, s[i].t);
+      const b = Math.min(t1, i + 1 < s.length ? s[i + 1].t : t1);
+      if (a >= t1) break;
+      if (b > a) fn(a, b, s[i]);
+    }
   }
 
   /** virtuelle Zeit, die jetzt angezeigt wird (verzögert, nie über die Daten hinaus) */
@@ -70,93 +116,129 @@ class Timeline {
   }
 }
 
-const VIEWS = [
-  { id: 'both', label: 'Auge (beide Schwünge)' },
-  { id: 'lr', label: 'nur links → rechts' },
-  { id: 'rl', label: 'nur rechts → links' },
-];
-
-const ledRadius = (led) => R_TIP - led * ROW_STEP;
-// Winkel theta (0 = senkrecht nach oben, positiv = nach rechts) -> Canvas-Winkel
-const canvasAngle = (theta) => theta - Math.PI / 2;
-
-const fmt = (v, digits = 1) =>
-  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-const fmtPeriod = (hz) => (hz < 1 ? `${fmt(1 / hz, 1)} s` : `${fmt(1000 / hz, 1)} ms`);
-
-/**
- * Nachleuchtbild (ändert sich nur mit neuen Daten) auf ein eigenes Canvas zeichnen.
- * Spalte = Winkel, LED n = Radius. Helligkeit = Anteil der Schwünge, in denen die LED an dieser
- * Stelle an war (zeichnet die Firmware nur in einer Richtung: halbe Helligkeit).
- */
-function drawPersistence(ctx, pd, view) {
-  ctx.clearRect(0, 0, W, H);
+/** Hintergrund: Schwenkbereich und dunkle LED-Bahnen */
+function drawBackground(ctx) {
   const cx = W / 2;
   const a0 = canvasAngle(-THETA_MAX);
   const a1 = canvasAngle(THETA_MAX);
-
-  // Schwenkbereich der LEDs
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
   ctx.beginPath();
   ctx.arc(cx, PIVOT_Y, R_TIP + 9, a0, a1);
   ctx.arc(cx, PIVOT_Y, ledRadius(7) - 9, a1, a0, true);
   ctx.closePath();
   ctx.fill();
-
   ctx.lineCap = 'butt';
+  ctx.strokeStyle = 'rgba(255, 84, 64, 0.05)';
+  ctx.lineWidth = ROW_STEP * 0.7;
   for (let led = 0; led < 8; led++) {
-    const r = ledRadius(led);
-    ctx.strokeStyle = 'rgba(255, 84, 64, 0.05)';
-    ctx.lineWidth = ROW_STEP * 0.7;
     ctx.beginPath();
-    ctx.arc(cx, PIVOT_Y, r, a0, a1);
+    ctx.arc(cx, PIVOT_Y, ledRadius(led), a0, a1);
     ctx.stroke();
-    if (!pd) continue;
-
-    const n = pd.columns;
-    const half = THETA_MAX / n; // halbe Winkelbreite einer Spalte
-    const bit = 1 << led;
-    for (let c = 0; c < n; c++) {
-      const a = pd.lr[c] & bit ? 1 : 0;
-      const b = pd.rl[c] & bit ? 1 : 0;
-      const level = view === 'lr' ? a : view === 'rl' ? b : (a + b) / 2;
-      if (!level) continue;
-      const mid = canvasAngle(-THETA_MAX + (2 * THETA_MAX * (c + 0.5)) / n);
-      ctx.strokeStyle = `rgba(${LED_RGB}, ${level})`;
-      ctx.shadowColor = `rgba(${LED_RGB}, ${0.8 * level})`;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.arc(cx, PIVOT_Y, r, mid - half * 1.05, mid + half * 1.05);
-      ctx.stroke();
-    }
-    ctx.shadowBlur = 0;
   }
 }
 
 /**
- * Leuchtspur: Jede LED, die in den letzten 10 ms an war, hinterlässt dort, wo der Stab in dem
- * Moment war, einen Punkt, der mit dem Alter verblasst.
+ * Standbild aus dem Modell: je Schwungrichtung, welche LEDs beim letzten Überstreichen eines
+ * Winkelstücks an waren (wie eine Langzeitbelichtung, ohne Abklingen).
  */
-function drawTrail(ctx, timeline, T) {
+function drawStill(ctx, pd) {
+  ctx.clearRect(0, 0, W, H);
+  if (!pd) return;
   const cx = W / 2;
-  ctx.save();
-  for (let age = FADE_US; age >= 0; age -= TRAIL_STEP_US) {
-    const { phi, leds } = timeline.at(T - age);
-    if (!leds) continue;
-    const theta = THETA_MAX * Math.sin(Math.PI * phi);
-    const sx = Math.sin(theta);
-    const sy = -Math.cos(theta);
-    const alpha = 0.3 * (1 - age / FADE_US); // ältester Punkt fast unsichtbar, jüngster am hellsten
-    ctx.fillStyle = `rgba(${LED_RGB}, ${alpha})`;
-    for (let led = 0; led < 8; led++) {
-      if (!((leds >> led) & 1)) continue;
-      const r = ledRadius(led);
+  const n = pd.columns;
+  const half = THETA_MAX / n; // halbe Winkelbreite einer Spalte
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = ROW_STEP * 0.7;
+  for (let led = 0; led < 8; led++) {
+    const r = ledRadius(led);
+    const bit = 1 << led;
+    for (let c = 0; c < n; c++) {
+      const level = ((pd.lr[c] & bit ? 1 : 0) + (pd.rl[c] & bit ? 1 : 0)) / 2;
+      if (!level) continue;
+      const mid = canvasAngle(-THETA_MAX + (2 * THETA_MAX * (c + 0.5)) / n);
+      ctx.strokeStyle = `rgba(${LED_RGB}, ${level})`;
       ctx.beginPath();
-      ctx.arc(cx + r * sx, PIVOT_Y + r * sy, 4, 0, 2 * Math.PI);
-      ctx.fill();
+      ctx.arc(cx, PIVOT_Y, r, mid - half * 1.05, mid + half * 1.05);
+      ctx.stroke();
     }
   }
-  ctx.restore();
+}
+
+/**
+ * Leuchtspur: Die Ebene behält, was die LEDs gezeichnet haben, und klingt mit jedem Bild
+ * exponentiell ab (nach der eingestellten Nachleuchtdauer auf unter 5 %). Neu hinzu kommt nur
+ * der Zeitraum seit dem letzten Bild: Für jeden Abschnitt mit gleichem LED-Zustand werden die
+ * Bögen gezeichnet, die die leuchtenden LEDs überstrichen haben, mit der Helligkeit, die zu
+ * ihrem Alter passt.
+ */
+class Afterglow {
+  constructor() {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = W;
+    this.canvas.height = H;
+    this.ctx = this.canvas.getContext('2d');
+    this.lastT = null;
+    this.generation = -1;
+  }
+
+  clear() {
+    this.ctx.clearRect(0, 0, W, H);
+    this.lastT = null;
+  }
+
+  update(timeline, T, afterglowUs, view) {
+    const ctx = this.ctx;
+    const tau = afterglowUs / 3; // nach der Nachleuchtdauer: e^-3 = 5 %
+    if (this.generation !== timeline.generation) {
+      this.generation = timeline.generation;
+      this.clear();
+    }
+    let from = this.lastT;
+    if (from === null || T < from || T - from > 3 * afterglowUs) {
+      // Anfang, Sprung oder lange Pause: nur das sichtbare Zeitfenster neu zeichnen
+      ctx.clearRect(0, 0, W, H);
+      from = T - 3 * afterglowUs;
+    } else if (T > from) {
+      // Vorhandenes abklingen lassen
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = `rgba(0, 0, 0, ${1 - Math.exp(-(T - from) / tau)})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    this.lastT = T;
+    if (T <= from) return;
+
+    const cx = W / 2;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = ROW_STEP * 0.62;
+    timeline.forEachSegment(from, T, (a, b, p) => {
+      if (!p.leds) return;
+      // Stücklänge: höchstens MAX_ARC_STEP Winkel und höchstens tau/4 Zeit
+      const omegaMax = (THETA_MAX * Math.PI * 2) / p.period; // rad pro us
+      const step = Math.max(1, Math.min(MAX_ARC_STEP / omegaMax, tau / 4));
+      for (let t0 = a; t0 < b; t0 += step) {
+        const t1 = Math.min(b, t0 + step);
+        const th0 = thetaOf(timeline.phiAt(p, t0));
+        const th1 = thetaOf(timeline.phiAt(p, t1));
+        const toRight = th1 >= th0;
+        if ((view === 'lr' && !toRight) || (view === 'rl' && toRight)) continue;
+        const alpha = Math.exp(-(T - (t0 + t1) / 2) / tau);
+        if (alpha < 0.02) continue;
+        ctx.strokeStyle = `rgba(${LED_RGB}, ${alpha})`;
+        const lo = canvasAngle(Math.min(th0, th1));
+        const hi = canvasAngle(Math.max(th0, th1));
+        for (let led = 0; led < 8; led++) {
+          if (!((p.leds >> led) & 1)) continue;
+          ctx.beginPath();
+          ctx.arc(cx, PIVOT_Y, ledRadius(led), lo, hi);
+          ctx.stroke();
+        }
+      }
+    });
+  }
 }
 
 /** Pendelstab in seiner aktuellen Lage, mit dem aktuellen Zustand der LEDs. */
@@ -200,22 +282,23 @@ function drawRod(ctx, theta, leds) {
 }
 
 /**
- * Pendeldisplay (POV): zeigt das Nachleuchtbild (was das Auge sieht) und den schwingenden Stab,
- * und stellt die Pendelfrequenz ein.
- * Schieberegler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
- * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
+ * Pendeldisplay (POV): schwingender Stab mit LEDs und deren Leuchtspur, die nach der eingestellten
+ * Nachleuchtdauer verschwindet; dazu die Einstellung der Pendelfrequenz.
  * Stab, LEDs und Leuchtspur werden aus den LED-Wechseln der Simulation (mit virtueller Zeit und
  * Phase, 10-mal pro Sekunde gesammelt) 200 ms verzögert, aber zeitlich exakt wiedergegeben.
+ * Frequenz-Regler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
+ * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
  */
 export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
   const { subscribePendulum, subscribePendulumEvents, send, status } = useControlSocket();
   const canvasRef = useRef(null);
   const latest = useRef(null);
+  const stillDirty = useRef(true);
   const timeline = useRef(new Timeline());
-  const dirty = useRef(true);
   const viewRef = useRef('both');
+  const afterglowRef = useRef(AFTERGLOW_DEFAULT_MS);
   const [view, setView] = useState('both');
-  const [frames, setFrames] = useState(0);
+  const [afterglowMs, setAfterglowMs] = useState(AFTERGLOW_DEFAULT_MS);
   const [hz, setHz] = useState(frequency);
   const [modelHz, setModelHz] = useState(null);
   const pending = useRef(null);
@@ -225,7 +308,7 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
     () =>
       subscribePendulum((pd) => {
         latest.current = pd;
-        dirty.current = true;
+        stillDirty.current = true;
         if (pd.periodUs) setModelHz(1e6 / pd.periodUs);
       }),
     [subscribePendulum],
@@ -260,36 +343,53 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
 
   useEffect(() => {
     viewRef.current = view;
-    dirty.current = true;
+    stillDirty.current = true;
   }, [view]);
 
   useEffect(() => {
-    const ctx = canvasRef.current.getContext('2d');
-    const layer = document.createElement('canvas');
-    layer.width = W;
-    layer.height = H;
-    const layerCtx = layer.getContext('2d');
-    let raf;
-    let count = 0;
-    const loop = () => {
-      if (dirty.current) {
-        dirty.current = false;
-        drawPersistence(layerCtx, latest.current, viewRef.current);
-        if (latest.current) setFrames(++count);
-      }
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, W, H);
-      ctx.drawImage(layer, 0, 0);
+    afterglowRef.current = afterglowMs;
+  }, [afterglowMs]);
 
-      // Stab, LEDs und Leuchtspur zeitgenau aus der Zeitlinie (200 ms hinter der Simulation)
+  useEffect(() => {
+    const ctx = canvasRef.current.getContext('2d');
+    const bg = document.createElement('canvas');
+    bg.width = W;
+    bg.height = H;
+    drawBackground(bg.getContext('2d'));
+    const still = document.createElement('canvas');
+    still.width = W;
+    still.height = H;
+    const stillCtx = still.getContext('2d');
+    const glow = new Afterglow();
+    let lastView = null;
+    let raf;
+
+    const loop = () => {
       const tl = timeline.current;
       const T = tl.displayTime();
+      const v = viewRef.current;
+      if (v !== lastView) {
+        glow.clear(); // andere Richtungsauswahl: Spur neu aufbauen
+        lastView = v;
+      }
+      ctx.drawImage(bg, 0, 0);
+
+      if (v === 'still') {
+        if (stillDirty.current) {
+          stillDirty.current = false;
+          drawStill(stillCtx, latest.current);
+        }
+        ctx.drawImage(still, 0, 0);
+      } else if (T !== null) {
+        glow.update(tl, T, afterglowRef.current * 1000, v);
+        ctx.drawImage(glow.canvas, 0, 0);
+      }
+
       let theta = 0;
       let leds = 0;
       if (T !== null) {
-        drawTrail(ctx, tl, T);
         const now = tl.at(T);
-        theta = THETA_MAX * Math.sin(Math.PI * now.phi);
+        theta = thetaOf(now.phi);
         leds = now.leds;
       }
       drawRod(ctx, theta, leds);
@@ -321,10 +421,26 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
           />
         </label>
       )}
+      <label className="pendulum-freq">
+        <span>
+          Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
+          <span className="meta">(so lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms)</span>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={1000}
+          step={1}
+          value={Math.round(msToSlider(afterglowMs))}
+          onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
+          className="sensor-range"
+          aria-label="Nachleuchtdauer"
+          disabled={view === 'still'}
+        />
+      </label>
       <div className="pendulum-foot">
         <span className="meta">
-          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · {latest.current?.columns ?? '–'} Winkelschritte ·{' '}
-          {frames} Bilder
+          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · Anzeige 0,2 s hinter der Simulation
         </span>
         <select className="pendulum-view" value={view} onChange={(e) => setView(e.target.value)}>
           {VIEWS.map((v) => (

@@ -126,16 +126,18 @@ Was Sie sehen sollten:
 
 - Im **Terminal**: `renode4mc-haw - Lab 04 Pendeldisplay`, `Abstand: 100 cm`,
   `Pendelperiode: 100,0 ms`.
-- Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten) und `100CM` als Kreisbogen,
-  so wie das Auge es bei einem echten Pendel sieht. Die LEDs auf dem Stab zeigen ihren Zustand
-  im jeweiligen Moment und hinterlassen einen Leuchtpunkt, der in 10 ms verblasst. Die Anzeige
-  läuft dafür 0,2 s hinter der Simulation her.
+- Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten). Jede leuchtende LED
+  hinterlässt eine Leuchtspur, die nach der eingestellten **Nachleuchtdauer** verschwindet
+  (Standard 10 ms: nur ein kurzes Stück Spur hinter dem Stab). Stellen Sie das Nachleuchten auf
+  etwa 100 ms – so träge ist ungefähr das Auge –, dann steht `100CM` als Kreisbogen. Die
+  Ansicht „Standbild“ zeigt den jeweils letzten Schwung ohne Abklingen. Die Anzeige läuft
+  0,2 s hinter der Simulation her.
 - **D2** blinkt mit 1 Hz.
 - **Schieberegler** des Sensors: Terminal und Pendel zeigen den neuen Abstand.
 - **Pendelfrequenz** (Schieberegler am Pendel, 0,1–20 Hz): Das Terminal meldet die neu gemessene
   Periode, z. B. `Pendelperiode: 66,7 ms` bei 15 Hz, und das Bild bleibt stehen. Bei kleinen
   Frequenzen (z. B. 0,5 Hz) sieht man, wie der Stab schwingt und die LEDs Spalte für Spalte
-  umschalten. Die letzte Ziffer der gemessenen Periode kann um 0,1 ms schwanken.
+  umschalten; ein stehendes Bild entsteht dann nicht mehr – wie beim echten Pendel. Die letzte Ziffer der gemessenen Periode kann um 0,1 ms schwanken.
 - Die Auswahl unter dem Pendel zeigt **beide Schwünge** (wie das Auge) oder nur einen. Zeichnet
   die Firmware nur in einer Richtung oder passen beide Richtungen nicht übereinander, sehen Sie
   das hier sofort.

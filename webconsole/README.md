@@ -32,7 +32,7 @@ das Pendeldisplay von Versuch 2.
 | Schieberegler | Messwert des Ultraschallsensors (I2C0, 0x70) in cm |
 | Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier |
 | LEDs, OLED | zeigen den Zustand von PN1/PN0/PF4/PF0 bzw. des SSD1306 (I2C0, 0x3C) |
-| Pendeldisplay (Versuch 2) | schwingender Stab (Drehpunkt unten) und Nachleuchtbild der 8 LEDs an PM0–PM7; Schieberegler für die Pendelfrequenz (0,1–20 Hz); Auswahl: beide Schwünge oder nur eine Richtung |
+| Pendeldisplay (Versuch 2) | schwingender Stab (Drehpunkt unten) mit den 8 LEDs an PM0–PM7 und ihrer abklingenden Leuchtspur; Regler für Pendelfrequenz (0,1–20 Hz) und Nachleuchtdauer (1 ms – 1 s); Auswahl: beide Schwünge, eine Richtung oder Standbild |
 
 ## Ordner
 
