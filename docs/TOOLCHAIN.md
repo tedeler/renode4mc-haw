@@ -68,10 +68,41 @@ Die Lab-Projekte werden als **CCS-Projekte** bereitgestellt (importierbar, auf B
 TivaWare-Beispielprojekte des EK-TM4C1294XL); die Simulationsaufgabe hängt nur an der
 Ausgabedatei, nicht am Projekt.
 
-## Debuggen im Simulator
-Renode bietet einen GDB-Server; CCS kann sich per GDB-Remote anbinden oder es wird
-`arm-none-eabi-gdb`/`gdb-multiarch` verwendet (nicht Teil des Pflichtumfangs). Primär
-zählt zunächst: Ausgabe über UART-Terminal und Pins im Browser.
+## Debuggen des Simulators aus CCS
+
+Wunsch: Im CCS dieselbe Debug-Ansicht (Breakpoints, Einzelschritt, Variablen, Register)
+benutzen, egal ob Board oder Simulator.
+
+### Was CCS 20.4 (lokale Installation) hergibt – geprüft
+- CCStudio 20 basiert auf Theia. In der mitgelieferten Erweiterungsliste gibt es keinen
+  GDB-Debug-Adapter (nur `ms-vscode.js-debug`), und die Installation enthält weder `gdb` noch `lldb`.
+- Der native TI-Debugger spricht über den **TI Debug Server** (`ccs_base/DebugServer`) mit
+  Treibern für echte Hardware: `libicdi_emu.so`/`libstellaris_emu.so` (ICDI per USB),
+  `libjlinkarm.so` (Segger J-Link), XDS-Treiber. Eine „Simulator“- oder „GDB-Remote“-Verbindung
+  für den TM4C1294 gibt es nicht (Verbindungen u. a. `Stellaris_ICDI_Connection.xml`, `segger_j-link_connection.xml`).
+- Renode stellt einen GDB-Server bereit (`machine StartGdbServer 3333`).
+
+### Varianten
+
+| # | Variante | Aufwand/Risiko | Bewertung |
+|---|---|---|---|
+| 1 | **GDB-Remote-Debug-Erweiterung in CCS-Theia** (z. B. Cortex-Debug oder C/C++-Debug aus Open VSX) → Renode-GDB-Server; `arm-none-eabi-gdb` bzw. `gdb-multiarch` wird im ucsim-Paket mitgeliefert | gering; hängt davon ab, ob CCS-Theia das Nachinstallieren von Erweiterungen erlaubt (**vor Festlegung testen**) | **Empfohlen.** Gleiche IDE, gleiche Projekte, ein Klick „Debug Simulator“ (`launch.json` als Vorlage im Lab-Projekt). Oberfläche ist die allgemeine VS-Code-Debugansicht, nicht TIs eigene (z. B. keine TI-Peripherieregister-Ansicht). |
+| 2 | **Standalone VS Code** mit mitgelieferter `launch.json` (Cortex-Debug) für dasselbe `.out` | gering | Fallback, falls 1 in CCS nicht geht. |
+| 3 | **Virtuelles ICDI-Gerät** (USB/IP/Gadget), damit der native TI-Debugger glaubt, ein Board zu sehen | sehr hoch: proprietäres USB-Protokoll nachbauen, Kernelmodule und Root-Rechte, nur Linux | Nicht empfohlen. |
+| 4 | **J-Link-Shim** (eigene `libjlinkarm` ersetzen) oder TI-GTI-Remote-Proxy | sehr hoch, undokumentiert, lizenzrechtlich heikel | Nicht empfohlen. |
+| 5 | Debug nur über die Renode-Konsole/GDB-CLI | minimal | Zusätzlich für Fortgeschrittene, nicht für den Regelbetrieb. |
+
+### Empfehlung
+Variante 1 mit Variante 2 als Rückfallebene. Ablauf für Studierende:
+`ucsim --debug` (oder Task „Debug Simulator“) startet Renode **angehalten** mit GDB-Server auf Port 3333,
+die Debug-Konfiguration verbindet sich, lädt Symbole aus dem `.out` (TI Arm Clang erzeugt DWARF)
+und hält an `main`. Bei Variante 1 sollte gleichzeitig der Board-Debug mit TIs Standardkonfiguration
+unverändert bleiben (zwei Konfigurationen im selben Projekt: „Board“ und „Simulator“).
+
+### Zu klären (Machbarkeitstest, ca. ein halber Tag)
+1. Lässt sich in CCS 20.x eine GDB-Debug-Erweiterung installieren (Open VSX / `.vsix`)?
+2. Funktionieren Breakpoints/Variablen mit der TI-Clang-DWARF-Ausgabe über GDB und Renode (Cortex-M4F, FPU-Register)?
+3. Liefert Renode das passende GDB-Zielbeschreibungs-XML; wie verhält sich Anhalten/Fortsetzen bei Timer-Interrupts?
 
 ## Unterschiede Simulator ↔ Board (den Studierenden erklären)
 - Peripherie nur im Umfang des Fahrplans (SYSCTL, SysTick, GPIO, Timer, UART, ADC); anderes loggt eine Warnung.
@@ -83,11 +114,11 @@ zählt zunächst: Ausgabe über UART-Terminal und Pins im Browser.
 1. Bit-Banding im Simulator ergänzen; TI-`blinky.out` und weitere TivaWare-Beispiele
    (Timer, UART, ADC) als **Regressionstests** in Renode (`renode-test`) einsetzen.
 2. `ucsim`-Startskript (Linux zuerst) mit generischem `sim.resc` (`$ELF` als Parameter) und Visualizer-Start.
-3. CCS-Lab-Projekte und „Simulate“-Task bauen; Verfügbarkeit in CCS 20.x klären.
+3. CCS-Lab-Projekte und „Simulate“-/„Debug Simulator“-Tasks bauen; Verfügbarkeit in CCS 20.x klären (Machbarkeitstest GDB-Erweiterung, siehe oben).
 4. Paketierung pro OS mit fest gepinnter Renode-Version, Installationsanleitung.
 5. Test auf einem frischen Rechner (Akzeptanz: CCS-Projekt importieren, bauen, flashen **und** simulieren in < 30 min).
 
 ## Offene Entscheidungen
 - Welche Betriebssysteme müssen zuerst funktionieren (Renode-Pakete für alle drei existieren)?
 - Reicht ein Browser-Visualizer pro Lab, oder ein universelles Board-Abbild (LEDs, Taster, UART-Konsole, ADC-Regler)?
-- Wird auch GDB-Debugging im Simulator aus CCS gewünscht oder nur Ausführung?
+- Ist die allgemeine Debugansicht (GDB-Remote) im CCS akzeptabel, auch wenn sie nicht TIs eigene Debug-Oberfläche ist?
