@@ -14,7 +14,7 @@ dem **Board** mit Zusatz-Hardware.
 | Board | EK-TM4C1294XL (TM4C1294NCPDT), Takt 16 MHz (unverändert) |
 | Pendel-LEDs | PM0–PM7 (Ausgang), PM0 = LED am Drehpunkt (oben), PM7 = LED an der Spitze |
 | Pendel-Signal | PL0 (Eingang): **HIGH = Pendel rechts von der Mitte**, LOW = links; Interrupt bei beiden Flanken |
-| Pendel | 10 Schwingungen pro Sekunde (Periode T = 100 ms) |
+| Pendel | 10 Schwingungen pro Sekunde (Periode T = 100 ms); in der Web-Konsole 2–25 Hz einstellbar |
 | UART0 | PA0 RX / PA1 TX, 115200 Baud, 8N1 (virtueller COM-Port des Boards) |
 | I2C0 | PB2 SCL / PB3 SDA, 100 kHz |
 | Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
@@ -129,11 +129,17 @@ Was Sie sehen sollten:
 - Auf dem **Pendeldisplay**: `100CM`, als Kreisbogen wie auf einem echten Pendel.
 - **D2** blinkt mit 1 Hz.
 - **Schieberegler** des Sensors: Terminal und Pendel zeigen den neuen Abstand.
+- **Pendelfrequenz** (Schieberegler am Pendel, 2–25 Hz): Das Terminal meldet die neu gemessene
+  Periode, z. B. `Pendelperiode: 66,6 ms` bei 15 Hz, und das Bild bleibt stehen. Direkt nach dem
+  Umstellen erscheint einmal ein Zwischenwert: Die erste Messung reicht über den Wechsel hinweg.
 - Die Auswahl unter dem Pendel zeigt **beide Schwünge** (wie das Auge) oder nur einen. Zeichnet
   die Firmware nur in einer Richtung oder passen beide Richtungen nicht übereinander, sehen Sie
   das hier sofort.
 
 ### Selbst ausprobieren
+
+- Stellen Sie `zeitplan_berechnen(t)` im `GPIOL_Handler()` still (auskommentieren) und ändern Sie
+  die Pendelfrequenz. Was passiert mit dem Bild bei 5 Hz, was bei 20 Hz? Warum?
 
 - Ersetzen Sie die `asin`-Tabelle durch gleich lange Spalten (`t(k)` linear in k). Wie sieht der
   Text jetzt aus?
@@ -165,6 +171,8 @@ HIGH ist, solange das Pendel rechts steht) und der MB1242-Sensor wie in Lab 03.
   stimmt also auch dann, wenn der Rechner die Simulation langsamer ausführt.
 - Versuch 2 stellt Renode auf 10-µs-Zeitscheiben (`emulation SetGlobalQuantum`), damit die
   LED-Wechsel genau genug erfasst werden.
+- Eine neue Pendelfrequenz gilt ab dem nächsten Durchgang durch die Mitte. Ein echtes Pendel
+  ändert seine Frequenz nicht sprunghaft; hier dient der Regler zum Testen der Periodenmessung.
 - Das Modell zeigt pro Schwungrichtung den **letzten** Schwung. Helligkeitsverläufe, Nachglühen
   der LEDs und Dämpfung des Pendels werden nicht nachgebildet.
 - Details zum Modell: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), Abschnitt 2.

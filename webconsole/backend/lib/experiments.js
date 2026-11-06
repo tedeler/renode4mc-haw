@@ -48,7 +48,17 @@ function validate(cfg, file) {
   });
   if (cfg.oled) assertPath(cfg.oled.path, `${file} oled`);
   if (cfg.sensor) assertPath(cfg.sensor.path, `${file} sensor`);
-  if (cfg.pendulum) assertPath(cfg.pendulum.path, `${file} pendulum`);
+  if (cfg.pendulum) {
+    const pd = cfg.pendulum;
+    assertPath(pd.path, `${file} pendulum`);
+    // Frequenzbereich für den Schieberegler (Modell: 1..100 Hz)
+    pd.frequency = pd.frequency ?? 10;
+    pd.minFrequency = pd.minFrequency ?? pd.frequency;
+    pd.maxFrequency = pd.maxFrequency ?? pd.frequency;
+    assert([pd.frequency, pd.minFrequency, pd.maxFrequency].every((f) => typeof f === 'number' && f >= 1 && f <= 100) &&
+      pd.minFrequency <= pd.frequency && pd.frequency <= pd.maxFrequency,
+    `${file} pendulum: 1 <= minFrequency <= frequency <= maxFrequency <= 100 (Hz)`);
+  }
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
     const layout = cfg.keypad.layout;

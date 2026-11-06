@@ -40,7 +40,12 @@ function Panel({ experiment }) {
         )}
 
         {experiment.pendulum && (
-          <PendulumDisplay label={experiment.pendulum.label} frequency={experiment.pendulum.frequency} />
+          <PendulumDisplay
+            label={experiment.pendulum.label}
+            frequency={experiment.pendulum.frequency}
+            minFrequency={experiment.pendulum.minFrequency}
+            maxFrequency={experiment.pendulum.maxFrequency}
+          />
         )}
 
         {(experiment.leds?.length > 0 || experiment.buttons?.length > 0) && (

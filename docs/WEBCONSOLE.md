@@ -107,7 +107,7 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 | `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
-| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Nachleuchtbild je Schwungrichtung. `GetFrame`/`GetFrameIfChanged` liefern `PD:<Spalten>:<Base64>`. |
+| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar, Nachleuchtbild je Schwungrichtung. `GetFrame`/`GetFrameIfChanged` liefern `PD:<Spalten>:<Periode in µs>:<Base64>`. |
 | `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
 
 **Keypad-Multiplexing.** Ein Klick auf „5“ sendet nicht „Taste 5“. Das Frontend schlägt die
@@ -132,6 +132,12 @@ Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Versuch 
 (T = `periodUs`, Standard 100 000 µs = 10 Hz). Der Ausgang `Sync` ist HIGH, solange `x > 0` ist,
 also steigende Flanke beim Durchgang nach rechts, fallende beim Durchgang nach links. Alle Zeiten
 sind **virtuelle** Simulationszeit.
+
+**Frequenz einstellen:** Im Browser gibt es dafür einen Schieberegler (Bereich aus
+`minFrequency`/`maxFrequency` der Versuchs-JSON, in Versuch 2: 2–25 Hz). Das Backend setzt die
+Property `PeriodUs` des Modells (1–100 Hz). Die neue Periode gilt ab dem nächsten Durchgang durch
+die Mitte. Dort ist die Auslenkung bei jeder Frequenz null, das Pendel läuft also ohne Sprung
+weiter. Intern rechnet das Modell deshalb in Phasen (Anzahl halber Schwingungen), nicht in Zeit.
 
 Bei jedem Pegelwechsel einer LED überträgt das Modell den bisherigen LED-Zustand auf die
 Winkelstücke, die das Pendel seitdem überstrichen hat. Der Schwenkbereich ist dabei in `columns`
@@ -159,7 +165,8 @@ sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
 # Versuch 2 (s @experiments/versuch2.resc):
 sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
 sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
-sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Base64>"
+sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
+sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Periode in us>:<Base64>"
 ```
 
 ---
@@ -191,6 +198,7 @@ Browser → Server:
 { "type": "button", "id": "SW1", "pressed": true }          // id aus der Versuchs-JSON
 { "type": "keypad", "row": 1, "col": 1, "pressed": true }   // Matrix-Koordinate, nicht die Taste
 { "type": "sensor", "value": 120 }                          // cm, wird auf min..max begrenzt
+{ "type": "pendulum", "frequency": 12.5 }                   // Hz, auf minFrequency..maxFrequency begrenzt
 ```
 
 Server → Browser:
@@ -199,7 +207,7 @@ Server → Browser:
 { "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…}, "pd": {…} }
 { "type": "leds", "states": { "D1": true, "D2": false, … } }
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
-{ "type": "pd", "columns": 120, "data": "<Base64>" }
+{ "type": "pd", "columns": 120, "periodUs": 100000, "data": "<Base64>" }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -265,7 +273,8 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
   ],
   "oled":   { "path": "sysbus.i2c0.oled", "width": 128, "height": 64, "label": "…" },
   "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "…" },
-  "pendulum": { "path": "sysbus.gpioM.pendel", "frequency": 10, "label": "…" },  // PendulumDisplay
+  "pendulum": { "path": "sysbus.gpioM.pendel", "label": "…",                    // PendulumDisplay
+                "frequency": 10, "minFrequency": 2, "maxFrequency": 25 },      // Hz, Schieberegler
   "keypad": {
     "path": "sysbus.gpioK.keypad",
     "rowPins": ["PK0", "PK1", "PK2", "PK3"], "colPins": ["PK4", "PK5", "PK6"],
@@ -359,6 +368,8 @@ node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay
 `test/e2e_versuch2.js` prüft Versuch 2 mit der Lab-04-Firmware: Startmeldung, gemessene
 Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
 40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
+Danach wird die Pendelfrequenz auf 15, 4, 25 und 10 Hz gestellt: Das Modell muss sie übernehmen,
+die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau stimmen.
 
 ## 7. Bekannte Einschränkungen
 
@@ -368,7 +379,8 @@ Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7
   ohne Baudraten- bzw. Busverzögerung. Die Ultraschall-Messung ist sofort fertig.
 - **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
   mit 10 Bildern/s aktualisiert.
-- **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude und Periode, ohne Dämpfung.
+- **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode
+  ändert sich nur, wenn man sie einstellt (sprunghaft am nächsten Nulldurchgang).
   LEDs leuchten ohne Nachglühen, die Anzeige zeigt je Richtung nur den letzten Schwung.
 - **Taster ohne Prellen;** Entprell-Code lässt sich im Simulator nicht prüfen.
 - **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät

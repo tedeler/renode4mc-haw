@@ -98,7 +98,7 @@ function compare(pd, text) {
     const p = m.type === 'pd' ? m : m.type === 'hello' ? m.pd : null;
     if (p) {
       const bin = Buffer.from(p.data, 'base64');
-      pd = { columns: p.columns, lr: bin.subarray(0, p.columns), rl: bin.subarray(p.columns) };
+      pd = { columns: p.columns, periodUs: p.periodUs, lr: bin.subarray(0, p.columns), rl: bin.subarray(p.columns) };
     }
     if (m.type === 'error') errors.push(m.message);
   });
@@ -108,17 +108,32 @@ function compare(pd, text) {
   check('UART: Startmeldung', await waitFor(() => /Lab 04 Pendeldisplay/.test(uart)));
   check('UART: Pendelperiode 100,0 ms gemessen', await waitFor(() => /Pendelperiode: 100,0 ms/.test(uart)));
 
-  for (const cm of [42, 123, 7]) {
-    send({ type: 'sensor', value: cm });
-    check(`Sensor ${cm} cm -> UART`, await waitFor(() => new RegExp(`Abstand: ${cm} cm`).test(uart)));
-    const text = `${cm}CM`;
+  async function checkImage(text, what) {
     let r = { ok: 0, bad: [] };
     await waitFor(() => {
       if (pd) r = compare(pd, text);
       return r.ok === SPALTEN;
     }, 4000);
-    check(`Pendel zeigt "${text}" in beiden Schwungrichtungen`, r.ok >= SPALTEN - 1,
+    check(`Pendel zeigt "${text}" in beiden Schwungrichtungen${what}`, r.ok >= SPALTEN - 1,
       `${r.ok}/${SPALTEN} Spalten${r.bad.length ? `; ${r.bad.slice(0, 3).join(', ')}` : ''}`);
+  }
+
+  for (const cm of [42, 123, 7]) {
+    send({ type: 'sensor', value: cm });
+    check(`Sensor ${cm} cm -> UART`, await waitFor(() => new RegExp(`Abstand: ${cm} cm`).test(uart)));
+    await checkImage(`${cm}CM`, '');
+  }
+
+  // Pendelfrequenz verstellen: Modell übernimmt sie, Firmware misst sie nach, Bild bleibt richtig
+  for (const [hz, ms] of [[15, '66,6'], [4, '250,0'], [25, '40,0'], [10, '100,0']]) {
+    const mark = uart.length;
+    send({ type: 'pendulum', frequency: hz });
+    check(`Frequenz ${hz} Hz -> Modell`, await waitFor(() => pd && Math.abs(1e6 / pd.periodUs - hz) < 0.01, 3000),
+      pd ? `${(1e6 / pd.periodUs).toFixed(2)} Hz` : '');
+    check(`Frequenz ${hz} Hz -> Firmware misst ${ms} ms`,
+      await waitFor(() => uart.slice(mark).includes(`Pendelperiode: ${ms} ms`), 4000));
+    await sleep(1000); // Bild ein paar Schwünge lang mit der neuen Periode zeichnen lassen
+    await checkImage('7CM', ` bei ${hz} Hz`);
   }
 
   check('keine Fehlermeldungen vom Backend', errors.length === 0, errors.join('; '));

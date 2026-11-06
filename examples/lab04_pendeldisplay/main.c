@@ -18,7 +18,8 @@
  *   Timer2A                  -                                   freilaufend, misst die Pendelperiode
  *
  * Prinzip (POV = persistence of vision):
- *   Das Pendel schwingt 10-mal pro Sekunde (Periode T = 100 ms). Wechselt die Firmware die
+ *   Das Pendel schwingt 10-mal pro Sekunde (Periode T = 100 ms; in der Web-Konsole einstellbar,
+ *   die Firmware misst T laufend nach und akzeptiert 2..50 Hz). Wechselt die Firmware die
  *   LEDs genau dann, wenn das Pendel an der richtigen Stelle ist, sieht das Auge ein stehendes
  *   Bild aus 40 Spalten zu 8 Punkten. Bezugspunkt ist der Nulldurchgang (Flanke an PL0):
  *   Eine halbe Periode nach jeder Flanke läuft das Pendel wieder durch die Mitte, diesmal in
@@ -150,7 +151,9 @@ static const int16_t spaltenZeit_q16[SPALTEN + 1] = {
      11680,
 };
 
-#define PERIODE_SOLL        (SYSTEM_CLOCK_HZ / 10u)        /* 100 ms = 1 600 000 Takte */
+#define PERIODE_SOLL        (SYSTEM_CLOCK_HZ / 10u)        /* 10 Hz: 100 ms = 1 600 000 Takte */
+#define PERIODE_MIN         (SYSTEM_CLOCK_HZ / 50u)        /* schnellstes Pendel: 50 Hz */
+#define PERIODE_MAX         (SYSTEM_CLOCK_HZ / 2u)         /* langsamstes Pendel: 2 Hz */
 
 static volatile uint8_t  bild[SPALTEN];                    /* Bit n = LED n (PMn), Bit 0 oben */
 static volatile uint32_t periode = PERIODE_SOLL;           /* gemessene Pendelperiode in Takten */
@@ -243,7 +246,7 @@ void GPIOL_Handler(void)
         /* Periode = Abstand zweier steigender Flanken (Abwärtszähler: alt - neu) */
         uint32_t t = letzteSteigende - jetzt;
         letzteSteigende = jetzt;
-        if (gemessen && t > PERIODE_SOLL / 2u && t < PERIODE_SOLL * 2u)
+        if (gemessen && t >= PERIODE_MIN && t <= PERIODE_MAX)   /* Störungen ignorieren */
         {
             uint32_t abweichung = (t > periode) ? t - periode : periode - t;
             if (abweichung > periode / 1000u)              /* mehr als 0,1 % geändert */

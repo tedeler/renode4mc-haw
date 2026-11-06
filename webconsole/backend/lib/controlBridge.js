@@ -6,7 +6,7 @@ const experiments = require('./experiments');
 
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
-const PD_RE = /PD:(\d+):([A-Za-z0-9+/=]+)/;
+const PD_RE = /PD:(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -19,11 +19,12 @@ const PD_RE = /PD:(\d+):([A-Za-z0-9+/=]+)/;
  *   { type: "button", id, pressed }            Taster (id aus der Versuchs-JSON)
  *   { type: "keypad", row, col, pressed }      Keypad: Zeile/Spalte der Matrix, nicht die Taste
  *   { type: "sensor", value }                  Distanz in cm
+ *   { type: "pendulum", frequency }            Pendelfrequenz in Hz (Pendeldisplay)
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd }
  *   { type: "leds", states: { [id]: boolean } }
  *   { type: "fb", width, height, on, invert, data }   data = Base64, SSD1306-Page-Format
- *   { type: "pd", columns, data }                     Pendeldisplay: data = Base64, erst alle Spalten
+ *   { type: "pd", columns, periodUs, data }           Pendeldisplay: data = Base64, erst alle Spalten
  *                                                     links->rechts, dann rechts->links (Bit n = LED n)
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
@@ -131,6 +132,17 @@ class ControlBridge {
         if (!Number.isFinite(v)) throw new Error('Ungültiger Sensorwert');
         // Renode-Monitor-Syntax für "sensor.Distance = <Wert>"
         await run(`${exp.sensor.path} Distance ${Math.min(max, Math.max(min, v))}`);
+        break;
+      }
+      case 'pendulum': {
+        const pd = exp.pendulum;
+        if (!pd) throw new Error('Kein Pendeldisplay in diesem Versuch');
+        const f = Number(msg.frequency);
+        if (!Number.isFinite(f)) throw new Error('Ungültige Pendelfrequenz');
+        const hz = Math.min(pd.maxFrequency, Math.max(pd.minFrequency, f));
+        // Modell erwartet die Periode in us (gerade Zahl); gilt ab dem nächsten Nulldurchgang
+        const periodUs = 2 * Math.round(1e6 / hz / 2);
+        await run(`${pd.path} PeriodUs ${periodUs}`);
         break;
       }
       default:
@@ -265,7 +277,7 @@ class ControlBridge {
         const out = await mon.execute(`${exp.pendulum.path} GetFrameIfChanged`);
         const m = PD_RE.exec(out);
         if (m) {
-          this.lastPendulum = { type: 'pd', columns: +m[1], data: m[2] };
+          this.lastPendulum = { type: 'pd', columns: +m[1], periodUs: +m[2], data: m[3] };
           this._broadcast(this.lastPendulum);
         }
       }

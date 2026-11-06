@@ -76,9 +76,19 @@ function draw(ctx, pd, view) {
   }
 }
 
-/** Pendeldisplay (POV): zeigt, was das Auge bei 10 Schwingungen pro Sekunde sieht. */
-export default function PendulumDisplay({ label, frequency = 10 }) {
-  const { subscribePendulum } = useControlSocket();
+const fmt = (v, digits = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/**
+ * Pendeldisplay (POV): zeigt, was das Auge sieht, und stellt die Pendelfrequenz ein.
+ * Schieberegler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
+ * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
+ */
+export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
+  const { subscribePendulum, send, status } = useControlSocket();
+  const [hz, setHz] = useState(frequency);
+  const [modelHz, setModelHz] = useState(null);
+  const pending = useRef(null);
+  const timer = useRef(null);
   const canvasRef = useRef(null);
   const latest = useRef(null);
   const dirty = useRef(true);
@@ -91,9 +101,35 @@ export default function PendulumDisplay({ label, frequency = 10 }) {
       subscribePendulum((pd) => {
         latest.current = pd;
         dirty.current = true;
+        if (pd.periodUs) setModelHz(1e6 / pd.periodUs);
       }),
     [subscribePendulum],
   );
+
+  const flush = () => {
+    timer.current = null;
+    if (pending.current !== null) {
+      send({ type: 'pendulum', frequency: pending.current });
+      pending.current = null;
+    }
+  };
+
+  const onFrequency = (e) => {
+    const v = Number(e.target.value);
+    setHz(v);
+    pending.current = v;
+    if (!timer.current) timer.current = setTimeout(flush, 100);
+  };
+
+  // Nach (Re-)Connect, z. B. nach einem Neustart von Renode, die eingestellte Frequenz erneut setzen
+  useEffect(() => {
+    if (status === 'open') send({ type: 'pendulum', frequency: hz });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  const adjustable = maxFrequency > minFrequency;
 
   useEffect(() => {
     viewRef.current = view;
@@ -121,9 +157,27 @@ export default function PendulumDisplay({ label, frequency = 10 }) {
       <div className="pendulum-stage">
         <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
       </div>
+      {adjustable && (
+        <label className="pendulum-freq">
+          <span>
+            Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmt(1000 / hz)} ms)</span>
+          </span>
+          <input
+            type="range"
+            min={minFrequency}
+            max={maxFrequency}
+            step={0.5}
+            value={hz}
+            onChange={onFrequency}
+            className="sensor-range"
+            aria-label="Pendelfrequenz"
+          />
+        </label>
+      )}
       <div className="pendulum-foot">
         <span className="meta">
-          {frequency} Schwingungen/s · {latest.current?.columns ?? '–'} Winkelschritte · {frames} Bilder
+          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · {latest.current?.columns ?? '–'} Winkelschritte ·{' '}
+          {frames} Bilder
         </span>
         <select className="pendulum-view" value={view} onChange={(e) => setView(e.target.value)}>
           {VIEWS.map((v) => (

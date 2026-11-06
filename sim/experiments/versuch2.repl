@@ -2,7 +2,8 @@
 //
 //   Pendeldisplay (POV)      8 LEDs an PM0..PM7 (Ausgänge), LED 0 am Drehpunkt, LED 7 an der Spitze
 //                            Sync-Signal an PL0 (Eingang): HIGH = Pendel rechts, LOW = links
-//                            10 Schwingungen pro Sekunde (Periode 100 ms)
+//                            10 Schwingungen pro Sekunde (Periode 100 ms); zur Laufzeit einstellbar
+//                            mit  sysbus.gpioM.pendel PeriodUs <us>  (Web-Konsole: Schieberegler)
 //   Ultraschall MB1242       I2C0 (PB2 SCL, PB3 SDA), Adresse 0x70
 //   (LEDs D1..D4, Taster USR_SW1/2 und UART0 stammen aus der Basisplattform.)
 
