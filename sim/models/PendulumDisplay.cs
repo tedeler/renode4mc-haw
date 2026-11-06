@@ -61,6 +61,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 throw new ArgumentException("PendulumDisplay: 8..512 Spalten");
             }
+            this.machine = machine;
             initialHalfUs = HalfOf(periodUs);
             Columns = columns;
             Sync = new GPIO();
@@ -137,23 +138,25 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         public void Reset()
         {
+            // Timer nie anfassen, während "sync" gesperrt ist (siehe OnZeroCrossing)
+            halfPeriod.Enabled = false;
+            halfPeriod.Value = 0;
+            halfPeriod.Limit = initialHalfUs;
             lock(sync)
             {
-                halfPeriod.Enabled = false;
                 halfUs = initialHalfUs;
                 pendingHalfUs = 0;
-                halfPeriod.Value = 0;
-                halfPeriod.Limit = halfUs;
                 halfCount = 0;
-                usAtCrossing = 0;
+                anchorUs = ClockUs();
+                anchorPhase = 0;
                 events.Clear();
                 leds = 0;
                 lastPaintPhase = 0;
                 Array.Clear(image, 0, image.Length);
                 version++;
-                Sync.Set(true); // phi = 0: Pendel in der Mitte, läuft nach rechts
-                halfPeriod.Enabled = true;
             }
+            Sync.Set(true); // phi = 0: Pendel in der Mitte, läuft nach rechts
+            halfPeriod.Enabled = true;
         }
 
         private static uint HalfOf(uint periodUs)
@@ -166,24 +169,38 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             return periodUs / 2;
         }
 
+        // Wird vom Timer im Simulationsthread aufgerufen, während der Timer intern gesperrt ist.
+        // Deshalb gilt im ganzen Modell: Solange "sync" gesperrt ist, wird der Timer NICHT benutzt
+        // (kein halfPeriod.Value usw.) und kein GPIO gesetzt - sonst können sich Monitor-Abfrage
+        // und Simulation gegenseitig blockieren (Deadlock, Renode bleibt stehen).
         private void OnZeroCrossing()
         {
+            uint newHalfUs = 0;
+            bool level;
             lock(sync)
             {
+                // Zeitpunkt des Durchgangs exakt aus der Phase (nicht von der Uhr lesen)
+                double crossingUs = anchorUs + (halfCount + 1 - anchorPhase) * halfUs;
                 PaintUntil(halfCount + 1.0); // bis genau zum Durchgang (alte Periode)
                 halfCount++;
-                usAtCrossing += halfUs;
                 if(pendingHalfUs != 0)
                 {
+                    anchorUs = crossingUs;
+                    anchorPhase = halfCount;
                     halfUs = pendingHalfUs;
+                    newHalfUs = pendingHalfUs;
                     pendingHalfUs = 0;
-                    halfPeriod.Value = 0;
-                    halfPeriod.Limit = halfUs;
                     version++; // Periode ist Teil des Frames
-                    Record();  // Frequenzwechsel: neue Geschwindigkeit ab hier
+                    Record(crossingUs);  // Frequenzwechsel: neue Geschwindigkeit ab hier
                 }
-                Sync.Set(halfCount % 2 == 0);
+                level = halfCount % 2 == 0;
             }
+            if(newHalfUs != 0)
+            {
+                halfPeriod.Value = 0;
+                halfPeriod.Limit = newHalfUs;
+            }
+            Sync.Set(level);
         }
 
         public string GetEvents()
@@ -191,7 +208,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             lock(sync)
             {
                 var sb = new System.Text.StringBuilder();
-                sb.Append("EV:").Append((long)Math.Round(NowUs())).Append(':').Append((long)Math.Round(Phase() * 10000))
+                double now = ClockUs();
+                sb.Append("EV:").Append((long)Math.Round(now)).Append(':').Append((long)Math.Round(PhaseAt(now) * 10000))
                   .Append(':').Append(leds).Append(':').Append(2 * halfUs).Append(':');
                 foreach(var e in events)
                 {
@@ -214,7 +232,12 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         // ein Byte-Schreibzugriff auf Port M kommt als 8 einzelne Pin-Wechsel an)
         private void Record()
         {
-            var e = new Event { Us = (long)Math.Round(NowUs()), PhaseQ = (long)Math.Round(Phase() * 10000), Leds = leds, PeriodUs = 2 * halfUs };
+            Record(ClockUs());
+        }
+
+        private void Record(double us)
+        {
+            var e = new Event { Us = (long)Math.Round(us), PhaseQ = (long)Math.Round(PhaseAt(us) * 10000), Leds = leds, PeriodUs = 2 * halfUs };
             if(events.Count > 0 && events[events.Count - 1].Us == e.Us)
             {
                 events[events.Count - 1] = e;
@@ -227,17 +250,22 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             events.Add(e);
         }
 
-        // Virtuelle Zeit in us seit Start
-        private double NowUs()
+        // Virtuelle Zeit in us (Uhr der Maschine; braucht keine Sperre des Timers)
+        private double ClockUs()
         {
-            return usAtCrossing + Math.Min((double)halfUs, halfPeriod.Value);
+            return machine.LocalTimeSource.ElapsedVirtualTime.TotalMicroseconds;
         }
 
-        // phi: Anzahl halber Schwingungen seit dem Start (stetig, auch über Frequenzwechsel)
+        // phi zur virtuellen Zeit us: Anzahl halber Schwingungen seit dem Start (stetig, auch über
+        // Frequenzwechsel). Ab dem letzten Frequenzwechsel (anchor) läuft phi mit 1/halfUs.
+        private double PhaseAt(double us)
+        {
+            return anchorPhase + Math.Max(0, us - anchorUs) / halfUs;
+        }
+
         private double Phase()
         {
-            double frac = Math.Min(1.0, halfPeriod.Value / (double)halfUs);
-            return halfCount + frac;
+            return PhaseAt(ClockUs());
         }
 
         // Überträgt den LED-Zustand des Phasenbereichs [lastPaintPhase, until] auf das Bild
@@ -315,7 +343,9 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private ulong version;
         private ulong lastReported = ulong.MaxValue;
         private double lastReportedPhase = -1;
-        private double usAtCrossing;
+        private readonly IMachine machine;
+        private double anchorUs;
+        private double anchorPhase;
         private const int MaxEvents = 20000;
         private readonly System.Collections.Generic.List<Event> events = new System.Collections.Generic.List<Event>();
     }
