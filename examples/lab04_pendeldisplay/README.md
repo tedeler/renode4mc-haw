@@ -12,9 +12,9 @@ dem **Board** mit Zusatz-Hardware.
 | | |
 |---|---|
 | Board | EK-TM4C1294XL (TM4C1294NCPDT), Takt 16 MHz (unverändert) |
-| Pendel-LEDs | PM0–PM7 (Ausgang), PM0 = LED am Drehpunkt (oben), PM7 = LED an der Spitze |
+| Pendel-LEDs | PM0–PM7 (Ausgang); stehendes Pendel mit Drehpunkt unten: PM0 = LED oben an der Spitze, PM7 = unterste LED |
 | Pendel-Signal | PL0 (Eingang): **HIGH = Pendel rechts von der Mitte**, LOW = links; Interrupt bei beiden Flanken |
-| Pendel | 10 Schwingungen pro Sekunde (Periode T = 100 ms); in der Web-Konsole 2–25 Hz einstellbar |
+| Pendel | 10 Schwingungen pro Sekunde (Periode T = 100 ms); in der Web-Konsole 0,1–20 Hz einstellbar |
 | UART0 | PA0 RX / PA1 TX, 115200 Baud, 8N1 (virtueller COM-Port des Boards) |
 | I2C0 | PB2 SCL / PB3 SDA, 100 kHz |
 | Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
@@ -32,8 +32,8 @@ dem **Board** mit Zusatz-Hardware.
   letzten Interrupt, addieren sich die Verzögerungen der Interrupt-Routine. Hier wird jeder
   Spaltenbeginn absolut auf der Uhr berechnet.
 - **Synchronisation auf ein externes Signal:** Die Flanken an PL0 markieren den Durchgang des
-  Pendels durch die Mitte. Aus dem Abstand zweier steigender Flanken misst die Firmware die
-  Periode und passt den Zeitplan an.
+  Pendels durch die Mitte. Der Abstand zweier aufeinanderfolgender Flanken ist eine halbe
+  Periode; daraus misst die Firmware laufend die Periode und passt den Zeitplan an.
 - **Nichtlineare Bewegung:** Das Pendel ist in der Mitte schnell und an den Umkehrpunkten
   langsam. Gleich breite Spalten brauchen deshalb unterschiedlich lange Zeiten (Tabelle mit
   `asin`, in Ganzzahlen vorberechnet).
@@ -82,7 +82,7 @@ Das Bild wird also bei jedem Schwung gezeichnet, 20-mal pro Sekunde.
 |---|---|
 | `spaltenZeit_q16[]` | `t(k)/T` in Einheiten von 1/65536 der Periode (mit Python vorberechnet, Befehl im Kommentar) |
 | `zeitplan_berechnen()` | rechnet die Tabelle mit der gemessenen Periode in Timer-Takte um (`spaltenTakte[]`) |
-| `GPIOL_Handler()` | Flanke an PL0: Zeitpunkt merken, bei steigender Flanke die Periode messen |
+| `GPIOL_Handler()` | Flanke an PL0: Zeitpunkt merken, Periode = 2 × Abstand zur vorigen Flanke |
 | `schwung_planen()` | nächsten Durchgang durch die Mitte berechnen (`mitte`), Richtung festlegen, Timer1A auf Spalte 0 |
 | `spaltentimer_auf(k)` | Timer1A so stellen, dass er bei `mitte + t(k)` auslöst |
 | `TIMER1A_Handler()` | Spalte auf Port M ausgeben, Timer auf die nächste Spalte; nach Spalte 39 LEDs aus, nächsten Schwung planen |
@@ -126,12 +126,14 @@ Was Sie sehen sollten:
 
 - Im **Terminal**: `renode4mc-haw - Lab 04 Pendeldisplay`, `Abstand: 100 cm`,
   `Pendelperiode: 100,0 ms`.
-- Auf dem **Pendeldisplay**: `100CM`, als Kreisbogen wie auf einem echten Pendel.
+- Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten) und `100CM` als Kreisbogen,
+  so wie das Auge es bei einem echten Pendel sieht.
 - **D2** blinkt mit 1 Hz.
 - **Schieberegler** des Sensors: Terminal und Pendel zeigen den neuen Abstand.
-- **Pendelfrequenz** (Schieberegler am Pendel, 2–25 Hz): Das Terminal meldet die neu gemessene
-  Periode, z. B. `Pendelperiode: 66,6 ms` bei 15 Hz, und das Bild bleibt stehen. Direkt nach dem
-  Umstellen erscheint einmal ein Zwischenwert: Die erste Messung reicht über den Wechsel hinweg.
+- **Pendelfrequenz** (Schieberegler am Pendel, 0,1–20 Hz): Das Terminal meldet die neu gemessene
+  Periode, z. B. `Pendelperiode: 66,7 ms` bei 15 Hz, und das Bild bleibt stehen. Bei kleinen
+  Frequenzen (z. B. 0,5 Hz) sieht man, wie der Stab schwingt und die LEDs Spalte für Spalte
+  umschalten. Die letzte Ziffer der gemessenen Periode kann um 0,1 ms schwanken.
 - Die Auswahl unter dem Pendel zeigt **beide Schwünge** (wie das Auge) oder nur einen. Zeichnet
   die Firmware nur in einer Richtung oder passen beide Richtungen nicht übereinander, sehen Sie
   das hier sofort.

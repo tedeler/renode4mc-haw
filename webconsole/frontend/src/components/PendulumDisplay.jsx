@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
 
-// Langes Pendel, die LEDs sitzen am unteren Ende; der Drehpunkt liegt oberhalb des Bildes.
+// Stehendes Pendel (wie ein Metronom): Drehpunkt UNTEN, die LEDs sitzen oben am Stab.
+// LED 0 ist die oberste (an der Spitze), LED 7 die unterste.
 const W = 520;
-const H = 230;
-const R_TIP = 540; // Radius der LED an der Pendelspitze (LED 7)
-const PIVOT_Y = H - 34 - R_TIP; // negativ: Drehpunkt außerhalb des Bildes
-const THETA_MAX = (26 * Math.PI) / 180; // halber Schwenkwinkel
-const ROW_STEP = 14; // Abstand der LEDs auf dem Pendel
+const H = 400;
+const PIVOT_Y = H - 18; // Drehpunkt
+const R_TIP = 352; // Abstand Drehpunkt -> LED 0 (Spitze)
+const ROW_STEP = 13; // Abstand der LEDs auf dem Stab
+const THETA_MAX = (30 * Math.PI) / 180; // größte Auslenkung (Winkel)
 const LED_RGB = '255, 84, 64';
+const ROD_COLOR = '#4b5058'; // dunkelgrau vor schwarzem Grund
 
 const VIEWS = [
   { id: 'both', label: 'Auge (beide Schwünge)' },
@@ -17,54 +19,52 @@ const VIEWS = [
   { id: 'rl', label: 'nur rechts → links' },
 ];
 
+const ledRadius = (led) => R_TIP - led * ROW_STEP;
+// Winkel theta (0 = senkrecht nach oben, positiv = nach rechts) -> Canvas-Winkel
+const canvasAngle = (theta) => theta - Math.PI / 2;
+
+const fmt = (v, digits = 1) =>
+  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const fmtPeriod = (hz) => (hz < 1 ? `${fmt(1 / hz, 1)} s` : `${fmt(1000 / hz, 1)} ms`);
+
 /**
- * Zeichnet das Nachleuchtbild als Kreisbogen-Fächer: Spalte = Winkel, LED n = Radius
- * (LED 0 am Drehpunkt, LED 7 an der Spitze). Helligkeit = Anteil der Schwünge, in denen die
- * LED an dieser Stelle an war (zeichnet die Firmware nur in einer Richtung: halbe Helligkeit).
+ * Nachleuchtbild (ändert sich nur mit neuen Daten) auf ein eigenes Canvas zeichnen.
+ * Spalte = Winkel, LED n = Radius. Helligkeit = Anteil der Schwünge, in denen die LED an dieser
+ * Stelle an war (zeichnet die Firmware nur in einer Richtung: halbe Helligkeit).
  */
-function draw(ctx, pd, view) {
+function drawPersistence(ctx, pd, view) {
   ctx.clearRect(0, 0, W, H);
   const cx = W / 2;
+  const a0 = canvasAngle(-THETA_MAX);
+  const a1 = canvasAngle(THETA_MAX);
 
-  // Schwenkbereich und Pendelstange (Ruhelage)
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.05)';
+  // Schwenkbereich der LEDs
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.025)';
   ctx.beginPath();
-  ctx.arc(cx, PIVOT_Y, R_TIP + 14, Math.PI / 2 + THETA_MAX, Math.PI / 2 - THETA_MAX, true);
-  ctx.arc(cx, PIVOT_Y, R_TIP - 8 * ROW_STEP, Math.PI / 2 - THETA_MAX, Math.PI / 2 + THETA_MAX);
+  ctx.arc(cx, PIVOT_Y, R_TIP + 9, a0, a1);
+  ctx.arc(cx, PIVOT_Y, ledRadius(7) - 9, a1, a0, true);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = 'rgba(139, 152, 180, 0.2)';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(cx, 0);
-  ctx.lineTo(cx, PIVOT_Y + R_TIP + 10);
-  ctx.stroke();
-  ctx.fillStyle = '#8b98b4';
-  ctx.font = '11px system-ui, sans-serif';
-  ctx.fillText('↑ Drehpunkt', cx + 6, 12);
 
-  if (!pd) return;
-  const n = pd.columns;
-  const half = THETA_MAX / n; // halbe Winkelbreite einer Spalte
   ctx.lineCap = 'butt';
   for (let led = 0; led < 8; led++) {
-    const r = R_TIP - (7 - led) * ROW_STEP;
-    const bit = 1 << led;
-    // dunkle LED-Spur
-    ctx.strokeStyle = 'rgba(255, 84, 64, 0.06)';
+    const r = ledRadius(led);
+    ctx.strokeStyle = 'rgba(255, 84, 64, 0.05)';
     ctx.lineWidth = ROW_STEP * 0.7;
     ctx.beginPath();
-    ctx.arc(cx, PIVOT_Y, r, Math.PI / 2 + THETA_MAX, Math.PI / 2 - THETA_MAX, true);
+    ctx.arc(cx, PIVOT_Y, r, a0, a1);
     ctx.stroke();
+    if (!pd) continue;
 
+    const n = pd.columns;
+    const half = THETA_MAX / n; // halbe Winkelbreite einer Spalte
+    const bit = 1 << led;
     for (let c = 0; c < n; c++) {
       const a = pd.lr[c] & bit ? 1 : 0;
       const b = pd.rl[c] & bit ? 1 : 0;
       const level = view === 'lr' ? a : view === 'rl' ? b : (a + b) / 2;
       if (!level) continue;
-      // Spalte c: Winkel von links (-THETA_MAX) nach rechts (+THETA_MAX); Canvas-Winkel 0 = rechts
-      const theta = -THETA_MAX + (2 * THETA_MAX * (c + 0.5)) / n;
-      const mid = Math.PI / 2 - theta;
+      const mid = canvasAngle(-THETA_MAX + (2 * THETA_MAX * (c + 0.5)) / n);
       ctx.strokeStyle = `rgba(${LED_RGB}, ${level})`;
       ctx.shadowColor = `rgba(${LED_RGB}, ${0.8 * level})`;
       ctx.shadowBlur = 6;
@@ -76,32 +76,76 @@ function draw(ctx, pd, view) {
   }
 }
 
-const fmt = (v, digits = 1) => v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+/** Pendelstab in seiner aktuellen Lage, mit dem aktuellen Zustand der LEDs. */
+function drawRod(ctx, theta, leds) {
+  const cx = W / 2;
+  const sx = Math.sin(theta);
+  const sy = -Math.cos(theta);
+  const at = (r) => [cx + r * sx, PIVOT_Y + r * sy];
+
+  ctx.strokeStyle = ROD_COLOR;
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx, PIVOT_Y);
+  ctx.lineTo(...at(R_TIP + 10));
+  ctx.stroke();
+
+  for (let led = 0; led < 8; led++) {
+    const [x, y] = at(ledRadius(led));
+    const on = (leds >> led) & 1;
+    ctx.fillStyle = on ? `rgb(${LED_RGB})` : '#1c1e22';
+    if (on) {
+      ctx.shadowColor = `rgba(${LED_RGB}, 0.9)`;
+      ctx.shadowBlur = 10;
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, 3.6, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Drehpunkt
+  ctx.fillStyle = '#6b7280';
+  ctx.beginPath();
+  ctx.arc(cx, PIVOT_Y, 7, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(cx, PIVOT_Y, 2.5, 0, 2 * Math.PI);
+  ctx.fill();
+}
 
 /**
- * Pendeldisplay (POV): zeigt, was das Auge sieht, und stellt die Pendelfrequenz ein.
+ * Pendeldisplay (POV): zeigt das Nachleuchtbild (was das Auge sieht) und den schwingenden Stab,
+ * und stellt die Pendelfrequenz ein.
  * Schieberegler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
  * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
+ * Die Lage des Stabs kommt als Phase mit jedem Frame (10/s) und wird dazwischen fortgeschrieben.
  */
 export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
   const { subscribePendulum, send, status } = useControlSocket();
-  const [hz, setHz] = useState(frequency);
-  const [modelHz, setModelHz] = useState(null);
-  const pending = useRef(null);
-  const timer = useRef(null);
   const canvasRef = useRef(null);
   const latest = useRef(null);
+  const motion = useRef(null); // { phase (halbe Schwingungen), t0 (ms), periodUs, leds }
   const dirty = useRef(true);
   const viewRef = useRef('both');
   const [view, setView] = useState('both');
   const [frames, setFrames] = useState(0);
+  const [hz, setHz] = useState(frequency);
+  const [modelHz, setModelHz] = useState(null);
+  const pending = useRef(null);
+  const timer = useRef(null);
 
   useEffect(
     () =>
       subscribePendulum((pd) => {
         latest.current = pd;
         dirty.current = true;
-        if (pd.periodUs) setModelHz(1e6 / pd.periodUs);
+        if (pd.periodUs) {
+          setModelHz(1e6 / pd.periodUs);
+          motion.current = { phase: pd.phase / 10000, t0: performance.now(), periodUs: pd.periodUs, leds: pd.leds };
+        }
       }),
     [subscribePendulum],
   );
@@ -138,14 +182,32 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
 
   useEffect(() => {
     const ctx = canvasRef.current.getContext('2d');
+    const layer = document.createElement('canvas');
+    layer.width = W;
+    layer.height = H;
+    const layerCtx = layer.getContext('2d');
     let raf;
     let count = 0;
     const loop = () => {
       if (dirty.current) {
         dirty.current = false;
-        draw(ctx, latest.current, viewRef.current);
+        drawPersistence(layerCtx, latest.current, viewRef.current);
         if (latest.current) setFrames(++count);
       }
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(layer, 0, 0);
+
+      const m = motion.current;
+      let theta = 0;
+      let leds = 0;
+      if (m) {
+        // Phase fortschreiben: eine halbe Schwingung dauert periodUs / 2
+        const phase = m.phase + ((performance.now() - m.t0) * 2000) / m.periodUs;
+        theta = THETA_MAX * Math.sin(Math.PI * phase);
+        leds = m.leds;
+      }
+      drawRod(ctx, theta, leds);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -160,13 +222,13 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
       {adjustable && (
         <label className="pendulum-freq">
           <span>
-            Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmt(1000 / hz)} ms)</span>
+            Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
           </span>
           <input
             type="range"
             min={minFrequency}
             max={maxFrequency}
-            step={0.5}
+            step={0.1}
             value={hz}
             onChange={onFrequency}
             className="sensor-range"

@@ -11,7 +11,7 @@ function decodeFrame(msg) {
   return { width: msg.width, height: msg.height, on: msg.on, invert: msg.invert, data };
 }
 
-/** Pendeldisplay: { columns, periodUs, lr, rl } – je ein Byte pro Spalte, Bit n = LED n */
+/** Pendeldisplay: { columns, periodUs, phase, leds, lr, rl } – lr/rl je ein Byte pro Spalte, Bit n = LED n */
 function decodePendulum(msg) {
   const bin = atob(msg.data);
   const n = msg.columns;
@@ -21,7 +21,7 @@ function decodePendulum(msg) {
     lr[i] = bin.charCodeAt(i);
     rl[i] = bin.charCodeAt(n + i);
   }
-  return { columns: n, periodUs: msg.periodUs, lr, rl };
+  return { columns: n, periodUs: msg.periodUs, phase: msg.phase, leds: msg.leds, lr, rl };
 }
 
 /**

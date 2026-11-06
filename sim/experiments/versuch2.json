@@ -12,9 +12,9 @@
   "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "MB1242 an I2C0, 0x70" },
   "pendulum": {
     "path": "sysbus.gpioM.pendel",
-    "label": "8 LEDs an PM0–PM7 (PM0 am Drehpunkt), Signal an PL0: HIGH = rechts, LOW = links",
+    "label": "8 LEDs an PM0–PM7 (PM0 oben an der Spitze, Drehpunkt unten), Signal an PL0: HIGH = rechts, LOW = links",
     "frequency": 10,
-    "minFrequency": 2,
-    "maxFrequency": 25
+    "minFrequency": 0.1,
+    "maxFrequency": 20
   }
 }

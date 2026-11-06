@@ -88,7 +88,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .oled-canvas { display: block; width: 100%; max-width: 512px; image-rendering: pixelated; }
 
 /* Pendeldisplay */
-.pendulum-stage { background: #05070c; border-radius: 6px; border: 1px solid var(--border); align-self: center; max-width: 100%; }
+.pendulum-stage { background: #000; border-radius: 6px; border: 1px solid var(--border); align-self: center; max-width: 100%; }
 .pendulum-canvas { display: block; width: 100%; max-width: 520px; }
 .pendulum-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pendulum-freq { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }

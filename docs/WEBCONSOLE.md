@@ -107,7 +107,7 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 | `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
-| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar, Nachleuchtbild je Schwungrichtung. `GetFrame`/`GetFrameIfChanged` liefern `PD:<Spalten>:<Periode in µs>:<Base64>`. |
+| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar (0,05–100 Hz), Nachleuchtbild je Schwungrichtung. `GetFrame` liefert `PD:<Spalten>:<Periode in µs>:<Phase>:<LEDs>:<Base64>`. |
 | `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
 
 **Keypad-Multiplexing.** Ein Klick auf „5“ sendet nicht „Taste 5“. Das Frontend schlägt die
@@ -124,7 +124,7 @@ Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Versuch 
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
-| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang), PM0 am Drehpunkt | `PendulumDisplay` | Nachleuchtbild als Kreisbogen |
+| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang); stehendes Pendel, Drehpunkt unten, PM0 oben an der Spitze | `PendulumDisplay` | schwingender Stab (dunkelgrau) mit LEDs, Nachleuchtbild als Kreisbogen |
 | Pendel-Signal | PL0 (Eingang): HIGH = rechts, LOW = links | `PendulumDisplay.Sync` | – |
 | Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
 
@@ -134,8 +134,8 @@ also steigende Flanke beim Durchgang nach rechts, fallende beim Durchgang nach l
 sind **virtuelle** Simulationszeit.
 
 **Frequenz einstellen:** Im Browser gibt es dafür einen Schieberegler (Bereich aus
-`minFrequency`/`maxFrequency` der Versuchs-JSON, in Versuch 2: 2–25 Hz). Das Backend setzt die
-Property `PeriodUs` des Modells (1–100 Hz). Die neue Periode gilt ab dem nächsten Durchgang durch
+`minFrequency`/`maxFrequency` der Versuchs-JSON, in Versuch 2: 0,1–20 Hz). Das Backend setzt die
+Property `PeriodUs` des Modells (0,05–100 Hz). Die neue Periode gilt ab dem nächsten Durchgang durch
 die Mitte. Dort ist die Auslenkung bei jeder Frequenz null, das Pendel läuft also ohne Sprung
 weiter. Intern rechnet das Modell deshalb in Phasen (Anzahl halber Schwingungen), nicht in Zeit.
 
@@ -166,7 +166,7 @@ sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
 sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
 sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
 sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
-sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Periode in us>:<Base64>"
+sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Periode in us>:<Phase>:<LEDs>:<Base64>"
 ```
 
 ---
@@ -207,7 +207,7 @@ Server → Browser:
 { "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…}, "pd": {…} }
 { "type": "leds", "states": { "D1": true, "D2": false, … } }
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
-{ "type": "pd", "columns": 120, "periodUs": 100000, "data": "<Base64>" }
+{ "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -217,7 +217,11 @@ Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
 
 `pd.data` ist das Pendelbild: erst `columns` Bytes für den Schwung links → rechts, dann
 `columns` Bytes für rechts → links. Byte `c` gehört zum Winkelstück `c` (0 = ganz links),
-Bit `n` = LED `n` (Bit 0 am Drehpunkt).
+Bit `n` = LED `n` (Bit 0 oben an der Pendelspitze). `pd.phase` ist die Lage des Pendels in
+1/10000 einer halben Schwingung (0 = Mitte nach rechts, 5000 = ganz rechts, 10000 = Mitte nach
+links, 15000 = ganz links), `pd.leds` der LED-Zustand im Moment der Abfrage. Das Frontend zeichnet
+daraus den schwingenden Stab und schreibt die Phase zwischen zwei Frames (10/s) fort.
+Das Backend fragt das Pendel deshalb mit `GetFrame` ab, nicht mit `GetFrameIfChanged`.
 
 ### Reconnect
 
@@ -274,7 +278,7 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
   "oled":   { "path": "sysbus.i2c0.oled", "width": 128, "height": 64, "label": "…" },
   "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "…" },
   "pendulum": { "path": "sysbus.gpioM.pendel", "label": "…",                    // PendulumDisplay
-                "frequency": 10, "minFrequency": 2, "maxFrequency": 25 },      // Hz, Schieberegler
+                "frequency": 10, "minFrequency": 0.1, "maxFrequency": 20 },    // Hz, Schieberegler
   "keypad": {
     "path": "sysbus.gpioK.keypad",
     "rowPins": ["PK0", "PK1", "PK2", "PK3"], "colPins": ["PK4", "PK5", "PK6"],
