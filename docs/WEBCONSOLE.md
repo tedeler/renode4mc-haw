@@ -167,6 +167,7 @@ sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel r
 sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
 sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
 sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Periode in us>:<Phase>:<LEDs>:<Base64>"
+sysbus.gpioM.pendel GetEvents          # "EV:<t>:<Phase>:<LEDs>:<Periode>:<t,Phase,LEDs,Periode;…>" (LED-Wechsel seit letztem Aufruf)
 ```
 
 ---
@@ -208,6 +209,7 @@ Server → Browser:
 { "type": "leds", "states": { "D1": true, "D2": false, … } }
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
+{ "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …] }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -219,9 +221,16 @@ Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
 `columns` Bytes für rechts → links. Byte `c` gehört zum Winkelstück `c` (0 = ganz links),
 Bit `n` = LED `n` (Bit 0 oben an der Pendelspitze). `pd.phase` ist die Lage des Pendels in
 1/10000 einer halben Schwingung (0 = Mitte nach rechts, 5000 = ganz rechts, 10000 = Mitte nach
-links, 15000 = ganz links), `pd.leds` der LED-Zustand im Moment der Abfrage. Das Frontend zeichnet
-daraus den schwingenden Stab und schreibt die Phase zwischen zwei Frames (10/s) fort.
-Das Backend fragt das Pendel deshalb mit `GetFrame` ab, nicht mit `GetFrameIfChanged`.
+links, 15000 = ganz links), `pd.leds` der LED-Zustand im Moment der Abfrage.
+
+`pdev` enthält jeden LED-Wechsel seit dem letzten Abruf mit virtueller Zeit `t` (µs seit Start)
+und Phase `phi` (1/10000 halbe Schwingung, fortlaufend), dazu den Jetzt-Zustand `now`. Das Modell
+merkt sich die Wechsel (`GetEvents`), das Backend holt sie mit jedem Poll ab (10/s). Das Frontend
+spielt damit Stab, LEDs und Leuchtspur **200 ms verzögert, aber zeitlich exakt** wieder: Zwischen
+zwei Stützstellen läuft die Phase mit `2/Periode` weiter, der LED-Zustand gilt bis zum nächsten
+Wechsel. Jede leuchtende LED hinterlässt dort, wo der Stab gerade ist, einen Punkt, der in 10 ms
+verblasst. Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
+(Zeit beginnt bei 0), wird die Zeitlinie verworfen.
 
 ### Reconnect
 

@@ -34,6 +34,11 @@
 //       leds   = aktueller LED-Zustand (Bit n = LED n)
 //       Base64 = Nachleuchtbild: alle Bytes links->rechts, dann rechts->links (Bit n = LED n)
 //   sysbus.gpioM.pendel GetFrameIfChanged   -> wie oben oder "PD:SAME"
+//   sysbus.gpioM.pendel GetEvents           -> "EV:<t>:<phi>:<leds>:<periodUs>:<Ereignisse>"
+//       Jetzt-Zustand und alle LED-Wechsel seit dem letzten Aufruf (danach geleert), für die
+//       zeitgenaue Wiedergabe im Browser (Stab, LEDs, Leuchtspur):
+//       t = virtuelle Zeit in us seit Start, phi = Phase in 1/10000 halber Schwingungen (absolut,
+//       nicht modulo), Ereignisse = "t,phi,leds,periodUs;" je LED-Wechsel bzw. Frequenzwechsel
 //   sysbus.gpioM.pendel SyncLevel           -> aktueller Pegel des Sync-Ausgangs
 //   sysbus.gpioM.pendel Leds                -> aktueller LED-Zustand (Bit n = LED n)
 //   sysbus.gpioM.pendel PeriodUs            -> aktuelle Periode in us (setzen: siehe oben)
@@ -102,6 +107,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 if(next == leds) return;
                 PaintUntil(Phase());
                 leds = next;
+                Record();
             }
         }
 
@@ -139,6 +145,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 halfPeriod.Value = 0;
                 halfPeriod.Limit = halfUs;
                 halfCount = 0;
+                usAtCrossing = 0;
+                events.Clear();
                 leds = 0;
                 lastPaintPhase = 0;
                 Array.Clear(image, 0, image.Length);
@@ -164,6 +172,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 PaintUntil(halfCount + 1.0); // bis genau zum Durchgang (alte Periode)
                 halfCount++;
+                usAtCrossing += halfUs;
                 if(pendingHalfUs != 0)
                 {
                     halfUs = pendingHalfUs;
@@ -171,9 +180,57 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     halfPeriod.Value = 0;
                     halfPeriod.Limit = halfUs;
                     version++; // Periode ist Teil des Frames
+                    Record();  // Frequenzwechsel: neue Geschwindigkeit ab hier
                 }
                 Sync.Set(halfCount % 2 == 0);
             }
+        }
+
+        public string GetEvents()
+        {
+            lock(sync)
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append("EV:").Append((long)Math.Round(NowUs())).Append(':').Append((long)Math.Round(Phase() * 10000))
+                  .Append(':').Append(leds).Append(':').Append(2 * halfUs).Append(':');
+                foreach(var e in events)
+                {
+                    sb.Append(e.Us).Append(',').Append(e.PhaseQ).Append(',').Append(e.Leds).Append(',').Append(e.PeriodUs).Append(';');
+                }
+                events.Clear();
+                return sb.ToString();
+            }
+        }
+
+        private struct Event
+        {
+            public long Us;
+            public long PhaseQ;
+            public byte Leds;
+            public uint PeriodUs;
+        }
+
+        // Merkt sich den aktuellen Zustand als Ereignis (gleicher Zeitpunkt: überschreiben, denn
+        // ein Byte-Schreibzugriff auf Port M kommt als 8 einzelne Pin-Wechsel an)
+        private void Record()
+        {
+            var e = new Event { Us = (long)Math.Round(NowUs()), PhaseQ = (long)Math.Round(Phase() * 10000), Leds = leds, PeriodUs = 2 * halfUs };
+            if(events.Count > 0 && events[events.Count - 1].Us == e.Us)
+            {
+                events[events.Count - 1] = e;
+                return;
+            }
+            if(events.Count >= MaxEvents)
+            {
+                events.RemoveRange(0, MaxEvents / 4); // niemand holt ab: Älteste verwerfen
+            }
+            events.Add(e);
+        }
+
+        // Virtuelle Zeit in us seit Start
+        private double NowUs()
+        {
+            return usAtCrossing + Math.Min((double)halfUs, halfPeriod.Value);
         }
 
         // phi: Anzahl halber Schwingungen seit dem Start (stetig, auch über Frequenzwechsel)
@@ -258,5 +315,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private ulong version;
         private ulong lastReported = ulong.MaxValue;
         private double lastReportedPhase = -1;
+        private double usAtCrossing;
+        private const int MaxEvents = 20000;
+        private readonly System.Collections.Generic.List<Event> events = new System.Collections.Generic.List<Event>();
     }
 }
