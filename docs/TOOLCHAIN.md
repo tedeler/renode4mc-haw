@@ -99,10 +99,36 @@ die Debug-Konfiguration verbindet sich, lädt Symbole aus dem `.out` (TI Arm Cla
 und hält an `main`. Bei Variante 1 sollte gleichzeitig der Board-Debug mit TIs Standardkonfiguration
 unverändert bleiben (zwei Konfigurationen im selben Projekt: „Board“ und „Simulator“).
 
-### Zu klären (Machbarkeitstest, ca. ein halber Tag)
-1. Lässt sich in CCS 20.x eine GDB-Debug-Erweiterung installieren (Open VSX / `.vsix`)?
-2. Funktionieren Breakpoints/Variablen mit der TI-Clang-DWARF-Ausgabe über GDB und Renode (Cortex-M4F, FPU-Register)?
-3. Liefert Renode das passende GDB-Zielbeschreibungs-XML; wie verhält sich Anhalten/Fortsetzen bei Timer-Interrupts?
+### Machbarkeitstest (durchgeführt)
+
+Getestet mit TIs vorgebautem `blinky.out` (TI Arm Clang, DWARF) aus den TivaWare-Beispielen,
+Renode 1.17.0, `gdb-multiarch` 17.1:
+
+| Prüfung | Ergebnis |
+|---|---|
+| Renode mit `machine StartGdbServer 3333` (ohne `start`) → GDB `target remote :3333` | ✅ verbindet; Simulation steht angehalten am Reset-Vektor (`ResetISR`, SP `0x20000200`) |
+| Symbole und Quellzeilen aus TI-Clang-DWARF | ✅ `ResetISR () at ../startup_ccs.c:207`, `main () at ../blinky.c:73` |
+| Breakpoint auf `main`, `continue`, `bt`, `info locals` | ✅ Halt an `main`, Backtrace und Variable `ui32Loop = 0` |
+| `next`, `stepi`, `x/4i $pc`, Register lesen | ✅ |
+| `monitor <Renode-Befehl>` über GDB | ✅ (z. B. Konsolenbefehle direkt aus der Debug-Sitzung) |
+| `.out` ohne Änderung, TI-Startcode `_c_int00` | ✅ |
+
+Hinweis: Renode beendet sich, wenn seine Standardeingabe geschlossen wird; `ucsim` startet es deshalb
+mit offener Eingabe bzw. `--plain`/Skriptmodus und hält den Prozess am Leben.
+Quelldateien meldet GDB als „nicht gefunden“, weil die Pfade im `.out` relativ zum CCS-Build-Ordner
+stehen; im Debug-Konfig `substitutePath`/`sourceFileMap` auf das Projektverzeichnis setzen.
+
+**CCS-Seite (nur teilweise geprüft):** Die CCS-20.4-Theia-App enthält `@theia/vsx-registry`,
+`@theia/plugin-ext-vscode` und `@theia/debug` – die Bausteine für den Extensions-Katalog (Open VSX)
+und VS-Code-Debug-Adapter sind also vorhanden, und es ist nichts dagegen konfiguriert. **Nicht
+getestet** (GUI nötig): das tatsächliche Installieren und Starten einer GDB-Debug-Erweiterung
+(Cortex-Debug / C/C++-Debug) innerhalb von CCS. Das ist der letzte offene Schritt, ca. 30 Minuten
+manuell: Extension suchen → installieren → `launch.json` mit `gdbPath`, `target remote :3333`,
+`executable: ${workspaceFolder}/Debug/<projekt>.out` → Debug starten.
+
+### Folgerung
+Technisch trägt die Variante „GDB-Remote gegen Renode“; was noch fehlt, ist der GUI-Test in CCS.
+Falls CCS-Theia die Erweiterung nicht annimmt, bleibt Variante 2 (VS Code mit identischer `launch.json`).
 
 ## Unterschiede Simulator ↔ Board (den Studierenden erklären)
 - Peripherie nur im Umfang des Fahrplans (SYSCTL, SysTick, GPIO, Timer, UART, ADC); anderes loggt eine Warnung.
