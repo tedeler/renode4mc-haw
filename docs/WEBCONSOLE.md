@@ -4,7 +4,7 @@ Die Web-Konsole ist eine zweite Bedienoberfläche für den Simulator in `sim/`. 
 eigenen Rechner läuft alles in **einem Docker-Container**: Studierende öffnen eine Webseite,
 wählen einen Versuch, laden die von CCS gebaute `.out`-Datei hoch und bedienen die simulierte
 Hardware im Browser. Dazu gehören LEDs, Taster, ein UART-Terminal, ein OLED-Display, ein
-Ultraschallsensor und ein Keypad.
+Ultraschallsensor, ein Keypad und ein Pendeldisplay.
 
 Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit CCS bzw. `make`
 (siehe [TOOLCHAIN.md](TOOLCHAIN.md)). Der Container nimmt nur das fertige ELF entgegen. Er ist
@@ -15,7 +15,8 @@ Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit C
 ```
 
 Kurzanleitung zum Starten: [`webconsole/README.md`](../webconsole/README.md).
-Beispielprogramm, das alle Bedienelemente nutzt: [Lab 03](../examples/lab03_webkonsole/README.md).
+Beispielprogramme: [Lab 03](../examples/lab03_webkonsole/README.md) nutzt alle Bedienelemente von
+Versuch 1, [Lab 04](../examples/lab04_pendeldisplay/README.md) das Pendeldisplay von Versuch 2.
 
 ---
 
@@ -106,6 +107,7 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 | `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
+| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Nachleuchtbild je Schwungrichtung. `GetFrame`/`GetFrameIfChanged` liefern `PD:<Spalten>:<Base64>`. |
 | `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
 
 **Keypad-Multiplexing.** Ein Klick auf „5“ sendet nicht „Taste 5“. Das Frontend schlägt die
@@ -114,6 +116,31 @@ verbindet dann die Zeilenleitung PK1 elektrisch mit der Spaltenleitung PK5. Die 
 erst HIGH, wenn die Firmware die Zeile HIGH treibt. Die Firmware muss die Taste also wie auf
 echter Hardware per Zeilen-Scan ermitteln. Ein Programm, das die Spalten liest, ohne die Zeilen
 zu treiben, sieht keinen Tastendruck. Das ist didaktisch gewollt.
+
+### Versuch 2: Pendeldisplay
+
+`sim/experiments/versuch2.repl` ergänzt die Basisplattform um ein Pendeldisplay und den
+Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Versuch 1.
+
+| Baustein | Pins / Adresse | Modell | Bedienung im Browser |
+|---|---|---|---|
+| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang), PM0 am Drehpunkt | `PendulumDisplay` | Nachleuchtbild als Kreisbogen |
+| Pendel-Signal | PL0 (Eingang): HIGH = rechts, LOW = links | `PendulumDisplay.Sync` | – |
+| Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
+
+`PendulumDisplay.cs` bildet ein Pendel nach, das mit `x(t) = sin(2·π·t/T)` schwingt
+(T = `periodUs`, Standard 100 000 µs = 10 Hz). Der Ausgang `Sync` ist HIGH, solange `x > 0` ist,
+also steigende Flanke beim Durchgang nach rechts, fallende beim Durchgang nach links. Alle Zeiten
+sind **virtuelle** Simulationszeit.
+
+Bei jedem Pegelwechsel einer LED überträgt das Modell den bisherigen LED-Zustand auf die
+Winkelstücke, die das Pendel seitdem überstrichen hat. Der Schwenkbereich ist dabei in `columns`
+(Standard 120) gleich breite Stücke von `x = −1` bis `x = +1` geteilt. Es gibt ein Bild pro
+Schwungrichtung, jeweils vom letzten Schwung. Das Frontend zeigt beide überlagert (wie das Auge)
+oder einzeln. So sieht man sofort, ob Hin- und Rückschwung übereinanderpassen.
+
+Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt `versuch2.resc` die Zeitscheibe von
+Renode auf 10 µs (`emulation SetGlobalQuantum "0.00001"`, Standard 100 µs).
 
 ### Monitor-Befehle (zum Ausprobieren ohne Browser)
 
@@ -128,6 +155,11 @@ sysbus.gpioK.keypad SetKey 1 1 true    # Keypad: Zeile 1, Spalte 1 ("5") drücke
 sysbus.gpioK.keypad SetKey 1 1 false
 sysbus.i2c0.sensor Distance 42         # Abstand 42 cm
 sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
+
+# Versuch 2 (s @experiments/versuch2.resc):
+sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
+sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
+sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Base64>"
 ```
 
 ---
@@ -164,15 +196,20 @@ Browser → Server:
 Server → Browser:
 
 ```jsonc
-{ "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…} }
+{ "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…}, "pd": {…} }
 { "type": "leds", "states": { "D1": true, "D2": false, … } }
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
+{ "type": "pd", "columns": 120, "data": "<Base64>" }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
 
 `fb.data` ist der Framebuffer im SSD1306-Page-Format, wie er auf dem Display zu sehen ist:
 Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
+
+`pd.data` ist das Pendelbild: erst `columns` Bytes für den Schwung links → rechts, dann
+`columns` Bytes für rechts → links. Byte `c` gehört zum Winkelstück `c` (0 = ganz links),
+Bit `n` = LED `n` (Bit 0 am Drehpunkt).
 
 ### Reconnect
 
@@ -228,6 +265,7 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
   ],
   "oled":   { "path": "sysbus.i2c0.oled", "width": 128, "height": 64, "label": "…" },
   "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "…" },
+  "pendulum": { "path": "sysbus.gpioM.pendel", "frequency": 10, "label": "…" },  // PendulumDisplay
   "keypad": {
     "path": "sysbus.gpioK.keypad",
     "rowPins": ["PK0", "PK1", "PK2", "PK3"], "colPins": ["PK4", "PK5", "PK6"],
@@ -315,7 +353,12 @@ USR_SW1 → LED D3, OLED-Frame.
 cd webconsole/backend
 npm start &                                                       # oder Container
 node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
+node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
 ```
+
+`test/e2e_versuch2.js` prüft Versuch 2 mit der Lab-04-Firmware: Startmeldung, gemessene
+Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
+40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
 
 ## 7. Bekannte Einschränkungen
 
@@ -325,10 +368,13 @@ node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
   ohne Baudraten- bzw. Busverzögerung. Die Ultraschall-Messung ist sofort fertig.
 - **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
   mit 10 Bildern/s aktualisiert.
+- **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude und Periode, ohne Dämpfung.
+  LEDs leuchten ohne Nachglühen, die Anzeige zeigt je Richtung nur den letzten Schwung.
 - **Taster ohne Prellen;** Entprell-Code lässt sich im Simulator nicht prüfen.
 - **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät
   gelesen.
-- Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js` und die
+- Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js`,
+  `test/e2e_versuch2.js` und die
   Bedienung im Browser, auch mit dem Verzeichnis-Layout des Images (`/opt/renode`,
   `SIM_DIR=/opt/renode4mc/sim`, Benutzer ohne Root-Rechte). Das Docker-Image selbst konnte in der
   Entwicklungsumgebung **nicht gebaut** werden (kein Zugriff auf Docker Hub) – beim ersten

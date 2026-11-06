@@ -1,0 +1,18 @@
+{
+  "title": "Versuch 2 – EK-TM4C1294XL: Pendeldisplay, Ultraschall, UART",
+  "machine": "tm4c1294",
+  "uart": { "label": "UART0 (PA0 RX / PA1 TX) – 115200 8N1" },
+  "ledBridge": "ws://127.0.0.1:9000",
+  "leds": [
+    { "id": "D1", "label": "D1 (PN1)", "color": "#22c55e", "bridge": 0 },
+    { "id": "D2", "label": "D2 (PN0)", "color": "#22c55e", "bridge": 1 },
+    { "id": "D3", "label": "D3 (PF4)", "color": "#22c55e", "bridge": 2 },
+    { "id": "D4", "label": "D4 (PF0)", "color": "#22c55e", "bridge": 3 }
+  ],
+  "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "MB1242 an I2C0, 0x70" },
+  "pendulum": {
+    "path": "sysbus.gpioM.pendel",
+    "label": "8 LEDs an PM0–PM7 (PM0 am Drehpunkt), Signal an PL0: HIGH = rechts, LOW = links",
+    "frequency": 10
+  }
+}

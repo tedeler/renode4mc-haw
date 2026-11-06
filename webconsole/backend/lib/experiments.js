@@ -48,6 +48,7 @@ function validate(cfg, file) {
   });
   if (cfg.oled) assertPath(cfg.oled.path, `${file} oled`);
   if (cfg.sensor) assertPath(cfg.sensor.path, `${file} sensor`);
+  if (cfg.pendulum) assertPath(cfg.pendulum.path, `${file} pendulum`);
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
     const layout = cfg.keypad.layout;
@@ -108,6 +109,7 @@ function publicView(cfg) {
     keypad: rest.keypad && { ...rest.keypad, path: undefined },
     oled: rest.oled && { ...rest.oled, path: undefined },
     sensor: rest.sensor && { ...rest.sensor, path: undefined },
+    pendulum: rest.pendulum && { ...rest.pendulum, path: undefined },
   };
 }
 

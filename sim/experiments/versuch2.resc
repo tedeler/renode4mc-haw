@@ -1,0 +1,30 @@
+:name: Versuch 2 (EK-TM4C1294XL, Pendeldisplay)
+:description: TM4C1294 mit Pendeldisplay (8 LEDs, Sync-Signal), Ultraschall MB1242, UART0, LEDs D1-D4
+
+# Startskript für die Web-Konsole (webconsole/). Wird mit Arbeitsverzeichnis sim/ gestartet:
+#   renode --disable-gui --port 1234 -e "s @experiments/versuch2.resc"
+# Variable $elf: Pfad zur Firmware (.out/.elf), Standard /tmp/app.elf (Upload der Web-Konsole).
+
+$elf?=@/tmp/app.elf
+
+# Zusätzliche Gerätemodelle dieses Versuchs (vor dem Laden der .repl kompilieren)
+include @models/MaxBotixI2C.cs
+include @models/PendulumDisplay.cs
+
+# Basis: alle Tiva-Modelle, Maschine "tm4c1294", Plattform tm4c1294ncpdt.repl, Firmware laden
+include @tm4c1294.resc
+
+# Feinere Zeitscheibe (10 us statt 100 us): Das Pendeldisplay braucht genaue Zeitpunkte der
+# LED-Wechsel. Renode rechnet die CPU sonst in 100-us-Stücken, die Spalten würden ungleich breit.
+emulation SetGlobalQuantum "0.00001"
+
+# Versuchsspezifische Erweiterung: Pendeldisplay an Port M/L, Sensor an I2C0
+machine LoadPlatformDescription @experiments/versuch2.repl
+
+# UART0 (virtueller COM-Port) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
+# Die Web-Konsole verbindet sich damit (Backend-Brücke -> ws://<host>:3333 -> xterm.js).
+# Ohne Web-Konsole:  nc localhost 3335
+emulation CreateServerSocketTerminal 3335 "uart0term" false
+connector Connect sysbus.uart0 uart0term
+
+start
