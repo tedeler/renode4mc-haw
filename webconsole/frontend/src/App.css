@@ -91,6 +91,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .pendulum-stage { background: #05070c; border-radius: 6px; border: 1px solid var(--border); align-self: center; max-width: 100%; }
 .pendulum-canvas { display: block; width: 100%; max-width: 520px; }
 .pendulum-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pendulum-freq { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .pendulum-view { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 12px; }
 
 /* LEDs / Buttons */
