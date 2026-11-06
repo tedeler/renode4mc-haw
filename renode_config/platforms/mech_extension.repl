@@ -1,0 +1,4 @@
+wsBridge: Miscellaneous.WebSocketBridge @ sysbus 0x400ff000
+    port: 9000
+    // Wenn du im Browser den Taster drückst, wird Pin 0 von gpioPortA am uC geschaltet:
+    // 0 -> gpioPortA@0

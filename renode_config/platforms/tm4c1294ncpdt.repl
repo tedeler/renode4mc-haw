@@ -1,0 +1,29 @@
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m4f"
+    nvic: nvic
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+
+flash: Memory.MappedMemory @ sysbus 0x00000000
+    size: 0x00100000 // 1 MB Flash
+
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x00040000 // 256 KB SRAM
+
+// GPIO Port N (User LEDs D1=PN1, D2=PN0 auf dem EK-TM4C1294XL)
+gpioPortN: GPIOPort.TivaGPIOPort @ sysbus <0x40064000, +0x1000>
+
+// System Control (SYSCTL) - PRGPIO (Offset 0xA08) liefert immer Ready (0xFFFF)
+sysbus:
+    init:
+        Tag <0x400FE000, 0x400FF000> "SYSCTL" 0xFFFFFFFF
+
+
+// WebSocket-Server auf Adresse 0x400ff000 mappen
+wsBridge: Miscellaneous.WebSocketBridge @ sysbus <0x400ff000, +0x100>
+    port: 9000
+
+// Den bestehenden gpioPortN so erweitern, dass Pin 0 an die Bridge Pin 0 funkt
+gpioPortN:
+    0 -> wsBridge@0
