@@ -26,6 +26,8 @@ tatsächlich passt – sonst Eigenbau.
 - Registergenerator: `tm4c1294ncpdt.h` → C#-Registerdefinitionen (Offset, Name, Reset-Wert).
 - Plattform `tm4c1294ncpdt.repl` bereinigen, Peripherie-Adressen aus Header übernehmen.
 - Robot-Tests (`renode-test`) als Rahmen für automatische Abnahme je Meilenstein.
+- **Bit-Banding** (`0x42000000–0x43FFFFFF`) für Peripherie und SRAM: `driverlib` greift darüber auf Einzelbits zu
+  (im Test mit TIs `blinky.out` bereits aufgefallen).
 - Entscheidung Timing: Taktfrequenz der CPU in Renode (`PerformanceInMips`) passend zum
   simulierten Systemtakt setzen, damit Timer/UART-Zeiten realistisch sind.
 
