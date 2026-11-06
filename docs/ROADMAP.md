@@ -1,7 +1,11 @@
 # Fahrplan: Peripherie-Unterstützung für Studierende
 
 > **Stand:** M0 (Gerüst, Bit-Banding), M1 (Clock-Gating), M3 (GPIO) und M4 (Timer) sind umgesetzt
-> (siehe `sim/`, Beispiele `examples/`). Offen: M2 (SysTick-Test), M5 (UART), M6 (ADC), M7 (weitere Labs).
+> (siehe `sim/`, Beispiele `examples/`). M5 (UART) ist im Kern umgesetzt (`sim/models/TivaUART.cs`:
+> Register, RX-FIFO, Interrupts; offen: Baudraten-Timing, µDMA, Break/Fehler-Injektion). Zusätzlich –
+> abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
+> und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Lab 03).
+> Offen: M2 (SysTick-Test), M6 (ADC), M7 (weitere Labs).
 > Die folgenden Abschnitte beschreiben den ursprünglichen Plan.
 
 Ziel: Studierende schreiben normale TM4C1294-Firmware (Register oder TivaWare-`driverlib`) und

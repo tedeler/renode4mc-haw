@@ -3,3 +3,6 @@ bin/
 *.out
 *.map
 build/
+node_modules/
+webconsole/frontend/dist/
+webconsole/backend/public/

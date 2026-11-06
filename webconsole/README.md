@@ -1,0 +1,80 @@
+# Web-Konsole (Docker)
+
+Mit der Web-Konsole simulieren Sie den TM4C1294 im Browser. Sie laden die von CCS gebaute
+`.out`-Datei hoch und bedienen die Hardware auf einer Webseite: LEDs, Taster, UART-Terminal,
+OLED-Display, Ultraschallsensor und Keypad. Renode, die Modelle aus `sim/` und die Oberfläche
+laufen zusammen in einem Container. Einen Compiler gibt es dort nicht.
+
+Ausführliche Beschreibung (Architektur, Protokolle, eigene Versuche): **[docs/WEBCONSOLE.md](../docs/WEBCONSOLE.md)**
+
+## Starten
+
+```bash
+cd webconsole
+docker compose up --build
+```
+
+Dann im Browser **http://localhost:3000** öffnen.
+
+1. **Versuch** wählen (z. B. „Versuch 1 – EK-TM4C1294XL …“).
+2. **Firmware** wählen: die `.out`-Datei aus CCS (`Debug/<projekt>.out`) oder aus `make`.
+3. **Start** klicken. Nach wenigen Sekunden erscheint das Bedienfeld, und die Ausgabe von UART0
+   läuft im Terminal.
+
+Zum Ausprobieren: [Lab 03 – Web-Konsole](../examples/lab03_webkonsole/README.md) nutzt alle
+Bedienelemente.
+
+| Bedienelement | Wirkung in der Simulation |
+|---|---|
+| Taster USR_SW1/USR_SW2 | gedrückt halten → PJ0/PJ1 = LOW |
+| Keypad | verbindet Zeile und Spalte der Matrix (PK0–PK3 × PK4–PK6) |
+| Schieberegler | Messwert des Ultraschallsensors (I2C0, 0x70) in cm |
+| Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier |
+| LEDs, OLED | zeigen den Zustand von PN1/PN0/PF4/PF0 bzw. des SSD1306 (I2C0, 0x3C) |
+
+## Ordner
+
+```
+webconsole/
+├── Dockerfile            mehrstufig: Frontend bauen, Backend-Pakete, Renode 1.17.0, Runtime
+├── docker-compose.yml    Build-Kontext = Repository (sim/ wird ins Image kopiert)
+├── backend/              Node.js/Express (Entrypoint server.js)
+│   ├── server.js         HTTP: SPA, POST /upload, /api/*
+│   ├── lib/
+│   │   ├── config.js         Umgebungsvariablen
+│   │   ├── experiments.js    Versuche aus sim/experiments laden und prüfen
+│   │   ├── renodeManager.js  Renode-Child-Prozess starten/beenden, Log weiterleiten
+│   │   ├── monitorClient.js  Telnet-Client für den Renode-Monitor (Befehlswarteschlange)
+│   │   ├── uartBridge.js     UART-TCP ⇄ WebSocket :3333
+│   │   └── controlBridge.js  Monitor/LED-Bridge ⇄ WebSocket :3334 (JSON)
+│   └── test/e2e.js       Ende-zu-Ende-Test mit Lab-03-Firmware
+└── frontend/             React (Vite)
+    └── src/
+        ├── hooks/useReconnectingWebSocket.js
+        ├── context/ControlSocket.jsx
+        └── components/  SetupBar, ControlPanel, UartMonitor (xterm.js), Led, PushButton,
+                         OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung)
+```
+
+## Ports
+
+| Port | Dienst |
+|---|---|
+| 3000 | Web-Oberfläche, Upload |
+| 3333 | UART-WebSocket |
+| 3334 | Control-WebSocket |
+
+Intern, also nicht exponiert: 1234 (Renode-Monitor), 3335 (UART-TCP), 9000 (LED-Bridge).
+
+## Entwicklung ohne Docker
+
+```bash
+cd webconsole/frontend && npm install && npm run build
+cd ../backend && npm install
+RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
+# Test (zweites Terminal):
+node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
+```
+
+Mit `npm run dev` im Frontend läuft Vite auf Port 5173 und leitet `/upload` und `/api` an
+Port 3000 weiter.

@@ -1,0 +1,16 @@
+# Start:  cd webconsole && docker compose up --build      ->  http://localhost:3000
+services:
+  webconsole:
+    build:
+      context: ..
+      dockerfile: webconsole/Dockerfile
+    image: renode4mc-webconsole:latest
+    init: true
+    ports:
+      - "3000:3000"   # Web-Oberfläche + Upload
+      - "3333:3333"   # UART-WebSocket
+      - "3334:3334"   # Control-WebSocket
+    # Zustandslos: die hochgeladene Firmware liegt nur im RAM-Dateisystem des Containers
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
