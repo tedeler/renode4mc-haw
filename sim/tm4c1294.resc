@@ -5,6 +5,8 @@ using sysbus
 include @models/TivaSysCtl.cs
 include @models/TivaGPIOPort.cs
 include @models/TivaTimer.cs
+include @models/TivaUART.cs
+include @models/TivaI2C.cs
 include @models/WebSocketBridge.cs
 
 mach create "tm4c1294"

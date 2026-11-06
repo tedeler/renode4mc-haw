@@ -1,0 +1,19 @@
+{
+  "name": "renode4mc-webconsole-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express backend: ELF upload, Renode process management, WebSocket bridges",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test:e2e": "node test/e2e.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "ws": "^8.18.0"
+  }
+}

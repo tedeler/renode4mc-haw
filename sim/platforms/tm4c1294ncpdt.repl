@@ -1,6 +1,6 @@
 // Plattform: Tiva TM4C1294NCPDT (EK-TM4C1294XL), vereinfacht.
 // Modelliert: Cortex-M4F + NVIC (SysTick), 1 MB Flash, 256 KB SRAM, Bit-Banding,
-// SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, LED-Bridge zum Browser.
+// SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, UART 0-7, I2C 0-9 (Master), LED-Bridge zum Browser.
 // Takt: Reset-Takt PIOSC = 16 MHz.
 // nvic@N: N = IRQ-Nummer (Vektor Nr. minus 16), z. B. Timer0A = IRQ 19.
 
@@ -165,3 +165,96 @@ timer7: Timers.TivaTimer @ sysbus 0x40037000
     sysCtl: sysctl
     clockBit: 7
 
+// UART0..7 (TivaUART). UART0 = virtueller COM-Port des Boards (PA0 RX / PA1 TX).
+// Ausgabe z. B. mit:  emulation CreateServerSocketTerminal 3335 "term" false; connector Connect sysbus.uart0 term
+uart0: UART.TivaUART @ sysbus 0x4000C000
+    sysCtl: sysctl
+    clockBit: 0
+    IRQ -> nvic@5
+
+uart1: UART.TivaUART @ sysbus 0x4000D000
+    sysCtl: sysctl
+    clockBit: 1
+    IRQ -> nvic@6
+
+uart2: UART.TivaUART @ sysbus 0x4000E000
+    sysCtl: sysctl
+    clockBit: 2
+    IRQ -> nvic@33
+
+uart3: UART.TivaUART @ sysbus 0x4000F000
+    sysCtl: sysctl
+    clockBit: 3
+    IRQ -> nvic@56
+
+uart4: UART.TivaUART @ sysbus 0x40010000
+    sysCtl: sysctl
+    clockBit: 4
+    IRQ -> nvic@57
+
+uart5: UART.TivaUART @ sysbus 0x40011000
+    sysCtl: sysctl
+    clockBit: 5
+    IRQ -> nvic@58
+
+uart6: UART.TivaUART @ sysbus 0x40012000
+    sysCtl: sysctl
+    clockBit: 6
+    IRQ -> nvic@59
+
+uart7: UART.TivaUART @ sysbus 0x40013000
+    sysCtl: sysctl
+    clockBit: 7
+    IRQ -> nvic@60
+
+// I2C0..9 (TivaI2C, nur Master). Geräte werden mit 7-Bit-Adresse angemeldet,
+// z. B.  oled: Video.SSD1306I2C @ i2c0 0x3C   (I2C0: PB2 = SCL, PB3 = SDA)
+i2c0: I2C.TivaI2C @ sysbus 0x40020000
+    sysCtl: sysctl
+    clockBit: 0
+    IRQ -> nvic@8
+
+i2c1: I2C.TivaI2C @ sysbus 0x40021000
+    sysCtl: sysctl
+    clockBit: 1
+    IRQ -> nvic@37
+
+i2c2: I2C.TivaI2C @ sysbus 0x40022000
+    sysCtl: sysctl
+    clockBit: 2
+    IRQ -> nvic@61
+
+i2c3: I2C.TivaI2C @ sysbus 0x40023000
+    sysCtl: sysctl
+    clockBit: 3
+    IRQ -> nvic@62
+
+i2c4: I2C.TivaI2C @ sysbus 0x400C0000
+    sysCtl: sysctl
+    clockBit: 4
+    IRQ -> nvic@70
+
+i2c5: I2C.TivaI2C @ sysbus 0x400C1000
+    sysCtl: sysctl
+    clockBit: 5
+    IRQ -> nvic@71
+
+i2c6: I2C.TivaI2C @ sysbus 0x400C2000
+    sysCtl: sysctl
+    clockBit: 6
+    IRQ -> nvic@102
+
+i2c7: I2C.TivaI2C @ sysbus 0x400C3000
+    sysCtl: sysctl
+    clockBit: 7
+    IRQ -> nvic@103
+
+i2c8: I2C.TivaI2C @ sysbus 0x400B8000
+    sysCtl: sysctl
+    clockBit: 8
+    IRQ -> nvic@109
+
+i2c9: I2C.TivaI2C @ sysbus 0x400B9000
+    sysCtl: sysctl
+    clockBit: 9
+    IRQ -> nvic@110

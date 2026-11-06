@@ -1,0 +1,127 @@
+:root {
+  --bg: #0f1420;
+  --panel: #161d2e;
+  --panel-2: #1d2639;
+  --border: #2a3550;
+  --text: #dbe4f5;
+  --muted: #8b98b4;
+  --accent: #38bdf8;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ---------- Setup-Bar ---------- */
+.setup-bar {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; margin-right: 12px; align-self: center; }
+.brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.field select, .field input[type='file'] {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; min-width: 220px;
+}
+.actions { display: flex; gap: 8px; }
+.btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 16px; cursor: pointer; font-weight: 600;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); color: #04121c; border-color: var(--accent); }
+.btn.small { padding: 3px 10px; font-size: 12px; }
+.message { flex-basis: 100%; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+.message.info { background: #1e3a5f55; }
+.message.ok { background: #14532d66; }
+.message.error { background: #7f1d1d66; }
+.message pre { max-height: 240px; overflow: auto; font-size: 11px; background: #0006; padding: 8px; }
+
+.placeholder { margin: auto; color: var(--muted); font-size: 16px; padding: 40px; text-align: center; }
+
+/* ---------- Control Panel ---------- */
+.control-panel { padding: 16px 20px; }
+.panel-status { display: flex; flex-wrap: wrap; gap: 20px; font-size: 12px; color: var(--muted); margin-bottom: 12px; align-items: center; }
+.exp-title { color: var(--text); font-weight: 600; }
+.panel-error { color: var(--err); cursor: pointer; }
+.renode-running { color: var(--ok); }
+.renode-stopped { color: var(--err); }
+.renode-unknown { color: var(--warn); }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+
+.widget { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; }
+.widget-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.widget-head h3 { margin: 0; font-size: 14px; }
+.widget-sub { color: var(--muted); font-size: 12px; flex: 1; }
+.widget-body { padding: 14px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.ws-status { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.ws-status.open { color: var(--ok); }
+.ws-status.connecting, .ws-status.reconnecting { color: var(--warn); }
+.ws-status.idle { color: var(--muted); }
+.meta { color: var(--muted); font-size: 12px; }
+.row-actions { display: flex; justify-content: flex-end; }
+
+/* UART */
+.widget.uart { grid-column: span 2; }
+@media (max-width: 760px) { .widget.uart { grid-column: auto; } }
+.terminal { height: 320px; background: #0b1020; border-radius: 6px; padding: 6px; overflow: hidden; }
+
+/* OLED */
+.oled-bezel { background: #000; padding: 10px; border-radius: 6px; border: 2px solid #333; align-self: center; max-width: 100%; }
+.oled-canvas { display: block; width: 100%; max-width: 512px; image-rendering: pixelated; }
+
+/* LEDs / Buttons */
+.led-row, .button-row { display: flex; flex-wrap: wrap; gap: 18px; }
+.led { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.led-bulb { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #0008; transition: background .05s, box-shadow .05s; }
+.led-label { font-size: 11px; color: var(--muted); }
+.push-button {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--text); cursor: pointer; user-select: none; touch-action: none;
+}
+.push-button .cap {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #4b5568, #1f2533);
+  border: 3px solid #0a0d14; box-shadow: 0 4px 0 #05070b; transition: transform .03s, box-shadow .03s;
+}
+.push-button.pressed .cap { transform: translateY(3px); box-shadow: 0 1px 0 #05070b; background: radial-gradient(circle at 35% 30%, #38bdf8, #0c4a6e); }
+.push-label { font-size: 11px; color: var(--muted); }
+
+/* Distanzsensor */
+.sensor-readout { display: flex; align-items: baseline; gap: 6px; }
+.sensor-value { font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sensor-unit { color: var(--muted); }
+.sensor-range { width: 100%; accent-color: var(--accent); }
+.sensor-scene { position: relative; height: 40px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+.sensor-device { position: absolute; left: 6px; top: 8px; color: var(--accent); font-weight: 700; letter-spacing: -2px; }
+.sensor-object { position: absolute; top: 6px; width: 10px; height: 28px; background: var(--warn); border-radius: 2px; transition: left .05s; }
+
+/* Keypad */
+.keypad-grid { display: grid; gap: 8px; max-width: 260px; align-self: center; width: 100%; }
+.key {
+  aspect-ratio: 1.2; border-radius: 8px; border: 1px solid var(--border);
+  background: linear-gradient(#273149, #1b2235); color: var(--text); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  user-select: none; touch-action: none; box-shadow: 0 3px 0 #0a0e18;
+}
+.key.pressed { transform: translateY(2px); box-shadow: 0 1px 0 #0a0e18; background: var(--accent); color: #04121c; }
+.key-label { font-size: 22px; font-weight: 700; }
+.key-map { font-size: 9px; color: var(--muted); }
+.key.pressed .key-map { color: #04121c; }

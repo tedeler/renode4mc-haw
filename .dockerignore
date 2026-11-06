@@ -1,0 +1,7 @@
+.git
+**/node_modules
+**/dist
+webconsole/backend/public
+examples/**/*.out
+examples/**/*.map
+examples/**/*.elf
