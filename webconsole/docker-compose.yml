@@ -10,7 +10,9 @@ services:
       - "3000:3000"   # Web-Oberfläche + Upload
       - "3333:3333"   # UART-WebSocket
       - "3334:3334"   # Control-WebSocket
-    # Zustandslos: die hochgeladene Firmware liegt nur im RAM-Dateisystem des Containers
+    # Zustandslos: die hochgeladene Firmware liegt nur im RAM-Dateisystem des Containers.
+    # "exec" ist Pflicht: Renode entpackt seine CPU-Bibliothek (tlib) nach /tmp und lädt sie
+    # von dort. Docker hängt tmpfs sonst mit noexec ein -> "failed to map segment from shared object".
     tmpfs:
-      - /tmp
+      - /tmp:exec,mode=1777
     restart: unless-stopped

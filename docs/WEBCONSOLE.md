@@ -262,6 +262,11 @@ Das Image installiert Renode **1.17.0 portable**, dieselbe Version wie in
 [INSTALL_LINUX.md](INSTALL_LINUX.md), für amd64 und arm64. Es läuft als Benutzer `node` ohne
 Root-Rechte.
 
+**`/tmp` muss ausführbar sein.** Renode entpackt beim Start seine CPU-Bibliothek nach `/tmp` und
+lädt sie von dort. Wer `/tmp` als tmpfs einhängt (wie die `docker-compose.yml`), braucht die Option
+`exec`, also `--tmpfs /tmp:exec,mode=1777`. Docker hängt tmpfs sonst mit `noexec` ein, und Renode
+bricht beim Laden der Plattform mit `failed to map segment from shared object` ab.
+
 **Mehrere Studierende:** Ein Container simuliert genau **eine** Instanz. Ein neuer Upload beendet
 die laufende Simulation. Für einen Kurs startet man deshalb einen Container pro Person bzw.
 Arbeitsplatz, z. B. mit verschiedenen Host-Ports (`-p 3100:3000 -p 3433:3333 -p 3434:3334`). Das
