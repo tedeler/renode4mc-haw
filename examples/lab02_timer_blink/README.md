@@ -83,9 +83,9 @@ Tabelle zur Funktion mit genau diesem Namen. Alle Namen der Tabelle finden Sie i
 ## 3. Variante A: Im Simulator
 
 ```bash
-$ cd ~/praktikum/renode4mc-haw/examples/lab02_timer_blink
-$ make
-$ ucsim lab02_timer_blink.out
+cd ~/praktikum/renode4mc-haw/examples/lab02_timer_blink
+make
+ucsim lab02_timer_blink.out
 ```
 
 Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer). Mit `Strg+C` beenden.
@@ -100,8 +100,8 @@ Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer).
 ### Debuggen im Simulator (Haltepunkt in der ISR)
 
 ```bash
-$ ucsim --debug lab02_timer_blink.out       # Terminal 1
-$ gdb-multiarch lab02_timer_blink.out       # Terminal 2
+ucsim --debug lab02_timer_blink.out       # Terminal 1
+gdb-multiarch lab02_timer_blink.out       # Terminal 2
 (gdb) target remote localhost:3333
 (gdb) break TIMER0A_Handler
 (gdb) continue                              # hält nach 0,5 s in der ISR

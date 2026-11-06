@@ -16,8 +16,7 @@ Rechnen Sie mit ca. 1 h und rund 6 GB freiem Plattenplatz. Die Anleitung geht da
 alles in Ihrem Home-Verzeichnis unter `~/ti` installieren – das braucht keine Administratorrechte
 (nur Schritt 5 benötigt `sudo`).
 
-> Alle Befehle werden in einem **Terminal** eingegeben. Zeilen, die mit `$` beginnen, tippen Sie
-> ohne das `$`.
+> Alle Befehle werden in einem **Terminal** eingegeben und lassen sich aus den Codeblöcken direkt kopieren.
 
 ---
 
@@ -34,13 +33,11 @@ Distributionen heißen die Pakete ähnlich (Fedora: `dnf install git make curl l
 ## 2. Dieses Repository holen
 
 ```bash
-$ mkdir -p ~/praktikum && cd ~/praktikum
-$ git clone https://github.com/tedeler/renode4mc-haw.git
-$ cd renode4mc-haw
+mkdir -p ~/praktikum && cd ~/praktikum
+git clone https://github.com/tedeler/renode4mc-haw.git
+cd renode4mc-haw
 ```
 
-(Das Repository ist derzeit **privat** – Sie brauchen Zugriff und müssen bei GitHub angemeldet
-sein, z. B. über `gh auth login`.)
 
 ## 3. Code Composer Studio installieren
 
@@ -48,10 +45,10 @@ sein, z. B. über `gh auth login`.)
    (kostenloser TI-Account nötig).
 2. Entpacken und Installer starten:
    ```bash
-   $ cd ~/Downloads
-   $ tar xf CCS*_linux-x64.tar.gz
-   $ cd CCS*_linux-x64
-   $ ./ccs_setup_*.run          # Name kann abweichen; im Ordner nachsehen mit: ls
+   cd ~/Downloads
+   tar xf CCS*_linux-x64.tar.gz
+   cd CCS*_linux-x64
+   ./ccs_setup_*.run          # Name kann abweichen; im Ordner nachsehen mit: ls
    ```
 3. **Installationsordner:** `~/ti` (Vorschlag des Installers übernehmen oder `~/ti` eintragen).
    Danach liegt CCS in `~/ti/ccs2040` (Zahl = Version, bei Ihnen evtl. anders).
@@ -72,16 +69,16 @@ Ohne diese Regel darf nur `root` mit dem Board sprechen. Ein Debug-Fehler wie
 „Could not open device“ deutet darauf hin.
 
 ```bash
-$ cd ~/ti/ccs2040/ccs/install_scripts
-$ sudo ./ti_permissions_install.sh
+cd ~/ti/ccs2040/ccs/install_scripts
+sudo ./ti_permissions_install.sh
 ```
 
 Alternativ (nur für das EK-TM4C1294XL; Datei `99-tiva-launchpad.rules`):
 
 ```bash
-$ echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="00fd", MODE="0666"' \
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="00fd", MODE="0666"' \
     | sudo tee /etc/udev/rules.d/99-tiva-launchpad.rules
-$ sudo udevadm control --reload-rules && sudo udevadm trigger
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
 Board neu einstecken. **Kontrolle:** `lsusb | grep -i 1cbe` zeigt dann eine Zeile
@@ -90,12 +87,12 @@ Board neu einstecken. **Kontrolle:** `lsusb | grep -i 1cbe` zeigt dann eine Zeil
 ## 6. Renode (der Simulator) installieren
 
 ```bash
-$ cd ~
-$ curl -L -o renode.tar.gz \
+cd ~
+curl -L -o renode.tar.gz \
     https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz
-$ mkdir -p ~/renode && tar xf renode.tar.gz -C ~/renode --strip-components=1
-$ rm renode.tar.gz
-$ ~/renode/renode --version
+mkdir -p ~/renode && tar xf renode.tar.gz -C ~/renode --strip-components=1
+rm renode.tar.gz
+~/renode/renode --version
 ```
 
 Die letzte Zeile muss `Renode, version 1.17.0 …` ausgeben. (Auf ARM-Rechnern: die Datei
@@ -106,10 +103,10 @@ Die letzte Zeile muss `Renode, version 1.17.0 …` ausgeben. (Auf ARM-Rechnern: 
 `ucsim` ist das Startskript des Simulators (Datei `sim/ucsim` in diesem Repository).
 
 ```bash
-$ mkdir -p ~/bin
-$ ln -sf ~/praktikum/renode4mc-haw/sim/ucsim ~/bin/ucsim
-$ echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-$ source ~/.bashrc
+mkdir -p ~/bin
+ln -sf ~/praktikum/renode4mc-haw/sim/ucsim ~/bin/ucsim
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 `ucsim` findet Renode automatisch unter `~/renode/renode`. Liegt Renode woanders, setzen Sie
@@ -121,9 +118,9 @@ $ source ~/.bashrc
 `examples/lab01_blinky/README.md`):
 
 ```bash
-$ cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
-$ make
-$ ucsim lab01_blinky.out
+cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+make
+ucsim lab01_blinky.out
 ```
 
 Der Browser öffnet die LED-Anzeige; **D1 und D2 blinken abwechselnd**. Beenden: `Strg+C`.

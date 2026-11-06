@@ -65,8 +65,8 @@ Der Simulator führt **dieselbe `.out`-Datei** aus wie das Board.
 Im Terminal:
 
 ```bash
-$ cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
-$ make
+cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+make
 ```
 
 Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ → Abschnitt
@@ -77,7 +77,7 @@ Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden�
 ### 3.2 Simulator starten
 
 ```bash
-$ ucsim lab01_blinky.out
+ucsim lab01_blinky.out
 ```
 
 Es öffnet sich die Seite **„EK-TM4C1294XL – LEDs“** im Browser (falls nicht: Datei
@@ -109,8 +109,8 @@ Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 
 funktioniert ohne Klicken und ist von uns getestet:
 
 ```bash
-$ cd ~/praktikum/renode4mc-haw
-$ tools/ccs-import.sh examples/lab01_blinky
+cd ~/praktikum/renode4mc-haw
+tools/ccs-import.sh examples/lab01_blinky
 ```
 
 Das Projekt liegt danach im Workspace `~/ccs_workspace`; in CCS starten Sie mit
@@ -139,8 +139,8 @@ von selbst wieder.
 Sie können den Ablauf Schritt für Schritt verfolgen:
 
 ```bash
-$ ucsim --debug lab01_blinky.out      # Terminal 1: Simulator wartet auf den Debugger
-$ gdb-multiarch lab01_blinky.out      # Terminal 2
+ucsim --debug lab01_blinky.out      # Terminal 1: Simulator wartet auf den Debugger
+gdb-multiarch lab01_blinky.out      # Terminal 2
 (gdb) target remote localhost:3333
 (gdb) break main
 (gdb) continue
