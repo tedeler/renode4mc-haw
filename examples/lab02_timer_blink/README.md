@@ -122,6 +122,11 @@ gdb-multiarch lab02_timer_blink.out       # Terminal 2
 4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `GPION_DATA ^= PIN1;` in
    `TIMER0A_Handler`, dann Resume – CCS hält bei jedem Interrupt an.
    Im Fenster **Registers** sehen Sie die Timer0-Register (`GPTM`), z. B. `GPTMRIS`.
+5. **Alternativ ohne CCS:** `.out`-Datei im Terminal laden (nach `sudo apt install openocd`):
+   ```bash
+   openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab02_timer_blink.out verify reset exit"
+   ```
+   Details: [Installationsanleitung, Schritt 9](../../docs/INSTALL_LINUX.md).
 
 ---
 

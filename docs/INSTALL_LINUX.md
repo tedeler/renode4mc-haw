@@ -136,6 +136,48 @@ Wenn a)–c) funktionieren, ist die Installation fertig. Weiter mit
 
 ---
 
+## 9. Eine `.out`-Datei manuell auf das Board laden (ohne CCS)
+
+Die vom Compiler erzeugte `.out`-Datei (ELF-Format) kann auch im Terminal in den Flash des Boards
+geschrieben werden – nützlich, wenn man ein fertiges Programm nur ausprobieren will, oder wenn CCS
+nicht zur Hand ist. Dafür gibt es das Programm **OpenOCD**, das den On-Board-Debugger (ICDI) anspricht.
+
+Einmalig installieren (die udev-Regel aus Schritt 5 ist Voraussetzung):
+
+```bash
+sudo apt install openocd
+```
+
+Board am Port **DEBUG** anschließen, dann im Ordner mit der `.out`-Datei:
+
+```bash
+cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+make
+openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab01_blinky.out verify reset exit"
+```
+
+Die Ausgabe muss `** Programming Finished **`, `** Verified OK **` und `** Resetting Target **`
+enthalten. Danach läuft das Programm, und D1/D2 blinken. Die Meldung `Error: SRST error`
+ist bei diesem Board harmlos. Das Programm bleibt im Flash, bis es überschrieben wird (auch nach dem
+Abstecken des USB-Kabels).
+
+| Meldung / Problem | Lösung |
+|---|---|
+| `Error: no device found` / `LIBUSB_ERROR_ACCESS` | udev-Regel fehlt (Schritt 5), Kabel am Port „DEBUG“? |
+| `Error: Can't find board/ti_ek-tm4c1294xl.cfg` | OpenOCD zu alt; Datei `ek-tm4c1294xl.cfg` probieren oder OpenOCD aktualisieren |
+| `Address already in use` (Port 3333) | Es läuft schon ein OpenOCD, ein CCS-Debug oder `ucsim --debug`; beenden |
+
+Wichtig: Der Flash-Inhalt ist im Simulator und auf dem Board derselbe – Sie laden dieselbe
+`.out`-Datei, die Sie auch mit `ucsim` simulieren.
+
+*Test-Stand:* Mit einem EK-TM4C1294XL und OpenOCD 0.12.0 (Ubuntu) getestet: Programmieren, Verifizieren
+und Starten von `lab01_blinky.out` funktionieren. Das Blinken der LEDs wurde nicht optisch
+kontrolliert, sondern über den Programmzähler (läuft in der Warteschleife). Ein
+TI-eigenes Werkzeug mit gleicher Funktion ist der **UniFlash** (GUI, ti.com/tool/UNIFLASH);
+das haben wir nicht getestet.
+
+---
+
 ## Häufige Probleme
 
 | Meldung / Problem | Lösung |

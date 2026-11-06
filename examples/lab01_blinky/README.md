@@ -132,6 +132,13 @@ am Ende `Finished building target: "lab01_blinky.out"` und **0 errors** stehen.
 Das Programm liegt danach im Flash des Boards: Nach Aus- und Einstecken des USB-Kabels startet es
 von selbst wieder.
 
+### 4.4 Alternative: `.out`-Datei im Terminal auf das Board laden (ohne CCS)
+
+```bash
+openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab01_blinky.out verify reset exit"
+```
+
+(`sudo apt install openocd`, Details in [Installationsanleitung, Schritt 9](../../docs/INSTALL_LINUX.md).)
 ---
 
 ## 5. Im Simulator debuggen (Zusatz)
