@@ -1,7 +1,9 @@
 # Kommandozeilen-Build mit TI Arm Clang (Alternative zu CCS). Aufruf:  make
 # Reiner Registerzugriff: keine TivaWare/driverlib nötig.
-# Variable (anpassen oder beim Aufruf setzen, z. B.  make CCS_ROOT=/opt/ti/ccs):
-CCS_ROOT      ?= $(HOME)/ti/ccs2040/ccs
+# CCS wird unter ~/ti/ccs2040/ccs und ~/tmp/ti/ccs2040/ccs gesucht (erster Treffer gilt).
+# Anderer Ort: beim Aufruf setzen, z. B.  make CCS_ROOT=/opt/ti/ccs
+CCS_CANDIDATES = $(HOME)/ti/ccs2040/ccs $(HOME)/tmp/ti/ccs2040/ccs
+CCS_ROOT      ?= $(firstword $(wildcard $(CCS_CANDIDATES)) $(HOME)/ti/ccs2040/ccs)
 CGT           ?= $(lastword $(sort $(wildcard $(CCS_ROOT)/tools/compiler/ti-cgt-armllvm_*)))
 
 CC     = $(CGT)/bin/tiarmclang
@@ -18,6 +20,7 @@ SRCS = main.c $(COMMON)/startup_tm4c1294.c
 all: $(NAME).out
 
 $(NAME).out: $(SRCS) $(COMMON)/tm4c1294.cmd
+	@test -x "$(CC)" || { echo "tiarmclang nicht gefunden unter $(CCS_ROOT) - CCS_ROOT setzen, z. B. make CCS_ROOT=/opt/ti/ccs" >&2; exit 1; }
 	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) -o $@
 
 # Simulator: Dieses Lab braucht die Web-Konsole (Pendeldisplay, Sensor, UART im Browser):

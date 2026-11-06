@@ -182,7 +182,7 @@ das haben wir nicht getestet.
 
 | Meldung / Problem | Lösung |
 |---|---|
-| `make: tiarmclang: Datei nicht gefunden` | `CCS_ROOT` stimmt nicht: `make CCS_ROOT=$HOME/ti/ccs2040/ccs` |
+| `tiarmclang nicht gefunden unter …` | `make` sucht CCS unter `~/ti/ccs2040/ccs` und `~/tmp/ti/ccs2040/ccs`. Anderer Ort: `make CCS_ROOT=/pfad/zu/ccs` |
 | `renode nicht gefunden` | Schritt 6 wiederholen oder `export RENODE=…` |
 | Browser zeigt „Nicht verbunden“ | `ucsim` läuft nicht (mehr); Terminal prüfen |
 | CCS: „Could not open device“ / Board nicht gefunden | udev-Regel (Schritt 5), anderes Kabel, Port „DEBUG“ benutzen |
