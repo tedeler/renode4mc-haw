@@ -7,7 +7,7 @@ const multer = require('multer');
 
 const cfg = require('./lib/config');
 const experiments = require('./lib/experiments');
-const { RenodeManager } = require('./lib/renodeManager');
+const { RenodeManager, assertPortsFree } = require('./lib/renodeManager');
 const { UartBridge } = require('./lib/uartBridge');
 const { ControlBridge } = require('./lib/controlBridge');
 
@@ -54,6 +54,15 @@ async function startExperiment(exp) {
   uart.detach('renode-restart');
   control.detach();
   activeExperiment = null;
+
+  await renode.stop();
+  renode.logTail = []; // kein Log des vorherigen Laufs in der Fehlermeldung
+  const ports = [
+    { port: cfg.renodeMonitorPort, name: 'Renode-Monitor' },
+    { port: cfg.renodeUartPort, name: 'UART-Terminal' },
+  ];
+  if (exp.ledBridge) ports.push({ port: Number(new URL(exp.ledBridge).port), name: 'LED-Bridge' });
+  await assertPortsFree(ports);
 
   await renode.start(exp.id, exp.rescPath, cfg.elfPath);
   const alive = () => renode.running;
