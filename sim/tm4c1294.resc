@@ -1,0 +1,15 @@
+# Generisches Startskript. Variablen werden von "ucsim" gesetzt:
+#   $elf     - Pfad zur .out/.elf-Datei
+using sysbus
+
+include @models/TivaSysCtl.cs
+include @models/TivaGPIOPort.cs
+include @models/TivaTimer.cs
+include @models/WebSocketBridge.cs
+
+mach create "tm4c1294"
+machine LoadPlatformDescription @platforms/tm4c1294ncpdt.repl
+sysbus LoadELF $elf
+
+# Zugriffe auf nicht modellierte Register nicht als Warnung fluten
+logLevel 2

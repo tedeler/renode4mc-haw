@@ -1,0 +1,167 @@
+// Plattform: Tiva TM4C1294NCPDT (EK-TM4C1294XL), vereinfacht.
+// Modelliert: Cortex-M4F + NVIC (SysTick), 1 MB Flash, 256 KB SRAM, Bit-Banding,
+// SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, LED-Bridge zum Browser.
+// Takt: Reset-Takt PIOSC = 16 MHz.
+// nvic@N: N = IRQ-Nummer (Vektor Nr. minus 16), z. B. Timer0A = IRQ 19.
+
+// PerformanceInMips: 11 ~ 16 MHz / 1,5 Takte pro Befehl. Damit dauert z. B. SysCtlDelay(n)
+// im Simulator etwa so lange wie auf dem Board (Zeitverhalten ist nur näherungsweise gleich).
+cpu: CPU.CortexM @ sysbus
+    cpuType: "cortex-m4f"
+    PerformanceInMips: 11
+    nvic: nvic
+
+nvic: IRQControllers.NVIC @ sysbus 0xE000E000
+    -> cpu@0
+    systickFrequency: 16000000
+
+flash: Memory.MappedMemory @ sysbus 0x00000000
+    size: 0x00100000
+
+sram: Memory.MappedMemory @ sysbus 0x20000000
+    size: 0x00040000
+
+// Bit-Banding (TivaWare/driverlib nutzt es z. B. in SysCtlPeripheralEnable)
+bbPeripherals: Miscellaneous.BitBanding @ sysbus <0x42000000, +0x2000000>
+    peripheralBase: 0x40000000
+
+bbSram: Miscellaneous.BitBanding @ sysbus <0x22000000, +0x200000>
+    peripheralBase: 0x20000000
+
+sysctl: Miscellaneous.TivaSysCtl @ sysbus 0x400FE000
+
+// LED-Anzeige im Browser (ws://127.0.0.1:9000): 0=D1, 1=D2, 2=D3, 3=D4
+wsBridge: Miscellaneous.WebSocketBridge
+
+gpioA: GPIOPort.TivaGPIOPort @ sysbus 0x40058000
+    sysCtl: sysctl
+    clockBit: 0
+    portName: "A"
+    IRQ -> nvic@0
+
+gpioB: GPIOPort.TivaGPIOPort @ sysbus 0x40059000
+    sysCtl: sysctl
+    clockBit: 1
+    portName: "B"
+    IRQ -> nvic@1
+
+gpioC: GPIOPort.TivaGPIOPort @ sysbus 0x4005A000
+    sysCtl: sysctl
+    clockBit: 2
+    portName: "C"
+    IRQ -> nvic@2
+
+gpioD: GPIOPort.TivaGPIOPort @ sysbus 0x4005B000
+    sysCtl: sysctl
+    clockBit: 3
+    portName: "D"
+    IRQ -> nvic@3
+
+gpioE: GPIOPort.TivaGPIOPort @ sysbus 0x4005C000
+    sysCtl: sysctl
+    clockBit: 4
+    portName: "E"
+    IRQ -> nvic@4
+
+gpioF: GPIOPort.TivaGPIOPort @ sysbus 0x4005D000
+    sysCtl: sysctl
+    clockBit: 5
+    portName: "F"
+    IRQ -> nvic@30
+    4 -> wsBridge@2
+    0 -> wsBridge@3
+
+gpioG: GPIOPort.TivaGPIOPort @ sysbus 0x4005E000
+    sysCtl: sysctl
+    clockBit: 6
+    portName: "G"
+    IRQ -> nvic@31
+
+gpioH: GPIOPort.TivaGPIOPort @ sysbus 0x4005F000
+    sysCtl: sysctl
+    clockBit: 7
+    portName: "H"
+    IRQ -> nvic@32
+
+gpioJ: GPIOPort.TivaGPIOPort @ sysbus 0x40060000
+    sysCtl: sysctl
+    clockBit: 8
+    portName: "J"
+    IRQ -> nvic@51
+
+gpioK: GPIOPort.TivaGPIOPort @ sysbus 0x40061000
+    sysCtl: sysctl
+    clockBit: 9
+    portName: "K"
+    IRQ -> nvic@52
+
+gpioL: GPIOPort.TivaGPIOPort @ sysbus 0x40062000
+    sysCtl: sysctl
+    clockBit: 10
+    portName: "L"
+    IRQ -> nvic@53
+
+gpioM: GPIOPort.TivaGPIOPort @ sysbus 0x40063000
+    sysCtl: sysctl
+    clockBit: 11
+    portName: "M"
+    IRQ -> nvic@72
+
+gpioN: GPIOPort.TivaGPIOPort @ sysbus 0x40064000
+    sysCtl: sysctl
+    clockBit: 12
+    portName: "N"
+    IRQ -> nvic@73
+    1 -> wsBridge@0
+    0 -> wsBridge@1
+
+gpioP: GPIOPort.TivaGPIOPort @ sysbus 0x40065000
+    sysCtl: sysctl
+    clockBit: 13
+    portName: "P"
+
+gpioQ: GPIOPort.TivaGPIOPort @ sysbus 0x40066000
+    sysCtl: sysctl
+    clockBit: 14
+    portName: "Q"
+
+timer0: Timers.TivaTimer @ sysbus 0x40030000
+    sysCtl: sysctl
+    clockBit: 0
+    IRQA -> nvic@19
+    IRQB -> nvic@20
+
+timer1: Timers.TivaTimer @ sysbus 0x40031000
+    sysCtl: sysctl
+    clockBit: 1
+    IRQA -> nvic@21
+    IRQB -> nvic@22
+
+timer2: Timers.TivaTimer @ sysbus 0x40032000
+    sysCtl: sysctl
+    clockBit: 2
+    IRQA -> nvic@23
+    IRQB -> nvic@24
+
+timer3: Timers.TivaTimer @ sysbus 0x40033000
+    sysCtl: sysctl
+    clockBit: 3
+    IRQA -> nvic@35
+    IRQB -> nvic@36
+
+timer4: Timers.TivaTimer @ sysbus 0x40034000
+    sysCtl: sysctl
+    clockBit: 4
+
+timer5: Timers.TivaTimer @ sysbus 0x40035000
+    sysCtl: sysctl
+    clockBit: 5
+
+timer6: Timers.TivaTimer @ sysbus 0x40036000
+    sysCtl: sysctl
+    clockBit: 6
+
+timer7: Timers.TivaTimer @ sysbus 0x40037000
+    sysCtl: sysctl
+    clockBit: 7
+

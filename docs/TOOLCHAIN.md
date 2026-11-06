@@ -148,3 +148,14 @@ Falls CCS-Theia die Erweiterung nicht annimmt, bleibt Variante 2 (VS Code mit id
 - Welche Betriebssysteme müssen zuerst funktionieren (Renode-Pakete für alle drei existieren)?
 - Reicht ein Browser-Visualizer pro Lab, oder ein universelles Board-Abbild (LEDs, Taster, UART-Konsole, ADC-Regler)?
 - Ist die allgemeine Debugansicht (GDB-Remote) im CCS akzeptabel, auch wenn sie nicht TIs eigene Debug-Oberfläche ist?
+
+
+## Nachtrag: Umsetzung in diesem Repository
+
+- Startup (`common/startup_tm4c1294.c`), Linker-Skript (`common/tm4c1294.cmd`) und Ersatz für
+  `driverlib/cpu.c` (`common/cpu_clang.c`) sind eigene Dateien und werden von CCS **und** vom
+  Makefile gleichermaßen verwendet; das erzeugte `.out` läuft unverändert im Simulator.
+- TivaWare wird als **Quellcode** in das Projekt gelinkt (Pfadvariable `TIVAWARE_ROOT`), weil die
+  vorkompilierte `driverlib.lib` für den alten TI-Compiler gebaut ist. Compiler-Define `-Dgcc`
+  wählt in TivaWare die clang-kompatiblen Inline-Assembler-Zweige (`SysCtlDelay`).
+- Simulator starten: `ucsim [--debug] programm.out`; `--debug` öffnet den GDB-Server (Port 3333).

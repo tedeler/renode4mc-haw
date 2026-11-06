@@ -1,5 +1,9 @@
 # Fahrplan: Peripherie-Unterstützung für Studierende
 
+> **Stand:** M0 (Gerüst, Bit-Banding), M1 (Clock-Gating), M3 (GPIO) und M4 (Timer) sind umgesetzt
+> (siehe `sim/`, Beispiele `examples/`). Offen: M2 (SysTick-Test), M5 (UART), M6 (ADC), M7 (weitere Labs).
+> Die folgenden Abschnitte beschreiben den ursprünglichen Plan.
+
 Ziel: Studierende schreiben normale TM4C1294-Firmware (Register oder TivaWare-`driverlib`) und
 lassen sie unverändert in Renode laufen. Benötigt werden **SYSCTL (Clock-Gating), SysTick, GPIO,
 Timer (GPTM), UART und ADC**. Alles andere (I2C, SSI, CAN, USB, Ethernet, EPI, …) ist

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>EK-TM4C1294XL – LED-Anzeige (Simulator)</title>
+<style>
+  body { font-family: sans-serif; background: #1b1b1b; color: #eee; text-align: center; margin-top: 40px; }
+  .board { display: inline-flex; gap: 30px; padding: 30px 40px; background: #0a4d2a; border-radius: 12px; }
+  .led { width: 50px; height: 50px; border-radius: 50%; background: #333; border: 3px solid #111;
+         transition: background 0.03s; margin: 0 auto 10px; }
+  .led.on { background: #ff3b30; box-shadow: 0 0 25px 8px #ff3b30aa; }
+  #status { margin-top: 25px; font-size: 14px; }
+  .ok { color: #6f6; } .bad { color: #f66; }
+</style>
+</head>
+<body>
+<h2>EK-TM4C1294XL – LEDs</h2>
+<div class="board">
+  <div><div class="led" id="led0"></div>D1<br><small>PN1</small></div>
+  <div><div class="led" id="led1"></div>D2<br><small>PN0</small></div>
+  <div><div class="led" id="led2"></div>D3<br><small>PF4</small></div>
+  <div><div class="led" id="led3"></div>D4<br><small>PF0</small></div>
+</div>
+<div id="status" class="bad">Nicht verbunden …</div>
+<script>
+  const status = document.getElementById('status');
+  function connect() {
+    const ws = new WebSocket('ws://127.0.0.1:9000');
+    ws.onopen = () => { status.textContent = 'Verbunden mit Simulator'; status.className = 'ok'; };
+    ws.onclose = () => { status.textContent = 'Nicht verbunden – Simulator läuft? (ucsim ...)'; status.className = 'bad'; setTimeout(connect, 1000); };
+    ws.onmessage = (e) => {
+      const m = /^LED(\d)=([01])$/.exec(e.data);
+      if (m) { const el = document.getElementById('led' + m[1]); if (el) el.classList.toggle('on', m[2] === '1'); }
+    };
+  }
+  connect();
+</script>
+</body>
+</html>

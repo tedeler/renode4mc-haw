@@ -1,0 +1,36 @@
+#!/bin/bash
+# ucsim - TM4C1294-Programm (.out/.elf) im Renode-Simulator ausführen.
+#   ucsim [--debug] [--no-browser] <programm.out>
+# Umgebungsvariable RENODE: Pfad zum renode-Startskript (Standard: renode aus PATH
+# oder ~/renode/renode).
+set -e
+SIMDIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+DEBUG=false; BROWSER=true; ELF=""
+for a in "$@"; do
+  case "$a" in
+    --debug) DEBUG=true ;;
+    --no-browser) BROWSER=false ;;
+    -h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+    *) ELF="$a" ;;
+  esac
+done
+[ -f "$ELF" ] || { echo "Fehler: Programmdatei '$ELF' nicht gefunden. Aufruf: ucsim [--debug] datei.out" >&2; exit 1; }
+ELF="$(readlink -f "$ELF")"
+RENODE="${RENODE:-$(command -v renode || true)}"
+[ -z "$RENODE" ] && [ -x "$HOME/renode/renode" ] && RENODE="$HOME/renode/renode"
+[ -x "$RENODE" ] || { echo "Fehler: renode nicht gefunden (siehe docs/INSTALL_LINUX.md, oder RENODE=... setzen)." >&2; exit 1; }
+
+cd "$SIMDIR"
+CMD="\$elf=@$ELF; include @tm4c1294.resc"
+if $DEBUG; then
+  CMD="$CMD; machine StartGdbServer 3333"
+  echo ">> Debug-Modus: GDB-Server auf localhost:3333, CPU wartet auf den Debugger (kein 'start')."
+else
+  CMD="$CMD; start"
+fi
+if $BROWSER; then
+  (sleep 3; xdg-open "$SIMDIR/visualizer/ek-tm4c1294xl.html" >/dev/null 2>&1 || true) &
+fi
+echo ">> Simulator läuft. Beenden mit Strg+C (oder 'quit' im Renode-Monitor)."
+# stdin offen halten, sonst beendet sich Renode sofort
+exec "$RENODE" --console -e "$CMD"
