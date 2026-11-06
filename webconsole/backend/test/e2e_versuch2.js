@@ -90,6 +90,7 @@ function compare(pd, text) {
   let uart = '';
   let pd = null;
   const phases = [];
+  const events = []; // [t, phi, leds, periodUs] aus "pdev", in Empfangsreihenfolge
   const errors = [];
   const u = new WebSocket(`ws://${host}:3333`);
   u.on('message', (d) => (uart += d.toString()));
@@ -105,6 +106,7 @@ function compare(pd, text) {
       };
       phases.push(p.phase);
     }
+    if (m.type === 'pdev') events.push(...m.ev, m.now);
     if (m.type === 'error') errors.push(m.message);
   });
   await Promise.all([u, c].map((ws) => new Promise((r) => ws.once('open', r))));
@@ -137,6 +139,24 @@ function compare(pd, text) {
   // gemeldete Periode in ms (Komma), Toleranz 0,1 ms (Messung über eine halbe Schwingung)
   const reported = (text) => (text.match(/Pendelperiode: ([\d,]+) ms/g) || [])
     .map((m) => Number(m.replace(/[^\d,]/g, '').replace(',', '.')));
+  // Ereignisse für die Wiedergabe: Zeit steigt, Phase passt zur Zeit, LED-Wechsel kommen an
+  events.length = 0;
+  await sleep(1500);
+  {
+    let mono = true;
+    let maxErr = 0;
+    for (let i = 1; i < events.length; i++) {
+      const [t0, p0, , per0] = events[i - 1];
+      const [t1, p1, , per1] = events[i];
+      if (t1 < t0) mono = false;
+      if (per0 === per1) maxErr = Math.max(maxErr, Math.abs((p1 - p0) / 10000 - (2 * (t1 - t0)) / per0));
+    }
+    const changes = new Set(events.map((e) => e[2])).size;
+    check('Pendel-Ereignisse: Zeit monoton, Phase passt zur Zeit, LED-Wechsel vorhanden',
+      events.length > 50 && mono && maxErr < 0.001 && changes > 5,
+      `${events.length} Ereignisse, max. Phasenfehler ${maxErr.toFixed(5)}`);
+  }
+
   for (const [hz, ms] of [[15, '66,7'], [1, '1000,0'], [20, '50,0'], [10, '100,0']]) {
     const mark = uart.length;
     send({ type: 'pendulum', frequency: hz });

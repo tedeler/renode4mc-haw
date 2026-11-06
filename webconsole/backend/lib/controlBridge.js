@@ -7,6 +7,7 @@ const experiments = require('./experiments');
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
+const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -29,6 +30,10 @@ const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
  *                                                     (0..19999), leds = LED-Zustand jetzt,
  *                                                     data = Base64, erst alle Spalten
  *                                                     links->rechts, dann rechts->links (Bit n = LED n)
+ *   { type: "pdev", now: [t, phi, leds, periodUs], ev: [[t, phi, leds, periodUs], …] }
+ *                                                     Pendel-Ereignisse seit dem letzten Abruf (LED-Wechsel
+ *                                                     mit virtueller Zeit t in us und Phase phi in 1/10000
+ *                                                     halber Schwingung) für die Wiedergabe im Browser
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -283,6 +288,15 @@ class ControlBridge {
         if (m) {
           this.lastPendulum = { type: 'pd', columns: +m[1], periodUs: +m[2], phase: +m[3], leds: +m[4], data: m[5] };
           this._broadcast(this.lastPendulum);
+        }
+        const evOut = await mon.execute(`${exp.pendulum.path} GetEvents`);
+        const e = EV_RE.exec(evOut);
+        if (e) {
+          const ev = e[5]
+            .split(';')
+            .filter(Boolean)
+            .map((x) => x.split(',').map(Number));
+          this._broadcast({ type: 'pdev', now: [+e[1], +e[2], +e[3], +e[4]], ev });
         }
       }
     } catch (e) {

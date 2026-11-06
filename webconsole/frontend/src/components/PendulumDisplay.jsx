@@ -12,6 +12,63 @@ const ROW_STEP = 13; // Abstand der LEDs auf dem Stab
 const THETA_MAX = (30 * Math.PI) / 180; // größte Auslenkung (Winkel)
 const LED_RGB = '255, 84, 64';
 const ROD_COLOR = '#4b5058'; // dunkelgrau vor schwarzem Grund
+const DELAY_US = 200000; // Wiedergabe so weit hinter der Simulation (Daten kommen 10-mal pro Sekunde)
+const FADE_US = 10000; // Leuchtpunkte der Stab-LEDs verblassen in 10 ms
+const TRAIL_STEP_US = 100; // Abtastschritt der Leuchtspur
+
+/**
+ * Zeitlinie der Simulation für die Wiedergabe: Stützstellen (virtuelle Zeit t in us, Phase phi in
+ * halben Schwingungen, LED-Zustand, Periode). Zwischen zwei Stützstellen läuft die Phase
+ * gleichmäßig mit 2/Periode weiter; der LED-Zustand gilt bis zur nächsten Stützstelle.
+ */
+class Timeline {
+  constructor() {
+    this.s = [];
+    this.offset = null; // Wanduhr (us) - virtuelle Zeit (us)
+  }
+
+  add(msg) {
+    const wall = performance.now() * 1000;
+    const [t, phiQ, leds, periodUs] = msg.now;
+    const last = this.s[this.s.length - 1];
+    if (last && t < last.t) this.s = []; // Renode neu gestartet: Zeit beginnt bei 0
+    const measured = wall - t;
+    if (this.offset === null || !this.s.length || Math.abs(measured - this.offset) > 1e6) this.offset = measured;
+    else this.offset += 0.05 * (measured - this.offset); // Schwankungen der Übertragung glätten
+    for (const [et, ep, el, eper] of msg.ev) this.s.push({ t: et, phi: ep / 10000, leds: el, period: eper });
+    this.s.push({ t, phi: phiQ / 10000, leds, period: periodUs });
+    // Ältere Stützstellen als 2 s (virtuell) verwerfen, eine davor behalten
+    const keepFrom = t - 2e6;
+    let i = 0;
+    while (i < this.s.length - 1 && this.s[i + 1].t < keepFrom) i++;
+    if (i) this.s.splice(0, i);
+  }
+
+  get lastT() {
+    return this.s.length ? this.s[this.s.length - 1].t : 0;
+  }
+
+  /** Lage (phi) und LED-Zustand zur virtuellen Zeit t */
+  at(t) {
+    const s = this.s;
+    let lo = 0;
+    let hi = s.length - 1;
+    if (t <= s[0].t) return { phi: s[0].phi, leds: s[0].leds };
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (s[mid].t <= t) lo = mid;
+      else hi = mid - 1;
+    }
+    const p = s[lo];
+    return { phi: p.phi + ((t - p.t) * 2) / p.period, leds: p.leds };
+  }
+
+  /** virtuelle Zeit, die jetzt angezeigt wird (verzögert, nie über die Daten hinaus) */
+  displayTime() {
+    if (!this.s.length) return null;
+    return Math.min(this.lastT, performance.now() * 1000 - this.offset - DELAY_US);
+  }
+}
 
 const VIEWS = [
   { id: 'both', label: 'Auge (beide Schwünge)' },
@@ -76,6 +133,32 @@ function drawPersistence(ctx, pd, view) {
   }
 }
 
+/**
+ * Leuchtspur: Jede LED, die in den letzten 10 ms an war, hinterlässt dort, wo der Stab in dem
+ * Moment war, einen Punkt, der mit dem Alter verblasst.
+ */
+function drawTrail(ctx, timeline, T) {
+  const cx = W / 2;
+  ctx.save();
+  for (let age = FADE_US; age >= 0; age -= TRAIL_STEP_US) {
+    const { phi, leds } = timeline.at(T - age);
+    if (!leds) continue;
+    const theta = THETA_MAX * Math.sin(Math.PI * phi);
+    const sx = Math.sin(theta);
+    const sy = -Math.cos(theta);
+    const alpha = 0.3 * (1 - age / FADE_US); // ältester Punkt fast unsichtbar, jüngster am hellsten
+    ctx.fillStyle = `rgba(${LED_RGB}, ${alpha})`;
+    for (let led = 0; led < 8; led++) {
+      if (!((leds >> led) & 1)) continue;
+      const r = ledRadius(led);
+      ctx.beginPath();
+      ctx.arc(cx + r * sx, PIVOT_Y + r * sy, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /** Pendelstab in seiner aktuellen Lage, mit dem aktuellen Zustand der LEDs. */
 function drawRod(ctx, theta, leds) {
   const cx = W / 2;
@@ -121,13 +204,14 @@ function drawRod(ctx, theta, leds) {
  * und stellt die Pendelfrequenz ein.
  * Schieberegler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
  * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
- * Die Lage des Stabs kommt als Phase mit jedem Frame (10/s) und wird dazwischen fortgeschrieben.
+ * Stab, LEDs und Leuchtspur werden aus den LED-Wechseln der Simulation (mit virtueller Zeit und
+ * Phase, 10-mal pro Sekunde gesammelt) 200 ms verzögert, aber zeitlich exakt wiedergegeben.
  */
 export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
-  const { subscribePendulum, send, status } = useControlSocket();
+  const { subscribePendulum, subscribePendulumEvents, send, status } = useControlSocket();
   const canvasRef = useRef(null);
   const latest = useRef(null);
-  const motion = useRef(null); // { phase (halbe Schwingungen), t0 (ms), periodUs, leds }
+  const timeline = useRef(new Timeline());
   const dirty = useRef(true);
   const viewRef = useRef('both');
   const [view, setView] = useState('both');
@@ -142,13 +226,12 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
       subscribePendulum((pd) => {
         latest.current = pd;
         dirty.current = true;
-        if (pd.periodUs) {
-          setModelHz(1e6 / pd.periodUs);
-          motion.current = { phase: pd.phase / 10000, t0: performance.now(), periodUs: pd.periodUs, leds: pd.leds };
-        }
+        if (pd.periodUs) setModelHz(1e6 / pd.periodUs);
       }),
     [subscribePendulum],
   );
+
+  useEffect(() => subscribePendulumEvents((msg) => timeline.current.add(msg)), [subscribePendulumEvents]);
 
   const flush = () => {
     timer.current = null;
@@ -198,14 +281,16 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
       ctx.fillRect(0, 0, W, H);
       ctx.drawImage(layer, 0, 0);
 
-      const m = motion.current;
+      // Stab, LEDs und Leuchtspur zeitgenau aus der Zeitlinie (200 ms hinter der Simulation)
+      const tl = timeline.current;
+      const T = tl.displayTime();
       let theta = 0;
       let leds = 0;
-      if (m) {
-        // Phase fortschreiben: eine halbe Schwingung dauert periodUs / 2
-        const phase = m.phase + ((performance.now() - m.t0) * 2000) / m.periodUs;
-        theta = THETA_MAX * Math.sin(Math.PI * phase);
-        leds = m.leds;
+      if (T !== null) {
+        drawTrail(ctx, tl, T);
+        const now = tl.at(T);
+        theta = THETA_MAX * Math.sin(Math.PI * now.phi);
+        leds = now.leds;
       }
       drawRod(ctx, theta, leds);
       raf = requestAnimationFrame(loop);

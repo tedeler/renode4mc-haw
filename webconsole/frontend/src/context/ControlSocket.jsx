@@ -36,6 +36,7 @@ export function ControlSocketProvider({ children }) {
   const frameListeners = useRef(new Set());
   const lastFrame = useRef(null);
   const pendulumListeners = useRef(new Set());
+  const pendulumEventListeners = useRef(new Set());
   const lastPendulum = useRef(null);
 
   const emitFrame = (frame) => {
@@ -71,6 +72,9 @@ export function ControlSocketProvider({ children }) {
       case 'pd':
         emitPendulum(decodePendulum(msg));
         break;
+      case 'pdev':
+        pendulumEventListeners.current.forEach((fn) => fn(msg));
+        break;
       case 'renode':
         setRenodeState(msg.state);
         if (msg.state === 'stopped') setLeds({});
@@ -93,6 +97,12 @@ export function ControlSocketProvider({ children }) {
     return () => frameListeners.current.delete(fn);
   }, []);
 
+  /** Pendel-Ereignisse (LED-Wechsel mit virtueller Zeit und Phase), ohne Puffer */
+  const subscribePendulumEvents = useCallback((fn) => {
+    pendulumEventListeners.current.add(fn);
+    return () => pendulumEventListeners.current.delete(fn);
+  }, []);
+
   const subscribePendulum = useCallback((fn) => {
     pendulumListeners.current.add(fn);
     if (lastPendulum.current) fn(lastPendulum.current);
@@ -107,10 +117,11 @@ export function ControlSocketProvider({ children }) {
       send,
       subscribeFrame,
       subscribePendulum,
+      subscribePendulumEvents,
       lastError,
       clearError: () => setLastError(null),
     }),
-    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, lastError],
+    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

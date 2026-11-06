@@ -127,7 +127,9 @@ Was Sie sehen sollten:
 - Im **Terminal**: `renode4mc-haw - Lab 04 Pendeldisplay`, `Abstand: 100 cm`,
   `Pendelperiode: 100,0 ms`.
 - Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten) und `100CM` als Kreisbogen,
-  so wie das Auge es bei einem echten Pendel sieht.
+  so wie das Auge es bei einem echten Pendel sieht. Die LEDs auf dem Stab zeigen ihren Zustand
+  im jeweiligen Moment und hinterlassen einen Leuchtpunkt, der in 10 ms verblasst. Die Anzeige
+  läuft dafür 0,2 s hinter der Simulation her.
 - **D2** blinkt mit 1 Hz.
 - **Schieberegler** des Sensors: Terminal und Pendel zeigen den neuen Abstand.
 - **Pendelfrequenz** (Schieberegler am Pendel, 0,1–20 Hz): Das Terminal meldet die neu gemessene
