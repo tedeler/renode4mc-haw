@@ -91,14 +91,15 @@ eingereiht.
     Eingeklappte Panels laufen weiter (Terminal, Anzeigen, WebSockets).
   - Kopfzeile ziehen: Panel verschieben; an den linken/rechten Rand ziehen = neue Spalte (höchstens 4).
   - Trennlinie zwischen Spalten ziehen: Breite ändern, Doppelklick: beide gleich breit.
-  - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, ↺ Layout zurücksetzen
-    (Standard, alles sichtbar).
+  - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, **↺ Standardlayout**
+    (zurück zur Standardanordnung, alles sichtbar; mobil am Ende der Sprungleiste).
 - **Handy / kleines Fenster**: eine Spalte in Layout-Reihenfolge, die Seite scrollt. Die Leiste unter der
   Kopfzeile springt zu jedem Panel (eingeklappte gestrichelt, Diagnose farbig bei Meldungen); Setup
   (Versuch, Firmware, Start/Stop) ist einklappbar und nach dem Start eingeklappt; Reihenfolge über den
   Griff ⠿ ändern.
-- Das Layout wird je Versuch im Browser gespeichert (`localStorage`, Schlüssel
-  `renode4mc.layout.v1.<Versuch>`). Kommt eine neue Diagnose-Meldung, klappt das Diagnose-Panel auf.
+- Position, Breite und Ein-/Ausklappzustand der Panels werden je Versuch im Browser gespeichert
+  (`localStorage`, Schlüssel `renode4mc.layout.v1.<Versuch>`) und beim nächsten Start dieses Versuchs
+  wiederhergestellt. Kommt eine neue Diagnose-Meldung, klappt das Diagnose-Panel auf.
 - Code: `webconsole/frontend/src/layout/Workspace.jsx` (Panels werden per Portal in stabile DOM-Knoten
   gerendert und beim Verschieben nur umgehängt), Panel-Liste mit Standardspalte/Höhenanteil in
   `components/ControlPanel.jsx`.
@@ -264,9 +265,21 @@ links, 15000 = ganz links), `pd.leds` der LED-Zustand im Moment der Abfrage.
 `pdev` enthält jeden LED-Wechsel seit dem letzten Abruf mit virtueller Zeit `t` (µs seit Start)
 und Phase `phi` (1/10000 halbe Schwingung, fortlaufend), dazu den Jetzt-Zustand `now`. Das Modell
 merkt sich die Wechsel (`GetEvents`), das Backend holt sie mit jedem Poll ab (10/s). Das Frontend
-spielt damit Stab, LEDs und Leuchtspur **200 ms verzögert, aber zeitlich exakt** wieder: Zwischen
+spielt damit Stab, LEDs und Leuchtspur **etwa 300 ms verzögert, aber zeitlich exakt** wieder: Zwischen
 zwei Stützstellen läuft die Phase mit `2/Periode` weiter, der LED-Zustand gilt bis zum nächsten
-Wechsel. Das Bild entsteht nur aus der Leuchtspur: Jede leuchtende LED zeichnet den Bogen, den sie
+Wechsel.
+
+Renode treibt die virtuelle Zeit ungleichmäßig voran (gemessen: pro 100 ms Wanduhr zwischen 0,3 und
+150 ms; unter Last im Mittel nur 13–18 % Echtzeit, in Schüben). Die Wiedergabe hat deshalb eine
+eigene, stetige Uhr: Ausgleichsgerade virtuelle Zeit über Wanduhrzeit der letzten 3 s → Grundtempo;
+der Abstand zum Soll (hinter der Geraden, mindestens 300 ms Wanduhr bzw. 1,5 × der größte Rückstand
+eines Schubs) wird über ~1 s sanft ausgeglichen (höchstens ±25 %), Tempoänderungen werden mit 150 ms
+geglättet, und kurz vor dem Ende der Daten wird abgebremst statt angehalten. Weicht das Tempo der
+Simulation um mehr als 10 % von Echtzeit ab (ohne Last läuft Renode oft etwas schneller), steht unter
+dem Pendel „Simulation: xx % Echtzeit“ – das Pendel schwingt dann auf dem Bildschirm entsprechend
+langsamer bzw. schneller, die Zeiten in der Firmware stimmen trotzdem.
+(Vorher wurde der Zeitversatz bei jeder Nachricht sprunghaft nachgeführt: Bei 2 Hz sah man ruckartige
+Tempowechsel, unter Last stand der Stab meist still und sprang, zeitweise sogar rückwärts.) Das Bild entsteht nur aus der Leuchtspur: Jede leuchtende LED zeichnet den Bogen, den sie
 überstreicht, und die Spur klingt exponentiell ab, so dass sie nach der eingestellten
 **Nachleuchtdauer** (Regler 1 ms – 1 s, Standard **1 s**, je Versuch mit `"afterglowMs"` in der
 Versuchs-JSON einstellbar; die Dauer gilt in virtueller Zeit) unter 5 % liegt. Mit dem Standard
