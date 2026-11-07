@@ -120,7 +120,10 @@ class ControlBridge {
     this.polling = false;
     this.ledSocket = null;
     this.ledRetry = null;
-    this.uartSettings = null; // vom Browser gewählte Terminal-Einstellung (null = Standard des Versuchs)
+    // Vom Browser gewählte Terminal-Einstellung je Versuch (id -> { baud, format }); fehlt sie, gilt der
+    // Standard aus der Versuchs-JSON. "*" = gewählt, bevor ein Versuch lief: gilt für den nächsten Start.
+    this.uartSettings = new Map();
+    this.lastExperimentId = null;
     this.signalInfo = {}; // name -> { baud, format } laut Modell
     this.freshPaths = new Set(); // Pfade, deren alter Flankenpuffer beim nächsten Abruf verworfen wird
     this.firmware = null; // { name, size, sha256, loadedAt } – setzt server.js beim Upload
@@ -154,7 +157,7 @@ class ControlBridge {
   /** Terminal-Einstellung für den Versuch: Wahl des Browsers oder Standard aus der JSON-Datei */
   terminalSettings(exp = this.experiment) {
     if (!exp || !exp.uart || !exp.uart.host) return null;
-    return this.uartSettings || { baud: exp.uart.baud, format: exp.uart.format };
+    return this.uartSettings.get(exp.id) || this.uartSettings.get('*') || { baud: exp.uart.baud, format: exp.uart.format };
   }
 
   _signalsMessage() {
@@ -299,11 +302,17 @@ class ControlBridge {
         const baud = Number(msg.baud);
         const format = String(msg.format || '').toUpperCase();
         if (!experiments.isValidUartSettings(baud, format)) throw new Error('Ungültige Terminal-Einstellung');
-        this.uartSettings = { baud, format };
         const exp = this.experiment;
+        this.uartSettings.set((exp && exp.id) || this.lastExperimentId || '*', { baud, format });
         if (this.attached && exp && exp.uart && exp.uart.host) {
-          await this.monitor.execute(`${exp.uart.host} TerminalBaudRate ${baud}`, { priority: true });
-          await this.monitor.execute(`${exp.uart.host} Format "${format}"`, { priority: true });
+          const mon = this.monitor;
+          try {
+            await mon.execute(`${exp.uart.host} TerminalBaudRate ${baud}`, { priority: true });
+            await mon.execute(`${exp.uart.host} Format "${format}"`, { priority: true });
+          } catch (e) {
+            // Renode wurde gerade neu gestartet: Die Einstellung ist gespeichert und wird beim Start gesetzt
+            if (this.monitor === mon && this.attached) throw e;
+          }
         }
         this._broadcast({ type: 'uartconfig', baud, format });
         return;
@@ -448,6 +457,12 @@ class ControlBridge {
   async attach(experiment, timeoutMs, isAlive) {
     this.detach();
     this.experiment = experiment;
+    this.lastExperimentId = experiment.id;
+    // vor dem ersten Start gewählte Einstellung gehört ab jetzt zu diesem Versuch
+    if (this.uartSettings.has('*')) {
+      if (!this.uartSettings.has(experiment.id)) this.uartSettings.set(experiment.id, this.uartSettings.get('*'));
+      this.uartSettings.delete('*');
+    }
     this.ledStates = Object.fromEntries((experiment.leds || []).map((l) => [l.id, false]));
     this.lastFrame = null;
     this.lastPendulum = null;
