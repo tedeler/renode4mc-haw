@@ -52,6 +52,10 @@ namespace Antmicro.Renode.Peripherals.UART
         // Ein Sender darf keinen Frame beginnen, der davor liegt.
         ulong DecodedUntilNs { get; }
 
+        // Die Gegenstelle wurde zur Zeit ns zurückgesetzt: Flanken danach gelten nicht mehr, die
+        // Leitung liegt ab ns auf Ruhepegel (HIGH)
+        void LineReset(ulong ns);
+
         // Format, mit dem dieser Endpunkt SENDET (für Anzeige und Meldungen; ungültig = nicht
         // konfiguriert, Baudrate 0)
         UartFrameFormat TransmitFormat { get; }
@@ -180,6 +184,16 @@ namespace Antmicro.Renode.Peripherals.UART
         }
 
         public ulong DecodedUntilNs { get; private set; }
+
+        // Flanken nach ns verwerfen; ab ns liegt die Leitung auf HIGH (Sender wurde zurückgesetzt)
+        public void Truncate(ulong ns)
+        {
+            int n = edges.Count;
+            while(n > 0 && edges[n - 1].Ns > ns) n--;
+            edges.RemoveRange(n, edges.Count - n);
+            bool last = n > 0 ? edges[n - 1].Level : baseLevel;
+            if(!last) edges.Add(new SignalEdge(ns + 1, true));
+        }
 
         public void AddEdges(IList<SignalEdge> list)
         {
@@ -354,6 +368,19 @@ namespace Antmicro.Renode.Peripherals.UART
                     lastLevel = e.Level;
                 }
             }
+        }
+
+        // Flanken nach ns verwerfen; ab ns liegt die Leitung auf Ruhepegel
+        public void Truncate(ulong ns)
+        {
+            lock(sync)
+            {
+                int n = edges.Count;
+                while(n > 0 && edges[n - 1].Ns > ns) n--;
+                edges.RemoveRange(n, edges.Count - n);
+                lastLevel = n > 0 ? edges[n - 1].Level : reportedLevel;
+            }
+            Add(new[] { new SignalEdge(ns + 1, idle) });
         }
 
         // "SE:<name>:<now>:<level>:<baud>:<format>:<lost>:<t0>,<l0>;<dt>,<l>;..."

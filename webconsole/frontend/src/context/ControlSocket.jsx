@@ -35,6 +35,7 @@ export function ControlSocketProvider({ children }) {
   const [lastError, setLastError] = useState(null);
   const [uartConfig, setUartConfig] = useState(null);
   const signalListeners = useRef(new Set());
+  const messageListeners = useRef(new Set());
   const frameListeners = useRef(new Set());
   const lastFrame = useRef(null);
   const pendulumListeners = useRef(new Set());
@@ -58,6 +59,7 @@ export function ControlSocketProvider({ children }) {
     } catch {
       return;
     }
+    messageListeners.current.forEach((l) => l.types.includes(msg.type) && l.fn(msg));
     switch (msg.type) {
       case 'hello':
         setRenodeState(msg.renode);
@@ -126,6 +128,13 @@ export function ControlSocketProvider({ children }) {
     return () => signalListeners.current.delete(fn);
   }, []);
 
+  /** Beliebige Nachrichtentypen, z. B. subscribeMessage(['sim'], fn) */
+  const subscribeMessage = useCallback((types, fn) => {
+    const l = { types, fn };
+    messageListeners.current.add(l);
+    return () => messageListeners.current.delete(l);
+  }, []);
+
   const value = useMemo(
     () => ({
       status,
@@ -136,12 +145,13 @@ export function ControlSocketProvider({ children }) {
       subscribePendulum,
       subscribePendulumEvents,
       subscribeSignalStream,
+      subscribeMessage,
       uartConfig,
       lastError,
       clearError: () => setLastError(null),
     }),
     [status, renodeState, leds, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, subscribeSignalStream,
-      uartConfig, lastError],
+      subscribeMessage, uartConfig, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

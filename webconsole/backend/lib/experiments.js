@@ -72,6 +72,8 @@ function validate(cfg, file) {
     cfg.uart.format = cfg.uart.format ?? '8N1';
     assert(isValidUartSettings(cfg.uart.baud, cfg.uart.format), `${file} uart: baud 50..4000000, format wie "8N1"`);
   }
+  if (cfg.reset) assertPath(cfg.reset.path, `${file} reset.path`);
+  if (cfg.status) assertPath(cfg.status.path, `${file} status.path`);
   (cfg.signals || []).forEach((sig, i) => {
     assert(typeof sig.name === 'string' && SIGNAL_RE.test(sig.name), `${file} signals[${i}].name wie "uart0.tx"`);
     assertPath(sig.path, `${file} signals[${i}].path`);
@@ -138,6 +140,8 @@ function publicView(cfg) {
     sensor: rest.sensor && { ...rest.sensor, path: undefined },
     pendulum: rest.pendulum && { ...rest.pendulum, path: undefined },
     uart: rest.uart && { ...rest.uart, host: undefined },
+    reset: !!rest.reset,
+    status: !!rest.status,
     signals: (rest.signals || []).map(({ path: _p, ...sig }) => sig),
   };
 }

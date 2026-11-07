@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -36,6 +37,8 @@ const control = new ControlBridge({
 
 let activeExperiment = null;
 
+renode.on('log', (_stream, line) => control.onRenodeLog(line));
+
 renode.on('exit', () => {
   activeExperiment = null;
   uart.detach('renode-exit');
@@ -64,6 +67,7 @@ async function startExperiment(exp) {
   if (exp.ledBridge) ports.push({ port: Number(new URL(exp.ledBridge).port), name: 'LED-Bridge' });
   await assertPortsFree(ports);
 
+  control.resetLog();
   await renode.start(exp.id, exp.rescPath, cfg.elfPath, control.terminalSettings(exp));
   const alive = () => renode.running;
   // Reihenfolge: UART-Socket existiert erst, wenn das .resc-Skript die Maschine angelegt hat
@@ -147,6 +151,13 @@ app.post('/upload', (req, res) => {
         uart.detach('renode-restart');
         control.detach();
         await renode.stop();
+        const data = fs.readFileSync(tmp);
+        control.firmware = {
+          name: path.basename(req.file.originalname),
+          size: data.length,
+          sha256: crypto.createHash('sha256').update(data).digest('hex').slice(0, 16),
+          loadedAt: Date.now(),
+        };
         fs.renameSync(tmp, cfg.elfPath);
         await startExperiment(exp);
       });

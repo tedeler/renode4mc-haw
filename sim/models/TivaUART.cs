@@ -183,11 +183,17 @@ namespace Antmicro.Renode.Peripherals.UART
             rxFifo.Clear();
             txWaiting.Clear();
             txLineFreeNs = 0;
+            txBusy = false;
             breakActive = false;
+            pendingDuringBreak.Clear();
             rxWakeNs = ulong.MaxValue;
+            epoch++;   // noch geplante Aktionen von vor dem Reset verfallen
             decoder.Reset();
-            txRecorder.Reset();
-            rxRecorder.Reset();
+            // Ein Zeichen, das gerade gesendet wird, bricht ab: die Leitung geht sofort auf HIGH.
+            // Die Empfangsleitung gehört der Gegenstelle und bleibt, wie sie ist.
+            ulong now = clock.NowNs();
+            txRecorder.Truncate(now);
+            if(line != null) line.LineReset(now);
             if(IRQ != null) IRQ.Unset();
         }
 
@@ -218,6 +224,12 @@ namespace Antmicro.Renode.Peripherals.UART
         public void AttachLine(IUartLineEndpoint partner)
         {
             line = partner;
+        }
+
+        public void LineReset(ulong ns)
+        {
+            decoder.Truncate(ns);
+            RunDecoder();
         }
 
         // Flanken der Gegenstelle auf der Empfangsleitung (RX-Pin)
@@ -303,13 +315,15 @@ namespace Antmicro.Renode.Peripherals.UART
             double end = UartEncoder.Encode(start, c, f, edges);
             txLineFreeNs = end;
             txWaiting.Enqueue(start);
+            txBusy = true;
             DriveTx(edges);
 
             ulong startNs = (ulong)Math.Floor(start);
             ulong endNs = (ulong)Math.Ceiling(end);
             byte data = (byte)(c & ((1 << f.DataBits) - 1));
-            clock.At(startNs, t => OnTxFrameStart(t), name + "-tx-start");
-            clock.At(endNs, t => OnTxFrameEnd(t, data), name + "-tx-end");
+            int e = epoch;
+            clock.At(startNs, t => { if(e == epoch) OnTxFrameStart(t); }, name + "-tx-start");
+            clock.At(endNs, t => { if(e == epoch) OnTxFrameEnd(t, data); }, name + "-tx-end");
         }
 
         // Legt Flanken auf den TX-Pin (bzw. bei Loopback direkt in den eigenen Empfänger)
@@ -383,6 +397,7 @@ namespace Antmicro.Renode.Peripherals.UART
         private void OnTxFrameEnd(ulong t, byte data)
         {
             DropStarted(t);
+            if(txWaiting.Count == 0 && t >= (ulong)Math.Floor(txLineFreeNs)) txBusy = false;
             if((ctl & CtlEot) != 0 && txWaiting.Count == 0 && t >= (ulong)Math.Floor(txLineFreeNs))
             {
                 ris |= IntTx;
@@ -414,9 +429,11 @@ namespace Antmicro.Renode.Peripherals.UART
             if(wake.HasValue && wake.Value < rxWakeNs)
             {
                 ulong at = wake.Value;
+                int e = epoch;
                 rxWakeNs = at;
                 clock.At(at, t =>
                 {
+                    if(e != epoch) return;
                     if(rxWakeNs == at) rxWakeNs = ulong.MaxValue;
                     RunDecoder();
                 }, name + "-rx");
@@ -565,14 +582,15 @@ namespace Antmicro.Renode.Peripherals.UART
             }
         }
 
+        // Ohne Blick auf die Uhr: Die Sende-Flags ändern sich nur zu Beginn und am Ende eines Frames,
+        // und genau dann laufen OnTxFrameStart/OnTxFrameEnd. Eine Warteschleife auf TXFF kostet so
+        // kaum Rechenzeit (die Uhr zu synchronisieren wäre bei jedem Lesezugriff teuer).
         private uint Flags()
         {
-            ulong now = clock.NowNs();
-            DropStarted(now);
             uint fr = 0;
             if(txWaiting.Count == 0) fr |= FrTxfe;
             if(txWaiting.Count >= FifoDepth) fr |= FrTxff;
-            if(breakActive || now < txLineFreeNs || txWaiting.Count > 0) fr |= FrBusy;
+            if(breakActive || txBusy || txWaiting.Count > 0) fr |= FrBusy;
             int count = rxFifo.Count;
             if(count == 0) fr |= FrRxfe;
             if(count >= FifoDepth) fr |= FrRxff;
@@ -641,7 +659,9 @@ namespace Antmicro.Renode.Peripherals.UART
         private IUartLineEndpoint line;
         private double txLineFreeNs;
         private bool breakActive;
+        private bool txBusy;
         private ulong rxWakeNs;
+        private int epoch;
         private uint rsr, ilpr, ibrd, fbrd, lcrh, ctl, ifls, im, ris, dmactl, cc;
         private bool clockWarned, formatWarned, txPinWarned, rxPinWarned;
         private Dictionary<long, uint> other;

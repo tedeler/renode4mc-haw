@@ -10,6 +10,8 @@
  *  - ein eigener Dekoder (hier im Test) liest aus den Flanken dasselbe wie das Terminal
  *  - Tastatureingabe erscheint als Flanken auf uart0.rx (115200, Einstellung des Terminals)
  *  - Terminal auf 9600 Baud gestellt: Zeichensalat; zurück auf 115200: wieder lesbar
+ *  - Simulations-Anzeige ("watch"/"sim"): Firmware, CPU, Zeit, UART-Einstellungen
+ *  - Reset-Taster: Firmware startet neu (Startmeldung), Sensorwert (außerhalb des Chips) bleibt
  *
  *   node test/e2e_signals.js <lab03_webkonsole.out> [http://localhost:3000]
  *
@@ -86,6 +88,8 @@ function decodeUart(edges, baud, format) {
   let lastNow = {};
   let uartConfig = null;
   const errors = [];
+  let sim = null;
+  let resets = 0;
 
   // Control-WebSocket zuerst: Abo und Terminal-Einstellung gelten auch für den folgenden Start
   const c = new WebSocket(`ws://${host}:3334`);
@@ -95,6 +99,8 @@ function decodeUart(edges, baud, format) {
     if (m.type === 'uartconfig') uartConfig = { baud: m.baud, format: m.format };
     if (m.type === 'signals') for (const s of m.signals) signals[s.name] = s;
     if (m.type === 'error') errors.push(m.message);
+    if (m.type === 'sim') sim = m;
+    if (m.type === 'reset') resets++;
     if (m.type === 'edges' && edges[m.name]) {
       const list = edges[m.name];
       let prev = list.length ? list[list.length - 1] : null;
@@ -183,6 +189,28 @@ function decodeUart(edges, baud, format) {
   mark = uart.length;
   send({ type: 'sensor', value: 77 });
   check('Terminal wieder 115200: lesbar', await waitFor(() => /Abstand:\s+77 cm/.test(uart.subarray(mark).toString('latin1'))));
+
+  // Simulations-Anzeige
+  send({ type: 'watch', sim: true });
+  check('sim: Zustand kommt', await waitFor(() => sim && sim.time && sim.cpu, 3000));
+  if (sim && sim.cpu) {
+    check('sim: Firmware-Name', sim.firmware && sim.firmware.name === path.basename(elf), JSON.stringify(sim.firmware));
+    check('sim: CPU läuft, Systemtakt 16 MHz', sim.cpu.state === 'Running' && sim.cpu.sysclk === 16000000, JSON.stringify(sim.cpu));
+    check('sim: UART Firmware 8N1 / Terminal 115200', sim.uart && sim.uart.mcu.format === '8N1' && sim.uart.terminal.baud === 115200,
+      JSON.stringify(sim.uart));
+    const t0 = sim.time.virtualNs;
+    check('sim: Simulationszeit läuft', await waitFor(() => sim.time.virtualNs > t0, 3000));
+  }
+
+  // Reset-Taster: Firmware neu, Sensor bleibt
+  send({ type: 'sensor', value: 55 });
+  check('Sensor 55 cm vor dem Reset', await waitFor(() => /Abstand:\s+55 cm/.test(text())));
+  mark = uart.length;
+  send({ type: 'reset' });
+  check('Reset -> Startmeldung erneut', await waitFor(() => /Lab 03 Web-Konsole/.test(uart.subarray(mark).toString('latin1')), 5000));
+  check('Reset an alle gemeldet', resets === 1);
+  check('nach dem Reset: Sensor weiterhin 55 cm', await waitFor(() => /Abstand:\s+55 cm/.test(uart.subarray(mark).toString('latin1')), 5000));
+  check('sim: Reset gezählt', await waitFor(() => sim.resets && sim.resets.count === 1, 3000), JSON.stringify(sim.resets));
 
   check('keine Fehlermeldungen vom Backend', errors.length === 0, errors.join('; '));
   u.close();

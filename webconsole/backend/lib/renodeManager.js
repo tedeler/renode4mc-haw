@@ -33,6 +33,7 @@ class RenodeManager extends EventEmitter {
   }
 
   _log(stream, line) {
+    this.emit('log', stream, line);
     const msg = `[renode${stream === 'stderr' ? ':err' : ''}] ${line}`;
     if (stream === 'stderr') console.error(msg);
     else console.log(msg);
