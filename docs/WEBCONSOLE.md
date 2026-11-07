@@ -240,7 +240,8 @@ Browser → Server:
   "periph": "UART0" }                                       //   optional: Modul aus "simmeta"
 { "type": "pause" }                                         // Ausführung anhalten (Zeit steht)
 { "type": "continue" }                                      // weiterlaufen
-{ "type": "step", "count": 1 }                              // count Befehle (1–10000) ausführen, dann anhalten
+{ "type": "step", "count": 1 }                              // count Befehle (1–10000) ausführen, dann anhalten;
+                                                            //   schläft die CPU (WFI): bis zum nächsten Interrupt
 { "type": "clearDiagnostics" }                              // Diagnose-Liste leeren
 { "type": "scope", "sources": ["PD0", "PL0"] }               // Oszilloskop: Pins dieses Browsers (max. 5, [] = aus)
 ```
@@ -256,7 +257,7 @@ Server → Browser:
 { "type": "leds", "states": { "D1": true, "D2": false, … } }
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
-{ "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …] }
+{ "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …], "frozen": false }
 { "type": "uartconfig", "baud": 9600, "format": "7N1" }     // an alle, nach jeder Änderung
 { "type": "signals", "signals": [{ "name": "uart0.tx", "label": "U0TX (PA1)", "idle": 1,
                                    "protocol": { "kind": "uart", "baud": 115107.914, "format": "8N1" } }, …] }
@@ -272,7 +273,8 @@ Server → Browser:
   "resets": { "count": 1, "lastNs": 437400000 },
   "uart": { "mcu": { "baud": 9599.5, "format": "7N1" }, "terminal": { "baud": 9600, "format": "7N1" } },
   "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }],
-  "stopped": false,                                        // Pause oder Einzelschritt
+  "stopped": false,                                        // Pause, Einzelschritt oder Schritt wartet auf Interrupt
+  "frozen": false,                                         // Simulationszeit steht (Pause, Einzelschritt)
   "regs": [{ "name": "R0", "value": 0 }, …, { "name": "xPSR", … }],    // Kernregister
   "disasm": [{ "addr": 2314, "bytes": "e672", "text": "b #-796" }, …], // nur wenn angehalten
   "memory": { "request": "ticks", "symbol": "ticks", "addr": 536870916, "data": "0E000000…" },  // je Client
@@ -386,9 +388,16 @@ Renode-Version, UART0-Einstellung von Firmware und Terminal mit Abweichung. Daru
   geschaltet), gleiche Meldungen gezählt.
 
 **Debugger** (oben im Panel): **Pause** hält die ganze Simulation an (Simulationszeit steht),
-**Schritt** führt 1, 10, 100 oder 1000 Befehle aus und hält dann an (Renode `cpu Step`, die Zeit
-läuft dabei mit), **Weiter** setzt fort. Schläft die CPU per WFI, wartet ein Schritt auf den
-nächsten Interrupt; das Panel sagt das. Reset aus der Pause startet die Firmware neu und läuft weiter.
+**Schritt** führt 1, 10, 100 oder 1000 Befehle aus und hält dann an (`sysbus.sysctl StepCpu n`, die
+Zeit läuft dabei mit), **Weiter** setzt fort. Schläft die CPU per WFI, endet ein Schritt wie am Board
+erst mit dem nächsten Interrupt: Die ganze Simulation (Timer, UART, Pendel, Oszilloskop …) läuft bis
+dahin weiter, danach steht die CPU vor dem ersten Befehl der Interrupt-Routine. Dauert das länger als
+etwa 1,5 s Wanduhr, zeigt das Panel „läuft bis zum nächsten Interrupt“ (Zustand `Wake`); Pause und
+Weiter brechen das ab. Renodes eigenes `cpu Step` rechnet bei schlafender CPU je Schritt nur eine
+Befehlszeit (≈ 91 ns) weiter – bis zu einem 1-ms-Timer wären über 10 000 Schritte nötig.
+Angehalten (Pause, Einzelschritt) zeigt das Pendel genau den Zeitpunkt der CPU (`pdev.frozen`), nach
+Weiter läuft die Wiedergabe aus dem Stand wieder an. Reset aus der Pause startet die Firmware neu und
+läuft weiter.
 
 ### Oszilloskop
 
@@ -587,7 +596,20 @@ node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pende
 node test/e2e_signals.js ../../examples/example03_webkonsole/example03_webkonsole.out
 node test/e2e_scope.js ../../sim/solutions
 node test/e2e_labs.js <Verzeichnis mit lab01.out … lab04.out>
+node test/e2e_step.js <schlaf_takt.elf>                           # test/firmware/schlaf_takt.c
+node test/unit_pendulum_timeline.mjs                              # ohne Backend/Renode
 ```
+
+`test/e2e_step.js` prüft Pause und Einzelschritt mit schlafender CPU (Firmware
+`test/firmware/schlaf_takt.c`: Timer-IRQ 1 ms, UART-Zeichen alle 10 ms, Sync-IRQ des Pendels, `main`
+nur WFI): In der Pause steht alles (Zeit, Variablen, Timerzähler, Pendel, Oszilloskop, UART-Flanken,
+Terminal, Tastendruck). Ein Schritt aus WFI hält am Einsprung der Timer-ISR (TAV frisch nachgeladen),
+Interrupts im Schrittbetrieb genau 1 ms auseinander, `Schritt 3` = genau 3 Befehle. Über ~120 ms in
+Schritten müssen Timer-ISR, D1-Flanken, UART-Zeichen (Firmware = Terminal), Sync-ISR, PL0-Flanken
+am Oszilloskop und die Pendelphase zur CPU-Zeit passen. Langer Schlaf (Timer aus, Pendel 0,1 Hz):
+Zustand `Wake`, Halt direkt nach der Sync-Flanke; Pause während `Wake` und Weiter hält danach nicht
+mehr an. `test/unit_pendulum_timeline.mjs` prüft die Wiedergabeuhr des Pendels: Pause zeigt sofort
+die CPU-Zeit, Schritte exakt, nach Weiter keine Zeitlupe und kein Sprung.
 
 `test/e2e_signals.js` prüft den Signalstrom: `signals` mit der Baudrate der Firmware, Flanken
 streng steigend und auf dem Bitraster (8687,5 ns bei 16 MHz, IBRD 8, FBRD 44), ein unabhängiger

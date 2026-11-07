@@ -88,7 +88,11 @@ namespace Antmicro.Renode.Peripherals.Timers
                 case Cc: return cc;
                 case Sync: return 0;
                 default:
-                    this.Log(LogLevel.Warning, "Timer: Lesen von Offset 0x{0:X3} wird nicht unterstützt (liefert 0)", offset);
+                    // Anzeige der Web-Konsole (alle Register des Moduls) liest still
+                    if(!Antmicro.Renode.Peripherals.Miscellaneous.TivaSysCtl.Peeking)
+                    {
+                        this.Log(LogLevel.Warning, "Timer: Lesen von Offset 0x{0:X3} wird nicht unterstützt (liefert 0)", offset);
+                    }
                     return 0;
             }
         }
