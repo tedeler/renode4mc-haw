@@ -60,8 +60,9 @@ Die Programmiersprache C wird von **TI Arm Clang** übersetzt; er ist in CCS ent
 
 Im Praktikum programmieren Sie **ohne Bibliothek** direkt über die Register. Dafür brauchen Sie das
 Datenblatt: <https://www.ti.com/product/TM4C1294NCPDT> → *Technical documents* →
-„Tiva TM4C1294NCPDT Microcontroller Data Sheet“ (PDF). Adressen und Bitnummern in den Beispielen
-stammen von dort. Zusätzlich hilfreich: das Board-Handbuch „EK-TM4C1294XL User's Guide“.
+„Tiva TM4C1294NCPDT Microcontroller Data Sheet“ (PDF). Die Beispiele benutzen dafür die
+Registernamen und Bitkonstanten aus der TI-Headerdatei `common/tm4c1294ncpdt.h` (keine eigenen
+Adressen); deren Bedeutung schlagen Sie im Datenblatt nach. Zusätzlich hilfreich: das Board-Handbuch „EK-TM4C1294XL User's Guide“.
 
 ## 5. USB-Zugriff auf das Board (udev-Regel)
 

@@ -103,7 +103,7 @@ namespace Antmicro.Renode.Peripherals.Timers
                     {
                         Warn("cfgRun", "GPTMCFG geändert, während der Timer läuft (TAEN/TBEN = 1). Datenblatt: Timer zuerst ausschalten (GPTMCTL).");
                     }
-                    cfg = value & 7;
+                    cfg = value & CfgMask;
                     if(cfg != 0 && cfg != 4)
                     {
                         Warn("cfg" + cfg, cfg == 1
@@ -126,11 +126,11 @@ namespace Antmicro.Renode.Peripherals.Timers
                     Apply(1, (old & CtlTben) == 0);
                     break;
                 case Imr:
-                    if((value & ~0x0101u) != 0)
+                    if((value & ~(ImTatoim | ImTbtoim)) != 0)
                     {
                         Warn("imrBits", string.Format("GPTMIMR = 0x{0:X}: nur die Time-out-Interrupts (TATOIM, TBTOIM) sind modelliert, Capture-/Match-/RTC-Interrupts kommen nie.", value));
                     }
-                    imr = value & 0x0F1F;
+                    imr = value & ImrMask;
                     break;
                 case Icr: ris &= ~value; break;
                 case TailR: WriteLoad(0, value); break;
@@ -185,8 +185,8 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 Warn("mrRun" + half, string.Format("GPTMT{0}MR geändert, während Timer {0} läuft. Datenblatt: Timer zuerst ausschalten (T{0}EN = 0).", Name(half)));
             }
-            mr[half] = value & 0x1FFF;
-            uint mode = value & 3;
+            mr[half] = value & MrMask;
+            uint mode = value & TnmrMask;
             string n = Name(half);
             if(mode == 0) Warn("mr0" + half, string.Format("GPTMT{0}MR: T{0}MR = 0x0 ist reserviert (0x1 = One-Shot, 0x2 = Periodic).", n));
             if(mode == 3) Warn("mr3" + half, string.Format("GPTMT{0}MR: Capture-Modus (T{0}MR = 0x3) ist im Simulator nicht modelliert.", n));
@@ -252,8 +252,8 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 Warn("ilr0" + half, string.Format("Timer {0} gestartet mit GPTMT{0}ILR = 0: kein sinnvoller Startwert/Endwert gesetzt.", n));
             }
-            uint mode = mr[half] & 3;
-            if(mode != 1 && mode != 2)
+            uint mode = mr[half] & TnmrMask;
+            if(mode != TnmrOneShot && mode != TnmrPeriodic)
             {
                 Warn("start" + half, string.Format("Timer {0} gestartet ohne gültige Betriebsart (GPTMT{0}MR = 0x{1:X}): der Timer bleibt stehen.", n, mr[half]));
             }
@@ -312,10 +312,10 @@ namespace Antmicro.Renode.Peripherals.Timers
         private void Apply(int half, bool restart)
         {
             var timer = timers[half];
-            bool enable = ((ctl >> (half * 8)) & 1) != 0;
-            uint mode = mr[half] & 3;
+            bool enable = (ctl & (half == 0 ? CtlTaen : CtlTben)) != 0;
+            uint mode = mr[half] & TnmrMask;
             if(cfg == 0 && half == 1) enable = false; // Timer B gibt es nur im 16-Bit-Modus
-            if(mode != 1 && mode != 2) enable = false; // reserviert / Capture: nicht modelliert
+            if(mode != TnmrOneShot && mode != TnmrPeriodic) enable = false; // reserviert / Capture: nicht modelliert
 
             if(!enable)
             {
@@ -326,7 +326,7 @@ namespace Antmicro.Renode.Peripherals.Timers
             bool wasRunning = timer.Enabled;
             timer.Enabled = false;
             timer.Limit = ticks;
-            timer.Mode = mode == 1 ? WorkMode.OneShot : WorkMode.Periodic;
+            timer.Mode = mode == TnmrOneShot ? WorkMode.OneShot : WorkMode.Periodic;
             if(restart || !wasRunning || timer.Value > ticks)
             {
                 timer.ResetValue();                  // Startwert laden (Tabelle 13-4)
@@ -341,11 +341,11 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             if((mr[half] & MrCintd) == 0)
             {
-                ris |= 1u << (half * 8);             // TATORIS bzw. TBTORIS (Bit 0 / Bit 8)
+                ris |= half == 0 ? RisTatoris : RisTbtoris;
             }
-            if((mr[half] & 3) == 1)
+            if((mr[half] & TnmrMask) == TnmrOneShot)
             {
-                ctl &= ~(1u << (half * 8));          // One-Shot: Timer schaltet sich ab (TnEN = 0)
+                ctl &= ~(half == 0 ? CtlTaen : CtlTben);          // One-Shot: Timer schaltet sich ab (TnEN = 0)
                 stopped[half] = true;
             }
             else if(pendingLoad[half])
@@ -377,7 +377,7 @@ namespace Antmicro.Renode.Peripherals.Timers
 
         private bool ClockOk()
         {
-            if(sysCtl.IsClockEnabled(0x604, clockBit))
+            if(sysCtl.IsClockEnabled(RcgcTimer, clockBit))
             {
                 clockWarned = false;
                 return true;
@@ -392,6 +392,9 @@ namespace Antmicro.Renode.Peripherals.Timers
             return false;
         }
 
+        // Register-Offsets und Bits wie in tm4c1294ncpdt.h (TIMERn_..._R, TIMER_...); geprüft mit
+        // tools/check_header.py
+        private const long RcgcTimer = 0x604;
         private const long Cfg = 0x000, TamR = 0x004, TbmR = 0x008, Ctl = 0x00C, Imr = 0x018, Ris = 0x01C,
                            Mis = 0x020, Icr = 0x024, TailR = 0x028, TbilR = 0x02C, TamatchR = 0x030,
                            TbmatchR = 0x034, TapR = 0x038, TbpR = 0x03C, TapmR = 0x040, TbpmR = 0x044,
@@ -399,6 +402,13 @@ namespace Antmicro.Renode.Peripherals.Timers
         private const uint CtlTaen = 1u << 0, CtlTastall = 1u << 1, CtlTben = 1u << 8, CtlTbstall = 1u << 9;
         private const uint MrAms = 1u << 3, MrCdir = 1u << 4, MrMie = 1u << 5, MrWot = 1u << 6, MrSnaps = 1u << 7,
                            MrIld = 1u << 8, MrPwmie = 1u << 9, MrMrsu = 1u << 10, MrPlo = 1u << 11, MrCintd = 1u << 12;
+        private const uint MrMask = 0x1FFF;                                  // TnMR .. TnCINTD (Bits 12:0)
+        private const uint CfgMask = 0x7;                                    // TIMER_CFG_M
+        private const uint TnmrMask = 0x3, TnmrOneShot = 0x1, TnmrPeriodic = 0x2;
+        private const uint RisTatoris = 1u << 0, RisTbtoris = 1u << 8;
+        private const uint ImTatoim = 1u << 0, ImTbtoim = 1u << 8;
+        // Time-out-, Capture-, Match- und RTC-Bits von A und B (DMA/Wake-up nicht modelliert)
+        private const uint ImrMask = 0x0F1F;
 
         private readonly TivaSysCtl sysCtl;
         private readonly int clockBit;

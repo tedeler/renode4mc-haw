@@ -239,6 +239,8 @@ namespace Antmicro.Renode.Peripherals.I2C
             return false;
         }
 
+        // Register-Offsets und Bits wie in tm4c1294ncpdt.h (I2Cn_..._R, I2C_...); geprüft mit
+        // tools/check_header.py
         private const long RcgcI2c = 0x620;
         private const long Msa = 0x000, Mcs = 0x004, Mdr = 0x008, Mtpr = 0x00C, Mimr = 0x010, Mris = 0x014,
                            Mmis = 0x018, Micr = 0x01C, Mcr = 0x020, Mclkocnt = 0x024, Mbmon = 0x02C,

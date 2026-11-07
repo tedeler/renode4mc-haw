@@ -89,21 +89,23 @@ Das Bild wird also bei jedem Schwung gezeichnet, 20-mal pro Sekunde.
 | `bild_text()` | Text zentriert ins Bild schreiben (5×7-Zeichensatz, Bit 0 = oben) |
 | Hauptschleife | alle 200 ms Sensor messen, bei Änderung Bild und UART aktualisieren |
 
-| Register | Adresse | Wirkung hier |
-|---|---|---|
-| `GPIOIBE` (Port L) | `0x40062408` | Bit 0: Interrupt bei **beiden** Flanken von PL0 |
-| `GPIODATA` (Port M) | `0x400633FC` | alle 8 Bits auf einmal: eine Bildspalte |
-| `GPTMTAMR` (Timer1) | `0x40031004` | `1`: Einmal-Modus |
-| `GPTMTAILR` (Timer1) | `0x40031028` | Wartezeit bis zur nächsten Spalte (Takte − 1) |
-| `GPTMCTL` (Timer1) | `0x4003100C` | Bit 0 (`TAEN`): Start; im Einmal-Modus schaltet der Timer sich danach ab |
-| `GPTMTAV` (Timer2) | `0x40032050` | aktueller Stand der freilaufenden Uhr (zählt **abwärts**) |
+| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+|---|---|---|---|
+| `GPIOIBE` (Port L) | `GPIO_PORTL_IBE_R` | `0x40062408` | Bit 0: Interrupt bei **beiden** Flanken von PL0 |
+| `GPIODATA` (Port M) | `GPIO_PORTM_DATA_R` | `0x400633FC` | alle 8 Bits auf einmal: eine Bildspalte |
+| `GPTMTAMR` (Timer1) | `TIMER1_TAMR_R` | `0x40031004` | `TIMER_TAMR_TAMR_1_SHOT`: Einmal-Modus |
+| `GPTMTAILR` (Timer1) | `TIMER1_TAILR_R` | `0x40031028` | Wartezeit bis zur nächsten Spalte (Takte − 1) |
+| `GPTMCTL` (Timer1) | `TIMER1_CTL_R` | `0x4003100C` | `TIMER_CTL_TAEN`: Start; im Einmal-Modus schaltet der Timer sich danach ab |
+| `GPTMTAV` (Timer2) | `TIMER2_TAV_R` | `0x40032050` | aktueller Stand der freilaufenden Uhr (zählt **abwärts**) |
+
+Alle Namen kommen aus `tm4c1294ncpdt.h` (siehe Lab 01); im Programm steht keine Adresse.
 
 Die Uhr (Timer2) zählt abwärts. „Später“ heißt deshalb „kleinerer Zählerstand“. Mit
 vorzeichenlosen 32-Bit-Zahlen stimmt die Differenz `früher − später` auch über den Überlauf hinweg:
 
 ```c
 uint32_t ziel  = mitte - (uint32_t)spaltenTakte[k];          // Zeitpunkt der Spalte k
-int32_t warten = (int32_t)(TIMER_TAV(TIMER2_BASE) - ziel);   // Takte bis dahin
+int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);   // Takte bis dahin
 ```
 
 ## 4. Variante A: Im Simulator (Web-Konsole)

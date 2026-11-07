@@ -2,7 +2,10 @@
 // Modelliert: Cortex-M4F + NVIC (SysTick), 1 MB Flash, 256 KB SRAM, Bit-Banding,
 // SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, UART 0-7, I2C 0-9 (Master), LED-Bridge zum Browser.
 // Takt: Reset-Takt PIOSC = 16 MHz.
-// nvic@N: N = IRQ-Nummer (Vektor Nr. minus 16), z. B. Timer0A = IRQ 19.
+// Adressen, Clock-Bits und IRQs wie in common/tm4c1294ncpdt.h; prüfen mit  python3 tools/check_header.py
+// nvic@N: N = IRQ-Nummer = INT_<Name> - 16 (INT_ zählt die Vektortabelle), z. B. Timer0A = 35 - 16 = 19.
+// GPIO P und Q haben einen Interrupt je Pin (INT_GPIOP0..7, INT_GPIOQ0..7); das Portmodell hat nur
+// einen IRQ-Ausgang, deshalb sind sie nicht angeschlossen.
 
 // PerformanceInMips: 11 ~ 16 MHz / 1,5 Takte pro Befehl. Damit dauert z. B. SysCtlDelay(n)
 // im Simulator etwa so lange wie auf dem Board (Zeitverhalten ist nur näherungsweise gleich).
@@ -155,18 +158,27 @@ timer3: Timers.TivaTimer @ sysbus 0x40033000
 timer4: Timers.TivaTimer @ sysbus 0x40034000
     sysCtl: sysctl
     clockBit: 4
+    IRQA -> nvic@63
+    IRQB -> nvic@64
 
 timer5: Timers.TivaTimer @ sysbus 0x40035000
     sysCtl: sysctl
     clockBit: 5
+    IRQA -> nvic@65
+    IRQB -> nvic@66
 
-timer6: Timers.TivaTimer @ sysbus 0x40036000
+// Timer 6 und 7 liegen nicht hinter Timer 5, sondern bei 0x400E0000 (TIMER6_CFG_R, TIMER7_CFG_R)
+timer6: Timers.TivaTimer @ sysbus 0x400E0000
     sysCtl: sysctl
     clockBit: 6
+    IRQA -> nvic@98
+    IRQB -> nvic@99
 
-timer7: Timers.TivaTimer @ sysbus 0x40037000
+timer7: Timers.TivaTimer @ sysbus 0x400E1000
     sysCtl: sysctl
     clockBit: 7
+    IRQA -> nvic@100
+    IRQB -> nvic@101
 
 // UART0..7 (TivaUART). UART0 = virtueller COM-Port des Boards (PA0 RX / PA1 TX).
 // Ausgabe z. B. mit:  emulation CreateServerSocketTerminal 3335 "term" false; connector Connect sysbus.uart0 term

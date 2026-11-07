@@ -18,100 +18,37 @@
  *                            Spalten PK4..PK6 (Eingang, Pull-down)
  *   Timer0A                  -                                   100-ms-Takt (Interrupt)
  *
- * Alle Adressen stammen aus dem Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
+ * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
+#include "tm4c1294ncpdt.h"
 
-#define REG(adresse)        (*(volatile uint32_t *)(adresse))
 #define SYSTEM_CLOCK_HZ     16000000u
 
 /* ---------------------------------------------------------------------------------------------
- * Register
+ * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h.
+ * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Pin-Funktionen, IRQs).
  * ------------------------------------------------------------------------------------------- */
-/* System Control */
-#define SYSCTL_RCGCTIMER    REG(0x400FE000 + 0x604)
-#define SYSCTL_RCGCGPIO     REG(0x400FE000 + 0x608)
-#define SYSCTL_RCGCUART     REG(0x400FE000 + 0x618)
-#define SYSCTL_RCGCI2C      REG(0x400FE000 + 0x620)
-#define SYSCTL_PRTIMER      REG(0x400FE000 + 0xA04)
-#define SYSCTL_PRGPIO       REG(0x400FE000 + 0xA08)
-#define SYSCTL_PRUART       REG(0x400FE000 + 0xA18)
-#define SYSCTL_PRI2C        REG(0x400FE000 + 0xA20)
+/* Bits der benutzten Ports in RCGCGPIO bzw. PRGPIO (A = Bit 0 ... N = Bit 12) */
+#define PORTS_TAKT          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R5 | \
+                             SYSCTL_RCGCGPIO_R8 | SYSCTL_RCGCGPIO_R9 | SYSCTL_RCGCGPIO_R12)
+#define PORTS_BEREIT        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R5 | \
+                             SYSCTL_PRGPIO_R8 | SYSCTL_PRGPIO_R9 | SYSCTL_PRGPIO_R12)
 
-/* GPIO: Register-Offsets (gleich für alle Ports) */
-#define GPIO_DATA(base)     REG((base) + 0x3FC)            /* alle 8 Bits */
-#define GPIO_DATA_M(base,m) REG((base) + ((m) << 2))       /* nur die Bits in Maske m */
-#define GPIO_DIR(base)      REG((base) + 0x400)
-#define GPIO_IS(base)       REG((base) + 0x404)
-#define GPIO_IBE(base)      REG((base) + 0x408)
-#define GPIO_IEV(base)      REG((base) + 0x40C)
-#define GPIO_IM(base)       REG((base) + 0x410)
-#define GPIO_MIS(base)      REG((base) + 0x418)
-#define GPIO_ICR(base)      REG((base) + 0x41C)
-#define GPIO_AFSEL(base)    REG((base) + 0x420)
-#define GPIO_ODR(base)      REG((base) + 0x50C)
-#define GPIO_PUR(base)      REG((base) + 0x510)
-#define GPIO_PDR(base)      REG((base) + 0x514)
-#define GPIO_DEN(base)      REG((base) + 0x51C)
-#define GPIO_PCTL(base)     REG((base) + 0x52C)
+/* GPIOPCTL: je 4 Bit pro Pin wählen die alternative Funktion (Datenblatt, Tabelle
+ * "GPIO Pins and Alternate Functions"). Dafür hat die Headerdatei keine Konstanten. */
+#define PCTL_MASKE(pin)     (0xFu << (4u * (pin)))
+#define PCTL_FUNKTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
+#define PCTL_UART0          1u                 /* PA0 = U0RX, PA1 = U0TX */
+#define PCTL_I2C0           2u                 /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 
-#define GPIOA_BASE          0x40058000u
-#define GPIOB_BASE          0x40059000u
-#define GPIOF_BASE          0x4005D000u
-#define GPIOJ_BASE          0x40060000u
-#define GPIOK_BASE          0x40061000u
-#define GPION_BASE          0x40064000u
-
-/* Bitnummern der Ports in RCGCGPIO/PRGPIO */
-#define PORT_A              (1u << 0)
-#define PORT_B              (1u << 1)
-#define PORT_F              (1u << 5)
-#define PORT_J              (1u << 8)
-#define PORT_K              (1u << 9)
-#define PORT_N              (1u << 12)
-
-/* UART0 */
-#define UART0_BASE          0x4000C000u
-#define UART0_DR            REG(UART0_BASE + 0x000)
-#define UART0_FR            REG(UART0_BASE + 0x018)
-#define UART0_IBRD          REG(UART0_BASE + 0x024)
-#define UART0_FBRD          REG(UART0_BASE + 0x028)
-#define UART0_LCRH          REG(UART0_BASE + 0x02C)
-#define UART0_CTL           REG(UART0_BASE + 0x030)
-#define UART0_CC            REG(UART0_BASE + 0xFC8)
-#define UART_FR_RXFE        (1u << 4)
-#define UART_FR_TXFF        (1u << 5)
-
-/* I2C0 (Master) */
-#define I2C0_BASE           0x40020000u
-#define I2C0_MSA            REG(I2C0_BASE + 0x000)
-#define I2C0_MCS            REG(I2C0_BASE + 0x004)
-#define I2C0_MDR            REG(I2C0_BASE + 0x008)
-#define I2C0_MTPR           REG(I2C0_BASE + 0x00C)
-#define I2C0_MCR            REG(I2C0_BASE + 0x020)
-#define I2C_MCS_RUN         (1u << 0)
-#define I2C_MCS_START       (1u << 1)
-#define I2C_MCS_STOP        (1u << 2)
-#define I2C_MCS_ACK         (1u << 3)
-#define I2C_MCS_BUSY        (1u << 0)
-#define I2C_MCS_ERROR       (1u << 1)
-
-/* Timer0 */
-#define TIMER0_BASE         0x40030000u
-#define TIMER0_CFG          REG(TIMER0_BASE + 0x000)
-#define TIMER0_TAMR         REG(TIMER0_BASE + 0x004)
-#define TIMER0_CTL          REG(TIMER0_BASE + 0x00C)
-#define TIMER0_IMR          REG(TIMER0_BASE + 0x018)
-#define TIMER0_ICR          REG(TIMER0_BASE + 0x024)
-#define TIMER0_TAILR        REG(TIMER0_BASE + 0x028)
-
-/* NVIC */
-#define NVIC_ISER0          REG(0xE000E100)    /* IRQ 0..31 */
-#define NVIC_ISER1          REG(0xE000E104)    /* IRQ 32..63 */
-#define IRQ_TIMER0A         19u
-#define IRQ_GPIOJ           51u
-#define IRQ_GPIOK           52u
+/* NVIC: INT_... aus der Headerdatei ist die Nummer in der Vektortabelle; der NVIC zählt
+ * ab dem ersten Peripherie-Interrupt (Eintrag 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
+#define IRQ_TIMER0A         (INT_TIMER0A - 16u)   /* 19 */
+#define IRQ_GPIOJ           (INT_GPIOJ - 16u)     /* 51 */
+#define IRQ_GPIOK           (INT_GPIOK - 16u)     /* 52 */
 
 /* Pins */
 #define LED_D1              (1u << 1)          /* PN1 */
@@ -123,6 +60,9 @@
 #define KP_ROWS             0x0Fu              /* PK0..PK3 */
 #define KP_COLS             0x70u              /* PK4..PK6 */
 #define KP_COL_SHIFT        4u
+#define PINS_UART0          0x03u              /* PA0 = U0RX, PA1 = U0TX */
+#define PINS_I2C0           0x0Cu              /* PB2 = I2C0SCL, PB3 = I2C0SDA */
+#define PIN_I2C0_SDA        0x08u              /* PB3 */
 
 /* Geräteadressen am I2C-Bus (7 Bit) */
 #define OLED_ADDR           0x3Cu
@@ -137,20 +77,20 @@ static volatile uint32_t buttonEvents;     /* Bit 0 = SW1 gedrückt, Bit 1 = SW2
 
 void TIMER0A_Handler(void)
 {
-    TIMER0_ICR = 1u;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
     ticks++;
 }
 
 void GPIOJ_Handler(void)
 {
-    uint32_t mis = GPIO_MIS(GPIOJ_BASE);
-    GPIO_ICR(GPIOJ_BASE) = mis;
+    uint32_t mis = GPIO_PORTJ_AHB_MIS_R;
+    GPIO_PORTJ_AHB_ICR_R = mis;
     buttonEvents |= mis & (SW1 | SW2);
 }
 
 void GPIOK_Handler(void)
 {
-    GPIO_ICR(GPIOK_BASE) = GPIO_MIS(GPIOK_BASE);
+    GPIO_PORTK_ICR_R = GPIO_PORTK_MIS_R;
     keypadEvent = true;
 }
 
@@ -158,26 +98,30 @@ void GPIOK_Handler(void)
  * UART0: 115200 Baud bei 16 MHz -> BRD = 16e6 / (16 * 115200) = 8,6806
  *        IBRD = 8, FBRD = round(0,6806 * 64) = 44
  * ------------------------------------------------------------------------------------------- */
+#define BAUD_IBRD           8u
+#define BAUD_FBRD           44u
+
 static void uart_init(void)
 {
-    GPIO_AFSEL(GPIOA_BASE) |= 0x03u;                      /* PA0, PA1: alternative Funktion */
-    GPIO_PCTL(GPIOA_BASE) = (GPIO_PCTL(GPIOA_BASE) & ~0xFFu) | 0x11u; /* ... = U0RX/U0TX */
-    GPIO_DEN(GPIOA_BASE) |= 0x03u;
+    GPIO_PORTA_AHB_AFSEL_R |= PINS_UART0;                  /* PA0, PA1: alternative Funktion ... */
+    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASKE(0) | PCTL_MASKE(1)))
+                          | PCTL_FUNKTION(0, PCTL_UART0) | PCTL_FUNKTION(1, PCTL_UART0); /* U0RX/U0TX */
+    GPIO_PORTA_AHB_DEN_R |= PINS_UART0;
 
-    UART0_CTL = 0;                                        /* zum Konfigurieren ausschalten */
-    UART0_CC = 0;                                         /* Takt = Systemtakt */
-    UART0_IBRD = 8;
-    UART0_FBRD = 44;
-    UART0_LCRH = (0x3u << 5) | (1u << 4);                 /* 8 Datenbits, FIFO an */
-    UART0_CTL = (1u << 0) | (1u << 8) | (1u << 9);        /* UARTEN, TXE, RXE */
+    UART0_CTL_R = 0;                                        /* zum Konfigurieren ausschalten */
+    UART0_CC_R = UART_CC_CS_SYSCLK;                         /* Takt = Systemtakt */
+    UART0_IBRD_R = BAUD_IBRD;
+    UART0_FBRD_R = BAUD_FBRD;
+    UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN;        /* 8 Datenbits, FIFO an */
+    UART0_CTL_R = UART_CTL_UARTEN | UART_CTL_TXE | UART_CTL_RXE;
 }
 
 static void uart_putc(char c)
 {
-    while (UART0_FR & UART_FR_TXFF)
+    while (UART0_FR_R & UART_FR_TXFF)
     {
     }
-    UART0_DR = (uint8_t)c;
+    UART0_DR_R = (uint8_t)c;
 }
 
 static void uart_puts(const char *s)
@@ -194,11 +138,11 @@ static void uart_puts(const char *s)
 
 static bool uart_getc(char *c)
 {
-    if (UART0_FR & UART_FR_RXFE)
+    if (UART0_FR_R & UART_FR_RXFE)
     {
         return false;
     }
-    *c = (char)(UART0_DR & 0xFFu);
+    *c = (char)(UART0_DR_R & UART_DR_DATA_M);
     return true;
 }
 
@@ -227,40 +171,43 @@ static void utoa_pad(uint32_t wert, char *ziel, int breite)
 /* ---------------------------------------------------------------------------------------------
  * I2C0 als Master, 100 kHz:  MTPR = SysClk / (2 * (6 + 4) * 100 kHz) - 1 = 7
  * ------------------------------------------------------------------------------------------- */
+#define TPR_100KHZ          7u
+
 static void i2c_init(void)
 {
-    GPIO_AFSEL(GPIOB_BASE) |= 0x0Cu;                      /* PB2, PB3: alternative Funktion */
-    GPIO_ODR(GPIOB_BASE) |= 0x08u;                        /* SDA (PB3) als Open-Drain */
-    GPIO_PCTL(GPIOB_BASE) = (GPIO_PCTL(GPIOB_BASE) & ~0xFF00u) | 0x2200u; /* I2C0SCL/I2C0SDA */
-    GPIO_DEN(GPIOB_BASE) |= 0x0Cu;
+    GPIO_PORTB_AHB_AFSEL_R |= PINS_I2C0;                   /* PB2, PB3: alternative Funktion */
+    GPIO_PORTB_AHB_ODR_R |= PIN_I2C0_SDA;                      /* SDA (PB3) als Open-Drain */
+    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASKE(2) | PCTL_MASKE(3)))
+                          | PCTL_FUNKTION(2, PCTL_I2C0) | PCTL_FUNKTION(3, PCTL_I2C0); /* SCL/SDA */
+    GPIO_PORTB_AHB_DEN_R |= PINS_I2C0;
 
-    I2C0_MCR = 0x10u;                                     /* Master-Betrieb (MFE) */
-    I2C0_MTPR = 7u;
+    I2C0_MCR_R = I2C_MCR_MFE;                               /* Master-Betrieb */
+    I2C0_MTPR_R = TPR_100KHZ;
 }
 
 /* Wartet auf das Ende eines Befehls; true = ohne Fehler (Gerät hat quittiert) */
 static bool i2c_wait(void)
 {
-    while (I2C0_MCS & I2C_MCS_BUSY)
+    while (I2C0_MCS_R & I2C_MCS_BUSY)
     {
     }
-    return (I2C0_MCS & I2C_MCS_ERROR) == 0;
+    return (I2C0_MCS_R & I2C_MCS_ERROR) == 0;
 }
 
 /* Schreibt n Bytes an ein Gerät: START, Daten, STOP */
 static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
 {
-    I2C0_MSA = (uint32_t)addr << 1;                       /* R/S = 0: schreiben */
+    I2C0_MSA_R = (uint32_t)addr << I2C_MSA_SA_S;            /* R/S = 0: schreiben */
     for (uint32_t i = 0; i < n; i++)
     {
-        I2C0_MDR = daten[i];
+        I2C0_MDR_R = daten[i];
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i == n - 1) cmd |= I2C_MCS_STOP;
-        I2C0_MCS = cmd;
+        I2C0_MCS_R = cmd;
         if (!i2c_wait())
         {
-            I2C0_MCS = I2C_MCS_STOP;                      /* Fehler: Bus freigeben */
+            I2C0_MCS_R = I2C_MCS_STOP;                      /* Fehler: Bus freigeben */
             return false;
         }
     }
@@ -270,20 +217,20 @@ static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
 /* Liest n (>= 2) Bytes von einem Gerät: START, Daten mit ACK, letztes Byte ohne ACK + STOP */
 static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
 {
-    I2C0_MSA = ((uint32_t)addr << 1) | 1u;                /* R/S = 1: lesen */
+    I2C0_MSA_R = ((uint32_t)addr << I2C_MSA_SA_S) | I2C_MSA_RS; /* R/S = 1: lesen */
     for (uint32_t i = 0; i < n; i++)
     {
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i < n - 1)  cmd |= I2C_MCS_ACK;
         else            cmd |= I2C_MCS_STOP;
-        I2C0_MCS = cmd;
+        I2C0_MCS_R = cmd;
         if (!i2c_wait())
         {
-            I2C0_MCS = I2C_MCS_STOP;
+            I2C0_MCS_R = I2C_MCS_STOP;
             return false;
         }
-        daten[i] = (uint8_t)I2C0_MDR;
+        daten[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
     }
     return true;
 }
@@ -432,16 +379,16 @@ static const char keymap[4][3] = {
 
 static void keypad_init(void)
 {
-    GPIO_DIR(GPIOK_BASE) = (GPIO_DIR(GPIOK_BASE) | KP_ROWS) & ~KP_COLS;
-    GPIO_PDR(GPIOK_BASE) |= KP_COLS;                      /* Spalten: Pull-down */
-    GPIO_DEN(GPIOK_BASE) |= KP_ROWS | KP_COLS;
-    GPIO_DATA_M(GPIOK_BASE, KP_ROWS) = KP_ROWS;           /* alle Zeilen HIGH */
+    GPIO_PORTK_DIR_R = (GPIO_PORTK_DIR_R | KP_ROWS) & ~KP_COLS;
+    GPIO_PORTK_PDR_R |= KP_COLS;                      /* Spalten: Pull-down */
+    GPIO_PORTK_DEN_R |= KP_ROWS | KP_COLS;
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* alle Zeilen HIGH */
 
-    GPIO_IS(GPIOK_BASE) &= ~KP_COLS;                      /* Flanke */
-    GPIO_IBE(GPIOK_BASE) &= ~KP_COLS;                     /* nur eine Flanke ... */
-    GPIO_IEV(GPIOK_BASE) |= KP_COLS;                      /* ... und zwar steigend */
-    GPIO_ICR(GPIOK_BASE) = KP_COLS;
-    GPIO_IM(GPIOK_BASE) |= KP_COLS;
+    GPIO_PORTK_IS_R &= ~KP_COLS;                      /* Flanke */
+    GPIO_PORTK_IBE_R &= ~KP_COLS;                     /* nur eine Flanke ... */
+    GPIO_PORTK_IEV_R |= KP_COLS;                      /* ... und zwar steigend */
+    GPIO_PORTK_ICR_R = KP_COLS;
+    GPIO_PORTK_IM_R |= KP_COLS;
 }
 
 static void kurz_warten(void)
@@ -455,12 +402,12 @@ static void kurz_warten(void)
 static char keypad_scan(void)
 {
     char taste = 0;
-    GPIO_IM(GPIOK_BASE) &= ~KP_COLS;                      /* Scan löst sonst selbst Interrupts aus */
+    GPIO_PORTK_IM_R &= ~KP_COLS;                      /* Scan löst sonst selbst Interrupts aus */
     for (uint32_t zeile = 0; zeile < 4 && taste == 0; zeile++)
     {
-        GPIO_DATA_M(GPIOK_BASE, KP_ROWS) = 1u << zeile;
+        GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile;
         kurz_warten();                                    /* Leitungen einschwingen lassen */
-        uint32_t spalten = (GPIO_DATA_M(GPIOK_BASE, KP_COLS) & KP_COLS) >> KP_COL_SHIFT;
+        uint32_t spalten = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> KP_COL_SHIFT;
         for (uint32_t s = 0; s < 3; s++)
         {
             if (spalten & (1u << s))
@@ -470,16 +417,16 @@ static char keypad_scan(void)
             }
         }
     }
-    GPIO_DATA_M(GPIOK_BASE, KP_ROWS) = KP_ROWS;           /* Ruhezustand */
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* Ruhezustand */
     kurz_warten();
-    GPIO_ICR(GPIOK_BASE) = KP_COLS;
-    GPIO_IM(GPIOK_BASE) |= KP_COLS;
+    GPIO_PORTK_ICR_R = KP_COLS;
+    GPIO_PORTK_IM_R |= KP_COLS;
     return taste;
 }
 
 static bool keypad_gedrueckt(void)
 {
-    return (GPIO_DATA_M(GPIOK_BASE, KP_COLS) & KP_COLS) != 0;
+    return (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) != 0;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -488,48 +435,47 @@ static bool keypad_gedrueckt(void)
 int main(void)
 {
     /* Takt für alle benutzten Module freigeben und auf "bereit" warten */
-    const uint32_t ports = PORT_A | PORT_B | PORT_F | PORT_J | PORT_K | PORT_N;
-    SYSCTL_RCGCGPIO |= ports;
-    SYSCTL_RCGCUART |= 1u << 0;
-    SYSCTL_RCGCI2C |= 1u << 0;
-    SYSCTL_RCGCTIMER |= 1u << 0;
-    while ((SYSCTL_PRGPIO & ports) != ports || (SYSCTL_PRUART & 1u) == 0 ||
-           (SYSCTL_PRI2C & 1u) == 0 || (SYSCTL_PRTIMER & 1u) == 0)
+    SYSCTL_RCGCGPIO_R |= PORTS_TAKT;
+    SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
+    SYSCTL_RCGCI2C_R |= SYSCTL_RCGCI2C_R0;
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R0;
+    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
+           (SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0 || (SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R0) == 0)
     {
     }
 
     /* LEDs */
-    GPIO_DIR(GPION_BASE) |= LED_D1 | LED_D2;
-    GPIO_DEN(GPION_BASE) |= LED_D1 | LED_D2;
-    GPIO_DIR(GPIOF_BASE) |= LED_D3 | LED_D4;
-    GPIO_DEN(GPIOF_BASE) |= LED_D3 | LED_D4;
+    GPIO_PORTN_DIR_R |= LED_D1 | LED_D2;
+    GPIO_PORTN_DEN_R |= LED_D1 | LED_D2;
+    GPIO_PORTF_AHB_DIR_R |= LED_D3 | LED_D4;
+    GPIO_PORTF_AHB_DEN_R |= LED_D3 | LED_D4;
 
     /* Taster: Eingang mit Pull-up, Interrupt bei fallender Flanke (= Drücken) */
-    GPIO_DIR(GPIOJ_BASE) &= ~(SW1 | SW2);
-    GPIO_PUR(GPIOJ_BASE) |= SW1 | SW2;
-    GPIO_DEN(GPIOJ_BASE) |= SW1 | SW2;
-    GPIO_IS(GPIOJ_BASE) &= ~(SW1 | SW2);
-    GPIO_IBE(GPIOJ_BASE) &= ~(SW1 | SW2);
-    GPIO_IEV(GPIOJ_BASE) &= ~(SW1 | SW2);
-    GPIO_ICR(GPIOJ_BASE) = SW1 | SW2;
-    GPIO_IM(GPIOJ_BASE) |= SW1 | SW2;
+    GPIO_PORTJ_AHB_DIR_R &= ~(SW1 | SW2);
+    GPIO_PORTJ_AHB_PUR_R |= SW1 | SW2;
+    GPIO_PORTJ_AHB_DEN_R |= SW1 | SW2;
+    GPIO_PORTJ_AHB_IS_R &= ~(SW1 | SW2);
+    GPIO_PORTJ_AHB_IBE_R &= ~(SW1 | SW2);
+    GPIO_PORTJ_AHB_IEV_R &= ~(SW1 | SW2);
+    GPIO_PORTJ_AHB_ICR_R = SW1 | SW2;
+    GPIO_PORTJ_AHB_IM_R |= SW1 | SW2;
 
     uart_init();
     i2c_init();
     keypad_init();
 
     /* Timer0A: 100 ms periodisch */
-    TIMER0_CTL = 0;
-    TIMER0_CFG = 0;
-    TIMER0_TAMR = 0x2u;
-    TIMER0_TAILR = SYSTEM_CLOCK_HZ / 10u - 1u;
-    TIMER0_ICR = 1u;
-    TIMER0_IMR |= 1u;
+    TIMER0_CTL_R = 0;
+    TIMER0_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER0_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
+    TIMER0_TAILR_R = SYSTEM_CLOCK_HZ / 10u - 1u;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
+    TIMER0_IMR_R |= TIMER_IMR_TATOIM;
 
-    NVIC_ISER0 = 1u << IRQ_TIMER0A;
-    NVIC_ISER1 = (1u << (IRQ_GPIOJ - 32u)) | (1u << (IRQ_GPIOK - 32u));
+    NVIC_EN0_R = 1u << IRQ_TIMER0A;
+    NVIC_EN1_R = (1u << (IRQ_GPIOJ - 32u)) | (1u << (IRQ_GPIOK - 32u));
     __asm volatile("cpsie i");
-    TIMER0_CTL |= 1u;
+    TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
     uart_puts("\nrenode4mc-haw - Lab 03 Web-Konsole\n");
     uart_puts("Taster, Keypad und Abstandssensor bedienen; Zeichen werden zurueckgesendet.\n");
@@ -550,7 +496,7 @@ int main(void)
     oled_text(7, "UART:      -");
 
     uint32_t letzterTick = 0;
-    uint32_t abstand = 0xFFFFFFFFu;
+    uint32_t abstand = UINT32_MAX;              /* noch kein Messwert */
     bool tasteGedrueckt = false;
     char puffer[24];
     char zahl[8];
@@ -564,7 +510,7 @@ int main(void)
 
             if (letzterTick % 5u == 0u)
             {
-                GPIO_DATA_M(GPION_BASE, LED_D2) ^= LED_D2;            /* D2: 1 Hz */
+                GPIO_PORTN_DATA_BITS_R[LED_D2] ^= LED_D2;            /* D2: 1 Hz */
             }
 
             if (letzterTick % 2u == 0u)
@@ -589,7 +535,7 @@ int main(void)
                     uart_puts(" cm\n");
 
                     /* D1: Näherungswarnung unter 50 cm */
-                    GPIO_DATA_M(GPION_BASE, LED_D1) = (cm < 50u) ? LED_D1 : 0u;
+                    GPIO_PORTN_DATA_BITS_R[LED_D1] = (cm < 50u) ? LED_D1 : 0u;
                 }
             }
 
@@ -625,12 +571,12 @@ int main(void)
             __asm volatile("cpsie i");
             if (ev & SW1)
             {
-                GPIO_DATA_M(GPIOF_BASE, LED_D3) ^= LED_D3;
+                GPIO_PORTF_AHB_DATA_BITS_R[LED_D3] ^= LED_D3;
                 uart_puts("USR_SW1 gedrueckt -> D3 umgeschaltet\n");
             }
             if (ev & SW2)
             {
-                GPIO_DATA_M(GPIOF_BASE, LED_D4) ^= LED_D4;
+                GPIO_PORTF_AHB_DATA_BITS_R[LED_D4] ^= LED_D4;
                 uart_puts("USR_SW2 gedrueckt -> D4 umgeschaltet\n");
             }
         }

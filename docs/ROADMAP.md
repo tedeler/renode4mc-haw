@@ -34,7 +34,10 @@ tatsächlich passt – sonst Eigenbau.
 
 ### M0 – Gerüst (Voraussetzung für alles)
 - Registergenerator: `tm4c1294ncpdt.h` → C#-Registerdefinitionen (Offset, Name, Reset-Wert).
-- Plattform `tm4c1294ncpdt.repl` bereinigen, Peripherie-Adressen aus Header übernehmen.
+- ~~Plattform `tm4c1294ncpdt.repl` bereinigen, Peripherie-Adressen aus Header übernehmen.~~ Erledigt:
+  `common/tm4c1294ncpdt.h` (TI) liegt im Repo; `tools/check_header.py` prüft Adressen, Clock-Bits und
+  IRQs der Plattform, Register-Offsets/Bits der Modelle, die Vektortabelle und dass die Beispiele
+  keine eigenen Adressen definieren.
 - Robot-Tests (`renode-test`) als Rahmen für automatische Abnahme je Meilenstein.
 - **Bit-Banding** (`0x42000000–0x43FFFFFF`) für Peripherie und SRAM: `driverlib` greift darüber auf Einzelbits zu
   (im Test mit TIs `blinky.out` bereits aufgefallen).
