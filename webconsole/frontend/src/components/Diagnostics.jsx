@@ -1,30 +1,48 @@
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
+import { usePanel } from '../layout/PanelContext.js';
+import Widget from './Widget.jsx';
 
 /**
  * Diagnose: Warnungen und Fehler der Renode-Modelle, vor allem Fehlkonfigurationen von Registern
  * (Takt nicht freigegeben, DEN vergessen, offener Eingang, falsche Baudrate, ...).
  * Auf dem Board würde das Programm in diesen Fällen still nicht funktionieren – hier steht, warum.
+ * Kommt eine neue Meldung, klappt das Panel von selbst auf.
  */
 export default function Diagnostics() {
   const { diagnostics, send } = useControlSocket();
-  const [open, setOpen] = useState(true);
-  if (!diagnostics.length) {
-    return <div className="diag diag-ok">Diagnose: keine Konfigurationsfehler gemeldet</div>;
-  }
+  const { expand } = usePanel();
   const errors = diagnostics.filter((d) => d.level === 'error').length;
+  const prev = useRef(0);
+
+  useEffect(() => {
+    if (diagnostics.length > prev.current) expand();
+    prev.current = diagnostics.length;
+  }, [diagnostics.length, expand]);
+
+  const level = errors ? 'error' : diagnostics.length ? 'warning' : 'ok';
   return (
-    <section className={`diag ${errors ? 'diag-error' : 'diag-warning'}`}>
-      <header className="diag-head">
-        <button className="diag-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {open ? '▾' : '▸'} Diagnose: {diagnostics.length} Meldung{diagnostics.length === 1 ? '' : 'en'}
-          {errors ? ` (${errors} Fehler)` : ''} – das Programm verhält sich auf dem Board so nicht wie gedacht
-        </button>
-        <button className="btn small" onClick={() => send({ type: 'clearDiagnostics' })}>
-          Leeren
-        </button>
-      </header>
-      {open && (
+    <Widget
+      title="Diagnose"
+      className={`diag diag-${level}`}
+      subtitle={diagnostics.length ? 'das Programm verhält sich auf dem Board so nicht wie gedacht' : undefined}
+      badge={
+        diagnostics.length > 0 && (
+          <span className={`count-badge ${level}`}>
+            {diagnostics.length}
+            {errors ? ` · ${errors} Fehler` : ''}
+          </span>
+        )
+      }
+      actions={
+        diagnostics.length > 0 && (
+          <button className="btn small" onClick={() => send({ type: 'clearDiagnostics' })}>
+            Leeren
+          </button>
+        )
+      }
+    >
+      {diagnostics.length ? (
         <ul className="diag-list">
           {diagnostics.map((d) => (
             <li key={d.message} className={d.level}>
@@ -34,7 +52,9 @@ export default function Diagnostics() {
             </li>
           ))}
         </ul>
+      ) : (
+        <div className="meta">Keine Konfigurationsfehler gemeldet.</div>
       )}
-    </section>
+    </Widget>
   );
 }

@@ -96,13 +96,18 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
   }, []);
 
   return (
-    <Widget title="UART-Monitor" subtitle={label} status={status} className="uart">
-      <div className="terminal" ref={containerRef} />
-      <div className="row-actions">
+    <Widget
+      title="UART-Monitor"
+      subtitle={label}
+      status={status}
+      className="uart"
+      actions={
         <button className="btn small" onClick={() => termRef.current?.clear()}>
           Leeren
         </button>
-      </div>
+      }
+    >
+      <div className="terminal" ref={containerRef} />
     </Widget>
   );
 }

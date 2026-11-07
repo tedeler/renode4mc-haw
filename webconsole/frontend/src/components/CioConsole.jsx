@@ -31,7 +31,16 @@ export default function CioConsole({ label }) {
   }, [text]);
 
   return (
-    <Widget title="CCS-Konsole (printf)" subtitle={label} className="cio">
+    <Widget
+      title="CCS-Konsole (printf)"
+      subtitle={label}
+      className="cio"
+      actions={
+        <button className="btn small" onClick={() => setText('')}>
+          Leeren
+        </button>
+      }
+    >
       <pre
         className="cio-output"
         ref={preRef}
@@ -42,11 +51,6 @@ export default function CioConsole({ label }) {
       >
         {text || <span className="cio-empty">Noch keine Ausgabe. printf() erscheint hier.</span>}
       </pre>
-      <div className="row-actions">
-        <button className="btn small" onClick={() => setText('')}>
-          Leeren
-        </button>
-      </div>
     </Widget>
   );
 }

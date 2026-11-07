@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
+import ScaleBox from '../layout/ScaleBox.jsx';
 
 // Stehendes Pendel (wie ein Metronom): Drehpunkt UNTEN, die LEDs sitzen oben am Stab.
 // LED 0 ist die oberste (an der Spitze), LED 7 die unterste.
@@ -410,43 +411,49 @@ export default function PendulumDisplay({
 
   return (
     <Widget title="Pendeldisplay" subtitle={label} className="pendulum">
-      <div className="pendulum-stage">
-        <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
-      </div>
-      {adjustable && (
+      <ScaleBox maxScale={1.8} minH={160} flowMaxH={420}>
+        <div className="pendulum-stage">
+          <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
+        </div>
+      </ScaleBox>
+      <div className="pendulum-controls">
+        {adjustable && (
+          <label className="pendulum-freq">
+            <span>
+              Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
+            </span>
+            <input
+              type="range"
+              min={minFrequency}
+              max={maxFrequency}
+              step={0.1}
+              value={hz}
+              onChange={onFrequency}
+              className="sensor-range"
+              aria-label="Pendelfrequenz"
+            />
+          </label>
+        )}
         <label className="pendulum-freq">
           <span>
-            Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
+            Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
+            <span className="meta" title="So lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms">
+              (Auge: ca. 50–100 ms)
+            </span>
           </span>
           <input
             type="range"
-            min={minFrequency}
-            max={maxFrequency}
-            step={0.1}
-            value={hz}
-            onChange={onFrequency}
+            min={0}
+            max={1000}
+            step={1}
+            value={Math.round(msToSlider(afterglowMs))}
+            onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
             className="sensor-range"
-            aria-label="Pendelfrequenz"
+            aria-label="Nachleuchtdauer"
+            disabled={view === 'still'}
           />
         </label>
-      )}
-      <label className="pendulum-freq">
-        <span>
-          Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
-          <span className="meta">(so lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms)</span>
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(msToSlider(afterglowMs))}
-          onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
-          className="sensor-range"
-          aria-label="Nachleuchtdauer"
-          disabled={view === 'still'}
-        />
-      </label>
+      </div>
       <div className="pendulum-foot">
         <span className="meta">
           Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · Anzeige 0,2 s hinter der Simulation

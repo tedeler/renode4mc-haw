@@ -40,19 +40,21 @@ export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label,
 
   return (
     <Widget title={title ?? 'Distanzsensor (Ultraschall)'} subtitle={label} className="sensor">
-      <div className="sensor-readout">
-        <span className="sensor-value">{value}</span>
-        <span className="sensor-unit">{unit}</span>
+      <div className="sensor-line">
+        <div className="sensor-readout">
+          <span className="sensor-value">{value}</span>
+          <span className="sensor-unit">{unit}</span>
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={onChange}
+          className="sensor-range"
+          aria-label="Distanz"
+        />
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={onChange}
-        className="sensor-range"
-        aria-label="Distanz"
-      />
       <div className="sensor-scene">
         <div className="sensor-device">)))</div>
         <div className="sensor-object" style={{ left: `calc(${pct}% * 0.85 + 12%)` }} />

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
+import ScaleBox from '../layout/ScaleBox.jsx';
 
 const DEFAULT_LAYOUT = [
   ['1', '2', '3'],
@@ -70,31 +71,33 @@ export default function Keypad({ layout = DEFAULT_LAYOUT, rowPins, colPins, rowN
 
   return (
     <Widget title={title ?? `Keypad ${layout.length}×${cols}`} subtitle={subtitle} className="keypad">
-      <div className="keypad-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
-        {layout.flat().map((key) => {
-          const m = matrix.get(key);
-          return (
-            <button
-              key={key}
-              type="button"
-              className={`key ${active === key ? 'pressed' : ''}`}
-              title={`Zeile ${m.row.index} (${tag(m.row)}) · Spalte ${m.col.index} (${tag(m.col)})`}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.currentTarget.setPointerCapture?.(e.pointerId);
-                press(key);
-              }}
-              onPointerUp={release}
-              onPointerCancel={release}
-            >
-              <span className="key-label">{key}</span>
-              <span className="key-map">
-                {m.row.name && m.col.name ? `${m.row.name}·${m.col.name}` : `${m.row.pin}·${m.col.pin}`}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <ScaleBox maxScale={1.6} minH={150} flowMaxH={380}>
+        <div className="keypad-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+          {layout.flat().map((key) => {
+            const m = matrix.get(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                className={`key ${active === key ? 'pressed' : ''}`}
+                title={`Zeile ${m.row.index} (${tag(m.row)}) · Spalte ${m.col.index} (${tag(m.col)})`}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture?.(e.pointerId);
+                  press(key);
+                }}
+                onPointerUp={release}
+                onPointerCancel={release}
+              >
+                <span className="key-label">{key}</span>
+                <span className="key-map">
+                  {m.row.name && m.col.name ? `${m.row.name}·${m.col.name}` : `${m.row.pin}·${m.col.pin}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </ScaleBox>
     </Widget>
   );
 }
