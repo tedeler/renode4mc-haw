@@ -244,7 +244,9 @@ spielt damit Stab, LEDs und Leuchtspur **200 ms verzögert, aber zeitlich exakt*
 zwei Stützstellen läuft die Phase mit `2/Periode` weiter, der LED-Zustand gilt bis zum nächsten
 Wechsel. Das Bild entsteht nur aus der Leuchtspur: Jede leuchtende LED zeichnet den Bogen, den sie
 überstreicht, und die Spur klingt exponentiell ab, so dass sie nach der eingestellten
-**Nachleuchtdauer** (Regler 1 ms – 1 s, Standard 10 ms) unter 5 % liegt. Mit 10 ms sieht man bei
+**Nachleuchtdauer** (Regler 1 ms – 1 s, Standard **1 s**, je Versuch mit `"afterglowMs"` in der
+Versuchs-JSON einstellbar; die Dauer gilt in virtueller Zeit) unter 5 % liegt. Mit dem Standard
+steht sofort ein ganzes Bild, auch wenn die Simulation langsamer als Echtzeit läuft. Mit 10 ms sieht man bei
 jeder Frequenz nur ein kurzes Stück Spur hinter dem Stab; ein stehendes Bild wie für das Auge
 entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattdessen das Bild aus
 `pd.data` (letzter Schwung je Richtung, ohne Abklingen). Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu

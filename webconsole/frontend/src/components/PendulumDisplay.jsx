@@ -18,7 +18,9 @@ const MAX_ARC_STEP = 0.03; // Leuchtspur in Stücken von höchstens so viel Wink
 // Nachleuchtdauer: Regler logarithmisch von 1 ms bis 1 s
 const AFTERGLOW_MIN_MS = 1;
 const AFTERGLOW_MAX_MS = 1000;
-const AFTERGLOW_DEFAULT_MS = 10;
+// Standard: lange Nachleuchtdauer, damit sofort ein stehendes Bild zu sehen ist (wie für das Auge
+// beim echten Pendel). Je Versuch einstellbar über "afterglowMs" in der Versuchs-JSON.
+const AFTERGLOW_DEFAULT_MS = 1000;
 const sliderToMs = (v) => AFTERGLOW_MIN_MS * (AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS) ** (v / 1000);
 const msToSlider = (ms) => (1000 * Math.log(ms / AFTERGLOW_MIN_MS)) / Math.log(AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS);
 
@@ -289,16 +291,23 @@ function drawRod(ctx, theta, leds) {
  * Frequenz-Regler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
  * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
  */
-export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
+export default function PendulumDisplay({
+  label,
+  frequency = 10,
+  minFrequency = frequency,
+  maxFrequency = frequency,
+  afterglowMs: initialAfterglowMs = AFTERGLOW_DEFAULT_MS,
+}) {
+  const startAfterglow = Math.min(AFTERGLOW_MAX_MS, Math.max(AFTERGLOW_MIN_MS, initialAfterglowMs));
   const { subscribePendulum, subscribePendulumEvents, send, status } = useControlSocket();
   const canvasRef = useRef(null);
   const latest = useRef(null);
   const stillDirty = useRef(true);
   const timeline = useRef(new Timeline());
   const viewRef = useRef('both');
-  const afterglowRef = useRef(AFTERGLOW_DEFAULT_MS);
+  const afterglowRef = useRef(startAfterglow);
   const [view, setView] = useState('both');
-  const [afterglowMs, setAfterglowMs] = useState(AFTERGLOW_DEFAULT_MS);
+  const [afterglowMs, setAfterglowMs] = useState(startAfterglow);
   const [hz, setHz] = useState(frequency);
   const [modelHz, setModelHz] = useState(null);
   const pending = useRef(null);

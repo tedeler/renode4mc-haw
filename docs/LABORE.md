@@ -59,6 +59,11 @@ verdrahtet, ändert nur die `.repl`-Datei des Versuchs.
   dem Skript (Bild 2). Es schwingt mit ca. 8,3 Hz, also ca. 60 ms je Schwung. Im Browser lässt sich
   die Frequenz von 2 bis 15 Hz einstellen, auf dem Board ist sie fest. Frequenzwechsel gelten ab
   dem nächsten Umkehrpunkt.
+  Die Anzeige startet mit 8,3 Hz und 1 s Nachleuchten, so steht sofort ein ganzes Bild.
+  Gemessen in der Testumgebung (2 Kerne): Lab 3 zeigt das Bild sofort. Lab 2 braucht ca. 5 s, weil
+  Renode in den ersten Sekunden mit der Abfrage-Firmware nur ca. 5 % der Echtzeit schafft. Eine
+  niedrigere Frequenz verzögert das erste Bild noch weiter, denn die Firmware muss erst einen
+  Schwung messen.
 - **HC-SR04:** Die fallende Flanke am Trigger startet eine Messung (Bild 5). Echo geht ca. 450 µs
   danach auf HIGH, für 58,3 µs pro cm (Schall 343 m/s, hin und zurück). Außerhalb von 3–300 cm
   bleibt Echo 200 ms HIGH (Skript NVIC, Tabelle 2.1). Solange eine Messung läuft, ignoriert das
