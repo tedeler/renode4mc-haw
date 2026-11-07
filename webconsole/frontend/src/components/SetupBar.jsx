@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchExperiments, stopSimulation, uploadElf } from '../api.js';
+import { fetchExperiments, startSolution, stopSimulation, uploadElf } from '../api.js';
 
 /** Kopfzeile: Versuchsauswahl, ELF-Upload, Start/Stop. */
 export default function SetupBar({ running, activeId, onStarted, onStopped }) {
@@ -26,7 +26,25 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
     try {
       const res = await uploadElf(experimentId, file);
       setMessage({ kind: 'ok', text: `„${res.experiment.title}“ läuft` });
-      onStarted(res.experiment);
+      onStarted(res.experiment, false);
+    } catch (e) {
+      setMessage({ kind: 'error', text: e.message, log: e.log });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Musterlösung zum Vergleich: zeigt, wie sich das fertige Programm verhalten soll
+  const selected = experiments.find((x) => x.id === experimentId);
+  const solution = selected?.solution;
+  const startReference = async () => {
+    if (!experimentId) return;
+    setBusy(true);
+    setMessage({ kind: 'info', text: 'Starte Musterlösung …' });
+    try {
+      const res = await startSolution(experimentId);
+      setMessage({ kind: 'ok', text: `„${res.experiment.title}“ läuft mit der Musterlösung` });
+      onStarted(res.experiment, true);
     } catch (e) {
       setMessage({ kind: 'error', text: e.message, log: e.log });
     } finally {
@@ -79,6 +97,20 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
         <button className="btn primary" onClick={start} disabled={busy || !file || !experimentId}>
           {busy ? 'Bitte warten …' : running ? 'Neu starten' : 'Start'}
         </button>
+        {solution && (
+          <button
+            className="btn"
+            onClick={startReference}
+            disabled={busy || !solution.available}
+            title={
+              solution.available
+                ? `${solution.label}: zum Vergleich, wie sich das fertige Programm verhält`
+                : 'Musterlösung nicht gebaut (tools/build-solutions.sh)'
+            }
+          >
+            Musterlösung starten
+          </button>
+        )}
         {running && (
           <button className="btn" onClick={stop} disabled={busy}>
             Stop

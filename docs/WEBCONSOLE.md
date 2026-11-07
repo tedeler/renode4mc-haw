@@ -178,8 +178,9 @@ sysbus.gpioM.pendel GetEvents          # "EV:<t>:<Phase>:<LEDs>:<Periode>:<t,Pha
 
 | Methode, Pfad | Beschreibung |
 |---|---|
-| `GET /api/experiments` | Liste der Versuche `[{ id, title }]` (alle `sim/experiments/*.resc`) |
-| `GET /api/status` | `{ running, experiment }` – stellt nach einem Neuladen der Seite das Bedienfeld wieder her |
+| `GET /api/experiments` | Liste der Versuche `[{ id, title, solution }]` (alle `sim/experiments/*.resc`; `solution` = `{ label, available }` oder `null`) |
+| `GET /api/status` | `{ running, experiment, solution }` – stellt nach einem Neuladen der Seite das Bedienfeld wieder her |
+| `POST /api/solution` | JSON `{ experiment_id }`: Musterlösung des Versuchs (`sim/solutions/<Beispiel>.elf`) starten, Antwort wie `/upload` mit `solution: true` ([LABORE.md](LABORE.md)) |
 | `POST /upload` | `multipart/form-data`: `experiment_id`, `file` (`.out`/`.elf`/`.axf`, max. 16 MB). Antwort 200 `{ status: "running", experiment }`, sonst 400/500 `{ error, log? }` |
 | `POST /api/stop` | Simulation beenden |
 
@@ -200,7 +201,12 @@ Browser → Server:
 { "type": "keypad", "row": 1, "col": 1, "pressed": true }   // Matrix-Koordinate, nicht die Taste
 { "type": "sensor", "value": 120 }                          // cm, wird auf min..max begrenzt
 { "type": "pendulum", "frequency": 12.5 }                   // Hz, auf minFrequency..maxFrequency begrenzt
+{ "type": "clearDiagnostics" }                              // Diagnose-Liste leeren
 ```
+
+Taster: gedrückt = Pin an GND (`activeLow`) bzw. VCC, **losgelassen = Pin offen**
+(`<port> ReleaseInput <pin>`). Ohne Pull-up in der Firmware liest der Pin dann 0, und die Diagnose
+meldet den offenen Eingang.
 
 Server → Browser:
 
@@ -210,9 +216,17 @@ Server → Browser:
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
 { "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …] }
+{ "type": "bcd", "digits": "--29", "enable": "01", "data": "29" }     // BCD-Anzeige (Lab 1)
+{ "type": "cio", "data": "<Base64>" }                                  // printf-Ausgabe (CCS-Konsole)
+{ "type": "diag", "level": "warning", "message": "…", "count": 1 }    // Warnung/Fehler aus Renode
+{ "type": "diagReset" }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
+
+Im `hello` stehen zusätzlich `bcd`, `cio` (bisherige printf-Ausgabe, Base64) und `diagnostics`
+(Liste). Die Diagnose sammelt jede Renode-Logzeile mit `[WARNING]`/`[ERROR]` des laufenden
+Versuchs, gleiche Meldungen mit Zähler, höchstens 100.
 
 `fb.data` ist der Framebuffer im SSD1306-Page-Format, wie er auf dem Display zu sehen ist:
 Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
@@ -382,6 +396,9 @@ node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
 node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
 ```
 
+`test/e2e_labs.js` prüft die vier Lab-Umgebungen mit ihren Musterlösungen, die Diagnose und
+`POST /api/solution` (siehe [LABORE.md](LABORE.md)).
+
 `test/e2e_versuch2.js` prüft Versuch 2 mit der Lab-04-Firmware: Startmeldung, gemessene
 Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
 40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
@@ -393,7 +410,9 @@ die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau
 - **Eine Simulation pro Container**, keine Benutzerverwaltung, keine Authentifizierung. Für den
   Betrieb im Netz gehört der Container hinter einen Reverse-Proxy mit Anmeldung.
 - **Timing:** Renode ist nicht zyklengenau (siehe [ROADMAP.md](ROADMAP.md)). UART und I2C senden
-  ohne Baudraten- bzw. Busverzögerung. Die Ultraschall-Messung ist sofort fertig.
+  ohne Baudraten- bzw. Busverzögerung; in den Lab-Umgebungen (`ExpectedBaudRate` gesetzt) kommen
+  empfangene Zeichen im Leitungstakt an. Die Messung des MB1242 (I2C) ist sofort fertig, der
+  HC-SR04 (Lab 2/3) hat das Zeitverhalten des echten Moduls.
 - **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
   mit 10 Bildern/s aktualisiert.
 - **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode

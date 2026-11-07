@@ -6,8 +6,26 @@ import { UART_WS_URL } from '../config.js';
 import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket.js';
 import Widget from './Widget.jsx';
 
-/** UART-Monitor: xterm.js direkt am UART-WebSocket (Binärframes, bidirektional). */
-export default function UartMonitor({ label }) {
+// Empfangenes CR ohne folgendes LF als Zeilenumbruch zeigen (Tera Term: "New-line Receive CR+LF")
+function crToCrlf(bytes, state) {
+  const out = [];
+  for (const b of bytes) {
+    if (state.cr && b !== 0x0a) out.push(0x0a);
+    out.push(b);
+    state.cr = b === 0x0d;
+  }
+  return new Uint8Array(out);
+}
+
+/**
+ * UART-Monitor: xterm.js direkt am UART-WebSocket (Binärframes, bidirektional).
+ * localEcho: getippte Zeichen selbst anzeigen (Tera Term "Local echo"), crlf: empfangenes CR als
+ * neue Zeile anzeigen. Beides wie in der Terminal-Einstellung des Laborskripts (Lab 4).
+ */
+export default function UartMonitor({ label, localEcho = false, crlf = false }) {
+  const optsRef = useRef({ localEcho, crlf });
+  optsRef.current = { localEcho, crlf };
+  const crState = useRef({ cr: false });
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const sendRef = useRef(() => false);
@@ -18,7 +36,9 @@ export default function UartMonitor({ label }) {
     onMessage: (ev) => {
       const t = termRef.current;
       if (!t) return;
-      t.write(typeof ev.data === 'string' ? ev.data : new Uint8Array(ev.data));
+      let data = typeof ev.data === 'string' ? new TextEncoder().encode(ev.data) : new Uint8Array(ev.data);
+      if (optsRef.current.crlf) data = crToCrlf(data, crState.current);
+      t.write(data);
     },
     onClose: (ev) => {
       const t = termRef.current;
@@ -49,7 +69,14 @@ export default function UartMonitor({ label }) {
     termRef.current = term;
 
     const encoder = new TextEncoder();
-    const sub = term.onData((d) => sendRef.current(encoder.encode(d)));
+    const sub = term.onData((d) => {
+      const bytes = encoder.encode(d);
+      sendRef.current(bytes);
+      if (optsRef.current.localEcho) {
+        term.write(optsRef.current.crlf ? crToCrlf(bytes, { cr: false }) : bytes);
+        if (optsRef.current.crlf && bytes[bytes.length - 1] === 0x0d) term.write('\n');
+      }
+    });
 
     const ro = new ResizeObserver(() => {
       try {

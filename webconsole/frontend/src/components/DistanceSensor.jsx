@@ -7,9 +7,9 @@ import Widget from './Widget.jsx';
  * onChange -> {type:"sensor", value} -> Backend -> Monitor "sysbus.i2c1.sensor Distance <Wert>"
  * (gedrosselt auf max. 20 Updates/s, letzter Wert wird immer gesendet).
  */
-export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label }) {
+export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label, initial = 100, title }) {
   const { send, status } = useControlSocket();
-  const [value, setValue] = useState(100);
+  const [value, setValue] = useState(initial);
   const pending = useRef(null);
   const timer = useRef(null);
 
@@ -39,7 +39,7 @@ export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label 
   const pct = ((value - min) / (max - min)) * 100;
 
   return (
-    <Widget title="Distanzsensor (Ultraschall)" subtitle={label} className="sensor">
+    <Widget title={title ?? 'Distanzsensor (Ultraschall)'} subtitle={label} className="sensor">
       <div className="sensor-readout">
         <span className="sensor-value">{value}</span>
         <span className="sensor-unit">{unit}</span>

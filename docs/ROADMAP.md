@@ -5,7 +5,9 @@
 > Register, RX-FIFO, Interrupts; offen: Baudraten-Timing, µDMA, Break/Fehler-Injektion). Zusätzlich –
 > abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
 > und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Lab 03).
-> Offen: M2 (SysTick-Test), M6 (ADC), M7 (weitere Labs).
+> Praktikumsversuche Lab 1–4 mit eigenen Umgebungen, Musterlösungen und strenger Registerprüfung:
+> [LABORE.md](LABORE.md). Offen: M2 (SysTick-Test), M6 (ADC), Timer-Capture/PWM, Bus-Fault bei
+> Zugriff ohne Takt.
 > Die folgenden Abschnitte beschreiben den ursprünglichen Plan.
 
 Ziel: Studierende schreiben normale TM4C1294-Firmware (Register oder TivaWare-`driverlib`) und

@@ -1,0 +1,34 @@
+// Lab 4 (IE4-MCL) – Mikrocontroller per UART vom PC steuern.
+// Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen).
+//
+//   UART0 (PA0 RX / PA1 TX)  virtueller COM-Port, im Browser als Terminal (Skript: 9600 Bit/s, 7N1;
+//                            Renode überträgt Bytes, Baudrate und Format wirken nicht auf die Daten)
+//   LEDs D1..D4              PN1, PN0, PF4, PF0 (Befehl "leds +1-2~3")
+//   Taster USR_SW1           PJ0 (aktiv LOW, interner Pull-up nötig), Interrupt Port J = IRQ 51
+//   printf()                 CCS-Konsole (sysbus.cio)
+//   (LEDs, Taster und UART0 stammen aus der Basisplattform.)
+
+// Timer 4..7: Interrupts zum NVIC (in der Basisplattform nicht angeschlossen) und Timer 6/7 an den
+// Adressen des TM4C1294 (0x400E0000 / 0x400E1000; die Basisplattform hat sie an 0x40036000/7000).
+timer4:
+    IRQA -> nvic@63
+    IRQB -> nvic@64
+
+timer5:
+    IRQA -> nvic@65
+    IRQB -> nvic@66
+
+gptm6: Timers.TivaTimer @ sysbus 0x400E0000
+    sysCtl: sysctl
+    clockBit: 6
+    IRQA -> nvic@98
+    IRQB -> nvic@99
+
+gptm7: Timers.TivaTimer @ sysbus 0x400E1000
+    sysCtl: sysctl
+    clockBit: 7
+    IRQA -> nvic@100
+    IRQB -> nvic@101
+
+// printf() -> CCS-Konsole (Hook auf C$$IO$$ des TI-Laufzeitsystems); Adresse nur Platzhalter
+cio: Miscellaneous.TiCioConsole @ sysbus <0xF0000000, +0x100>

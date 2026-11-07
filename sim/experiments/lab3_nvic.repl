@@ -1,0 +1,67 @@
+// Lab 3 (Lab 4 im Skript "Nested Vectored Interrupt Controller") – LED-Pendel und HC-SR04 mit Interrupts.
+// Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen).
+//
+//   LED-Pendel (HAW)         stehendes Pendel, Drehpunkt unten, ca. 8,3 Hz (Periode 120 ms)
+//                            8 LEDs an PM0..PM7 (Ausgänge, HIGH = an), LED 7 = PM7 ist die OBERSTE
+//                            Signal R/L an PL0 (Eingang): steigende Flanke = linker Umkehrpunkt,
+//                            fallende Flanke = rechter Umkehrpunkt (HIGH: Schwung links -> rechts)
+//                            Frequenz zur Laufzeit:  sysbus.gpioM.pendel PeriodUs <us>
+//   Ultraschall HC-SR04      Trigger = PD0 (Ausgang), Echo = PD1 (Eingang)
+//                            fallende Trigger-Flanke startet die Messung, Echo nach ca. 450 us HIGH,
+//                            Dauer 58,3 us/cm; außerhalb 3..300 cm 200 ms HIGH
+//                            Abstand:  sysbus.gpioD.hcsr04 Distance <cm>
+//   printf()                 CCS-Konsole (sysbus.cio)
+//   (LEDs D1..D4, Taster USR_SW1/2 und UART0 stammen aus der Basisplattform.)
+//
+// Gleicher Aufbau wie Lab 2 (Bild 3.1 im Skript). Für die Interrupt-Lösung wichtig:
+//   GPIO-Interrupts: Port D = IRQ 3, Port L = IRQ 53, Port J = IRQ 51 (wie auf dem Chip)
+//   Timer-Interrupts: Timer 0..5 und 6/7 (unten) sind mit dem NVIC verbunden
+
+pendel: Miscellaneous.PendulumDisplay @ gpioM
+    periodUs: 120000
+    columns: 120
+    syncMode: "direction"
+    Sync -> gpioL@0
+
+// Das Modell zählt LED 0 an der Spitze; beim HAW-Pendel ist LED 7 (PM7) die oberste.
+gpioM:
+    7 -> pendel@0
+    6 -> pendel@1
+    5 -> pendel@2
+    4 -> pendel@3
+    3 -> pendel@4
+    2 -> pendel@5
+    1 -> pendel@6
+    0 -> pendel@7
+
+hcsr04: Sensors.HcSr04 @ gpioD
+    distance: 65
+    Echo -> gpioD@1
+
+gpioD:
+    0 -> hcsr04@0
+
+// Timer 4..7: Interrupts zum NVIC (in der Basisplattform nicht angeschlossen) und Timer 6/7 an den
+// Adressen des TM4C1294 (0x400E0000 / 0x400E1000; die Basisplattform hat sie an 0x40036000/7000).
+timer4:
+    IRQA -> nvic@63
+    IRQB -> nvic@64
+
+timer5:
+    IRQA -> nvic@65
+    IRQB -> nvic@66
+
+gptm6: Timers.TivaTimer @ sysbus 0x400E0000
+    sysCtl: sysctl
+    clockBit: 6
+    IRQA -> nvic@98
+    IRQB -> nvic@99
+
+gptm7: Timers.TivaTimer @ sysbus 0x400E1000
+    sysCtl: sysctl
+    clockBit: 7
+    IRQA -> nvic@100
+    IRQB -> nvic@101
+
+// printf() -> CCS-Konsole (Hook auf C$$IO$$ des TI-Laufzeitsystems); Adresse nur Platzhalter
+cio: Miscellaneous.TiCioConsole @ sysbus <0xF0000000, +0x100>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectSpec>
+    <project
+        name="lab07_nvic_pendel"
+        device="Cortex M.TM4C1294NCPDT"
+        connection="Stellaris_ICDI_Connection"
+        toolChain="TICLANG"
+        outputFormat="ELF"
+        outputType="executable"
+        launchWizard="false"
+        compilerBuildOptions="-mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -Oz -g -ffunction-sections -fdata-sections -Wall"
+        linkerBuildOptions="--rom_model --stack_size=2048 --heap_size=2048 --diag_suppress=10063"
+        description="lab07_nvic_pendel (HAW Mikrocontroller-Praktikum, EK-TM4C1294XL)">
+
+        <!-- eigener Quellcode des Beispiels -->
+        <file path="main.c" openOnCreation="true" excludeFromBuild="false" action="copy"/>
+        <file path="zeitbasis.c" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="ultrasonic_hcsr04.c" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="pendulum_haw.c" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="register.h" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="zeitbasis.h" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="ultrasonic_hcsr04.h" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+        <file path="pendulum_haw.h" openOnCreation="false" excludeFromBuild="false" action="copy"/>
+
+        <!-- gemeinsame Dateien: Startup (Vektortabelle), Linker-Skript -->
+        <file path="../../common/startup_tm4c1294.c" targetDirectory="common" action="link"/>
+        <file path="../../common/tm4c1294.cmd" targetDirectory="common" action="link"/>
+    </project>
+</projectSpec>
