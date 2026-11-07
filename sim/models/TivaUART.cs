@@ -507,6 +507,7 @@ namespace Antmicro.Renode.Peripherals.UART
             {
                 return 0;
             }
+            if(TivaSysCtl.Peeking) return rxFifo.Peek();   // Anzeige: nichts entnehmen
             uint entry = rxFifo.Dequeue();
             // RSR zeigt die Fehler des zuletzt gelesenen Zeichens (OE bleibt bis zum Löschen)
             rsr = (rsr & RsrOe) | ((entry >> 8) & 0x7);
@@ -612,6 +613,7 @@ namespace Antmicro.Renode.Peripherals.UART
                 clockWarned = false;
                 return true;
             }
+            if(TivaSysCtl.PeekClockOff()) return false;
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,

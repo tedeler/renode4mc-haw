@@ -3,14 +3,20 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const { MonitorClient } = require('./monitorClient');
 const experiments = require('./experiments');
+const registers = require('./registers');
 
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 // Flanken einer Leitung (sim/models/UartLine.cs, SignalRecorder.Format):
-// Zustand der Simulation (TivaSysCtl.GetStatus)
+// Zustand der Simulation (TivaSysCtl.GetStatus, GetCpuRegisters, ReadMemory, PeekRegisters)
 const ST_RE = /ST:(\d+):(\d+):(\d+):(\d+):(\w+|-):([01]):(\d+):([0-9A-F]+):(\S*)/;
+const CR_RE = /CR:(\S*)/;
+const MEM_RE = /MEM:([0-9A-F]{8}):([0-9A-F]*)|MEM:ERR:(.*)/;
+const PR_RE = /PR:(\S*)/;
+const DIS_RE = /^0x([0-9a-fA-F]+):\s+([0-9a-fA-F]+)\s+(.*)$/;
+const SYMBOL_RE = /^[A-Za-z_]\w{0,63}$/;
 const LOG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
 // SE:<name>:<now ns>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;...
 const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/g;
@@ -32,7 +38,12 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *   { type: "subscribe", signals: [name, …] }  Flanken dieser Leitungen abonnieren (Oszilloskop)
  *   { type: "unsubscribe", signals: [name, …] }
  *   { type: "reset" }                          Reset-Taster: nur der Mikrocontroller startet neu
- *   { type: "watch", sim: true|false }         Simulations-Anzeige an/aus (Zustand alle 500 ms)
+ *   { type: "watch", sim: true|false, memory?: { addr, count }, periph? }
+ *                                              Simulations-Anzeige an/aus (Zustand alle 500 ms);
+ *                                              memory.addr = Zahl oder Symbolname aus der ELF-Datei,
+ *                                              periph = Modulname aus "simmeta" (z. B. "UART0")
+ *   { type: "pause" } | { type: "continue" } | { type: "step", count }
+ *                                              Ausführung anhalten, fortsetzen, count Befehle ausführen
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd, uartConfig }
  *   { type: "leds", states: { [id]: boolean } }
@@ -57,12 +68,16 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *                                                     bei now; bis now ist die Leitung vollständig bekannt
  *   { type: "sim", firmware, experiment, renode, time, cpu, resets, uart, warnings }
  *                                                     Zustand der Simulation (nur an Clients mit watch)
- *   { type: "reset", count }                          Reset wurde ausgelöst
+ *                                                     dazu je Client: regs (Kernregister), disasm (nur
+ *                                                     angehalten), memory, periph
+ *   { type: "simmeta", modules: [name, …] }           Module für die Peripherie-Register-Ansicht
+ *   { type: "reset" }                                 Reset wurde ausgelöst
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
 class ControlBridge {
-  constructor({ wsPort, renodeHost, monitorPort, pollIntervalMs }) {
+  constructor({ wsPort, renodeHost, monitorPort, pollIntervalMs, headerPath }) {
+    this.registers = registers.load(headerPath);
     this.renodeHost = renodeHost;
     this.monitorPort = monitorPort;
     this.pollIntervalMs = pollIntervalMs;
@@ -84,6 +99,8 @@ class ControlBridge {
     this.startedAt = null;
     this.lastSim = null;
     this.pollCount = 0;
+    this.stopped = false; // angehalten (Pause oder Einzelschritt)
+    this.symbols = new Map();
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
@@ -205,8 +222,16 @@ class ControlBridge {
         return;
       }
       case 'watch': {
+        const was = ws.watchSim;
         ws.watchSim = !!msg.sim;
-        if (ws.watchSim && this.lastSim) this._send(ws, this.lastSim);
+        ws.simMemory = null;
+        if (msg.memory && (typeof msg.memory.addr === 'number' || typeof msg.memory.addr === 'string')) {
+          const count = Math.max(16, Math.min(1024, Math.round(Number(msg.memory.count) || 128)));
+          ws.simMemory = { addr: msg.memory.addr, count };
+        }
+        ws.simPeriph = typeof msg.periph === 'string' && this.registers.byModule[msg.periph] ? msg.periph : null;
+        if (ws.watchSim && !was) this._send(ws, { type: 'simmeta', modules: this.registers.modules });
+        if (ws.watchSim && this.attached && this.experiment) this._pollSimSoon();
         return;
       }
       case 'uartconfig': {
@@ -269,7 +294,31 @@ class ControlBridge {
       case 'reset': {
         if (!exp.reset) throw new Error('Kein Reset in diesem Versuch');
         await run(`${exp.reset.path} ResetMcu`);
+        // Der Reset geschieht beim nächsten Zeitschritt: angehaltene Simulation dafür fortsetzen
+        if (this.stopped) await this._continue(run);
         this._broadcast({ type: 'reset' });
+        this._pollSimSoon();
+        break;
+      }
+      case 'pause': {
+        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        await run('pause');
+        this.stopped = true;
+        this._pollSimSoon();
+        break;
+      }
+      case 'continue': {
+        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        await this._continue(run);
+        this._pollSimSoon();
+        break;
+      }
+      case 'step': {
+        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        const n = Math.max(1, Math.min(10000, Math.round(Number(msg.count) || 1)));
+        this.stopped = true;
+        await run(`${exp.debug.cpu} Step ${n}`);
+        this._pollSimSoon();
         break;
       }
       case 'pendulum': {
@@ -288,6 +337,25 @@ class ControlBridge {
     }
   }
 
+  async _continue(run) {
+    await run(`${this.experiment.debug ? this.experiment.debug.cpu : 'sysbus.cpu'} ExecutionMode Continuous`);
+    await run('start');
+    this.stopped = false;
+  }
+
+  /** Simulations-Anzeige sofort aktualisieren (nach Pause, Schritt, Reset, neuem watch) */
+  _pollSimSoon() {
+    clearTimeout(this.simSoon);
+    this.simSoon = setTimeout(async () => {
+      if (!this.attached || !this.experiment || !this._watchers().length) return;
+      try {
+        await this._pollSim(this.monitor);
+      } catch (e) {
+        if (this.attached) console.error(`[control] Sim-Fehler: ${e.message}`);
+      }
+    }, 30);
+  }
+
   /** Verbindet mit der neu gestarteten Renode-Instanz und startet Polling/LED-Bridge. */
   async attach(experiment, timeoutMs, isAlive) {
     this.detach();
@@ -300,6 +368,8 @@ class ControlBridge {
     this.startedAt = Date.now();
     this.lastSim = null;
     this.simPrev = null;
+    this.stopped = false;
+    this.symbols = new Map();
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -472,6 +542,25 @@ class ControlBridge {
         sim.time = { virtualNs, wallMs: now - this.startedAt, speed };
         sim.cpu = { state: m[5], halted: m[6] === '1', pc: `0x${m[8]}`, symbol: m[9] || null, sysclk: Number(m[4]) };
         sim.resets = { count: Number(m[2]), lastNs: Number(m[3]) };
+        this.stopped = m[5] === 'Paused' || m[5] === 'Step';
+        sim.stopped = this.stopped;
+      }
+      const cr = CR_RE.exec(await mon.execute(`${exp.status.path} GetCpuRegisters`));
+      if (cr) {
+        sim.regs = cr[1].split(';').filter(Boolean).map((x) => {
+          const [name, hex] = x.split('=');
+          return { name, value: parseInt(hex, 16) };
+        });
+      }
+      if (this.stopped && exp.debug && sim.cpu) {
+        // Die nächsten Befehle ab PC (Thumb-2: 2 oder 4 Bytes)
+        const out = await mon.execute(`${exp.debug.cpu} DisassembleBlock ${sim.cpu.pc} 24`);
+        sim.disasm = out
+          .split(/\r?\n/)
+          .map((l) => DIS_RE.exec(l.trim()))
+          .filter(Boolean)
+          .slice(0, 8)
+          .map((d) => ({ addr: parseInt(d[1], 16), bytes: d[2], text: d[3].replace(/\s+/g, ' ').trim() }));
       }
     }
     if (exp.uart && exp.uart.host) {
@@ -481,8 +570,64 @@ class ControlBridge {
       sim.uart = { mcu: { baud: baud ? Number(baud[1]) : null, format: fmt ? fmt[1] : null }, terminal: this.terminalSettings() };
     }
     this.lastSim = sim;
-    const data = JSON.stringify(sim);
-    for (const ws of this._watchers()) ws.send(data);
+    for (const ws of this._watchers()) {
+      const own = { ...sim };
+      if (exp.status && ws.simMemory) own.memory = await this._readMemory(mon, ws.simMemory);
+      if (exp.status && ws.simPeriph) own.periph = await this._peekModule(mon, ws.simPeriph);
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(own));
+    }
+  }
+
+  /** Speicher ab Adresse oder Symbol (Flash/SRAM) */
+  async _readMemory(mon, { addr, count }) {
+    const exp = this.experiment;
+    let a = addr;
+    let symbol = null;
+    if (typeof addr === 'string') {
+      const s = addr.trim();
+      if (/^(0x)?[0-9a-fA-F]{1,8}$/.test(s) && /^0x|^\d/.test(s)) {
+        a = parseInt(s, 16);
+      } else if (SYMBOL_RE.test(s)) {
+        symbol = s;
+        if (!this.symbols.has(s)) {
+          const out = await mon.execute(`sysbus GetSymbolAddress "${s}"`);
+          const m = /0x([0-9a-fA-F]+)/.exec(out);
+          this.symbols.set(s, m ? parseInt(m[1], 16) : null);
+        }
+        a = this.symbols.get(s);
+        if (a === null) return { request: s, error: `Symbol "${s}" nicht in der ELF-Datei` };
+      } else {
+        return { request: s, error: 'Adresse (hex, z. B. 0x20000000) oder Symbolname angeben' };
+      }
+    }
+    if (!Number.isFinite(a)) return { request: String(addr), error: 'Ungültige Adresse' };
+    const out = await mon.execute(`${exp.status.path} ReadMemory 0x${a.toString(16)} ${count}`);
+    const m = MEM_RE.exec(out);
+    if (!m) return { request: String(addr), error: 'Keine Antwort' };
+    if (m[3]) return { request: String(addr), error: m[3].trim() };
+    return { request: String(addr), symbol, addr: parseInt(m[1], 16), data: m[2] };
+  }
+
+  /** Peripherie-Register eines Moduls ohne Nebenwirkung lesen */
+  async _peekModule(mon, module) {
+    const regs = this.registers.byModule[module] || [];
+    const addrs = [...new Set(regs.map((r) => r.addr))];
+    const values = {};
+    // In Stücken, damit eine Monitor-Zeile nicht zu lang wird
+    for (let i = 0; i < addrs.length; i += 64) {
+      const list = addrs.slice(i, i + 64).map((x) => x.toString(16).toUpperCase().padStart(8, '0'));
+      const m = PR_RE.exec(await mon.execute(`${this.experiment.status.path} PeekRegisters "${list.join(',')}"`));
+      if (!m) continue;
+      for (const x of m[1].split(';').filter(Boolean)) {
+        const [ad, v] = x.split('=');
+        values[parseInt(ad, 16)] = v === '-' ? null : parseInt(v, 16);
+      }
+    }
+    return {
+      module,
+      regs: regs.map((r) => ({ name: r.name, addr: r.addr, value: values[r.addr] === undefined ? null : values[r.addr] })),
+      noClock: regs.length > 0 && regs.every((r) => values[r.addr] === null),
+    };
   }
 
   /** Flanken der abonnierten Leitungen abholen und an die Abonnenten verteilen */

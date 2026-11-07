@@ -209,7 +209,12 @@ Browser → Server:
 { "type": "subscribe", "signals": ["uart0.tx", "uart0.rx"] } // Flanken abonnieren (Oszilloskop)
 { "type": "unsubscribe", "signals": ["uart0.tx"] }
 { "type": "reset" }                                         // Reset-Taster: nur der Mikrocontroller
-{ "type": "watch", "sim": true }                            // Simulations-Anzeige an (false = aus)
+{ "type": "watch", "sim": true,                             // Simulations-Anzeige an (false = aus)
+  "memory": { "addr": "ticks", "count": 128 },              //   optional: Speicher (hex-Adresse oder Symbol)
+  "periph": "UART0" }                                       //   optional: Modul aus "simmeta"
+{ "type": "pause" }                                         // Ausführung anhalten (Zeit steht)
+{ "type": "continue" }                                      // weiterlaufen
+{ "type": "step", "count": 1 }                              // count Befehle (1–10000) ausführen, dann anhalten
 ```
 
 Server → Browser:
@@ -234,7 +239,13 @@ Server → Browser:
   "cpu": { "state": "Running", "halted": false, "pc": "0x00000272", "symbol": "main", "sysclk": 16000000 },
   "resets": { "count": 1, "lastNs": 437400000 },
   "uart": { "mcu": { "baud": 9599.5, "format": "7N1" }, "terminal": { "baud": 9600, "format": "7N1" } },
-  "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }] }
+  "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }],
+  "stopped": false,                                        // Pause oder Einzelschritt
+  "regs": [{ "name": "R0", "value": 0 }, …, { "name": "xPSR", … }],    // Kernregister
+  "disasm": [{ "addr": 2314, "bytes": "e672", "text": "b #-796" }, …], // nur wenn angehalten
+  "memory": { "request": "ticks", "symbol": "ticks", "addr": 536870916, "data": "0E000000…" },  // je Client
+  "periph": { "module": "UART0", "noClock": false, "regs": [{ "name": "UART0_FR_R", "addr": …, "value": 144 }, …] } }
+{ "type": "simmeta", "modules": ["SYSCTL", "NVIC", "SysTick", "GPIO A", …, "I2C9"] }   // nach watch
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -306,8 +317,24 @@ Der Knopf **Simulation** blendet die Simulations-Anzeige ein (standardmäßig au
 Firmware (Name, Größe, SHA-256, Zeitpunkt), CPU-Zustand mit PC und Funktion aus der ELF-Datei
 (Hinweis, wenn die CPU in einer Endlosschleife des Startup-Codes hängt, z. B. `IntDefaultHandler`),
 Systemtakt, Anzahl der Resets, Simulationszeit, Echtzeit und Tempo (Simulationszeit pro Echtzeit),
-Renode-Version, UART0-Einstellung von Firmware und Terminal mit Abweichung, sowie die Warnungen und
-Fehler aus dem Renode-Log (z. B. Framing-Fehler, Pin nicht als UART geschaltet).
+Renode-Version, UART0-Einstellung von Firmware und Terminal mit Abweichung. Darunter vier Reiter:
+
+- **CPU-Register:** R0–R12, SP, LR, PC, xPSR (Flags N Z C V, Nummer der laufenden Ausnahme),
+  PRIMASK, FAULTMASK, BASEPRI, CONTROL, inaktiver SP; geänderte Werte gelb. Ist die Simulation
+  angehalten, daneben die nächsten Befehle ab PC (Disassembly von Renode).
+- **Speicher:** Hex-Dump ab einer Adresse oder einem Symbol aus der ELF-Datei (z. B. `ticks`), nur
+  Flash und SRAM; geänderte Bytes gelb.
+- **Peripherie:** alle Register eines Moduls (SYSCTL, NVIC, SysTick, GPIO A–Q, UART0–7, TIMER0–7,
+  I2C0–9) mit den Namen aus `tm4c1294ncpdt.h`, Wert hex und binär. Gelesen wird **ohne
+  Nebenwirkung** (`sysbus.sysctl PeekRegisters`): UARTDR nimmt kein Zeichen aus dem FIFO,
+  I2CMCS verbraucht kein BUSY, und ein Modul ohne Takt wird angezeigt statt gewarnt.
+- **Meldungen:** Warnungen und Fehler aus dem Renode-Log (z. B. Framing-Fehler, Pin nicht als UART
+  geschaltet), gleiche Meldungen gezählt.
+
+**Debugger** (oben im Panel): **Pause** hält die ganze Simulation an (Simulationszeit steht),
+**Schritt** führt 1, 10, 100 oder 1000 Befehle aus und hält dann an (Renode `cpu Step`, die Zeit
+läuft dabei mit), **Weiter** setzt fort. Schläft die CPU per WFI, wartet ein Schritt auf den
+nächsten Interrupt; das Panel sagt das. Reset aus der Pause startet die Firmware neu und läuft weiter.
 
 ### Reconnect
 
@@ -362,6 +389,7 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
               "baud": 115200, "format": "8N1" },              // Standard-Einstellung des Terminals
   "reset":  { "path": "sysbus.sysctl" },                     // Reset-Taster (TivaSysCtl.ResetMcu)
   "status": { "path": "sysbus.sysctl" },                     // Simulations-Anzeige (TivaSysCtl.GetStatus)
+  "debug":  { "cpu": "sysbus.cpu" },                          // Pause / Schritt / Weiter
   "signals": [                                                // Leitungen für das Oszilloskop
     { "name": "uart0.tx", "label": "U0TX (PA1)", "path": "sysbus.uart0" },
     { "name": "uart0.rx", "label": "U0RX (PA0)", "path": "sysbus.uart0" }

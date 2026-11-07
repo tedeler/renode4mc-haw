@@ -193,6 +193,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 clockWarned = false;
                 return true;
             }
+            if(TivaSysCtl.PeekClockOff()) return false;
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,

@@ -53,7 +53,7 @@ function Panel({ experiment }) {
       </div>
 
       <div className="grid">
-        {showSim && <SimulationPanel />}
+        {showSim && <SimulationPanel debug={experiment.debug} />}
         <UartMonitor label={experiment.uart?.label} />
 
         {experiment.oled && (

@@ -71,8 +71,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .sim-warn { color: #fbbf24; }
 .sim-bad { color: #f87171; }
 .sim-ok { color: #4ade80; }
-.sim-messages { margin-top: 12px; font-size: 12px; }
-.sim-messages ul { list-style: none; margin: 4px 0 0; padding: 0; max-height: 160px; overflow: auto; }
+.sim-messages { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; font-size: 12px; }
 .sim-messages li { padding: 3px 0; border-top: 1px solid var(--border); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .sim-messages .count { color: var(--muted); margin-left: 6px; }
 .panel-error { color: var(--err); cursor: pointer; }
@@ -152,3 +151,33 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .key-label { font-size: 22px; font-weight: 700; }
 .key-map { font-size: 9px; color: var(--muted); }
 .key.pressed .key-map { color: #04121c; }
+
+.sim-debug { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; }
+.sim-debug select, .sim-form select, .sim-form input { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+.sim-form input { width: 180px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.sim-tabs { display: flex; gap: 4px; margin: 14px 0 0; border-bottom: 1px solid var(--border); }
+.sim-tabs button { background: none; border: 1px solid transparent; border-bottom: none; color: var(--muted); padding: 5px 12px; font-size: 12px; cursor: pointer; border-radius: 6px 6px 0 0; }
+.sim-tabs button.active { color: var(--text); border-color: var(--border); background: var(--panel-2); }
+.sim-tab { padding-top: 10px; font-size: 13px; }
+.sim-note { color: var(--muted); font-size: 12px; margin: 6px 0; }
+.sim-changed, .sim-changed code { color: #fbbf24 !important; }
+.sim-regs { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 24px; }
+@media (max-width: 760px) { .sim-regs { grid-template-columns: 1fr; } }
+.sim-regs h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 3px 16px; }
+.reg { display: flex; justify-content: space-between; gap: 8px; }
+.reg-name { color: var(--muted); }
+.reg code, .disasm code, .hexdump, .periph code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.disasm { list-style: none; margin: 0; padding: 0; }
+.disasm li { display: grid; grid-template-columns: 80px 80px 1fr; gap: 8px; padding: 1px 4px; border-radius: 4px; }
+.disasm li.current { background: var(--panel-2); color: var(--accent); }
+.disasm .addr, .disasm .bytes, .hexdump .addr { color: var(--muted); }
+.sim-form { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+.sim-form label { display: flex; align-items: center; gap: 6px; }
+.hexdump { margin: 0; padding: 8px; background: #0b1020; border-radius: 6px; overflow: auto; line-height: 1.5; color: var(--text); }
+.hexdump .ascii { color: var(--muted); }
+.periph { border-collapse: collapse; width: 100%; font-size: 12px; }
+.periph th { text-align: left; color: var(--muted); font-weight: 500; padding: 3px 8px; border-bottom: 1px solid var(--border); }
+.periph td { padding: 2px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.periph .bits { color: var(--muted); }
+.periph tr.sim-changed .bits { color: #fbbf24; }

@@ -59,6 +59,7 @@ COPY --from=backend /app /app
 COPY --from=frontend /build/dist /app/public
 # Simulator aus dem Repository: Modelle, Plattform, Versuche (Renode-Arbeitsverzeichnis)
 COPY sim /opt/renode4mc/sim
+COPY common/tm4c1294ncpdt.h /opt/renode4mc/common/tm4c1294ncpdt.h
 
 ENV NODE_ENV=production \
     PORT=3000 \
@@ -69,6 +70,7 @@ ENV NODE_ENV=production \
     RENODE_MONITOR_PORT=1234 \
     RENODE_UART_PORT=3335 \
     SIM_DIR=/opt/renode4mc/sim \
+    HEADER_PATH=/opt/renode4mc/common/tm4c1294ncpdt.h \
     ELF_PATH=/tmp/app.elf \
     PUBLIC_DIR=/app/public
 

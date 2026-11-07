@@ -154,6 +154,7 @@ namespace Antmicro.Renode.Peripherals.Timers
                 clockWarned = false;
                 return true;
             }
+            if(TivaSysCtl.PeekClockOff()) return false;
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,

@@ -4,12 +4,16 @@
 //  * Clock-Gating:  RCGC*/SCGC*/DCGC* (Takt freigeben) und PR* (Peripherie bereit)
 //  * Kennung DID0/DID1
 //  * Reset-Taster des Boards: ResetMcu() (siehe dort)
-//  * Zustand für die Anzeige der Web-Konsole: GetStatus() (siehe dort)
+//  * Zustand für die Anzeige der Web-Konsole: GetStatus(), GetCpuRegisters(), ReadMemory(),
+//    PeekRegisters() (siehe dort). PeekRegisters liest Peripherie-Register ohne Nebenwirkung: Die
+//    Tiva-Modelle fragen TivaSysCtl.Peeking ab (z. B. UARTDR nimmt dann nichts aus dem FIFO) und
+//    melden bei fehlendem Takt keine Warnung.
 //  * Systemtakt aus RSCLKCFG/PLLFREQ0/PLLFREQ1 (Property SystemClockFrequency, z. B. für die
 //    Baudrate der UARTs). PLLSTAT.LOCK und RIS.PLLLRIS/MOSCPUPRIS lesen sich immer als 1, damit
 //    SysCtlClockFreqSet nicht hängen bleibt. Die CPU selbst läuft unverändert weiter (Renode
 //    rechnet Befehle, keine Takte).
 // Alle anderen Register werden gespeichert und wieder gelesen (ohne Funktion).
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Antmicro.Renode.Core;
@@ -50,6 +54,81 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }, keep);
         }
 
+        // ---- Lesen ohne Nebenwirkung (Anzeige) ---------------------------------------------------
+
+        // true, solange PeekRegisters auf DIESEM Thread liest (der CPU-Thread ist nie betroffen)
+        public static bool Peeking { get { return peeking; } }
+
+        // Für die Modelle: Zugriff ohne Takt während Peeking -> still merken statt warnen
+        public static bool PeekClockOff()
+        {
+            if(!peeking) return false;
+            peekNoClock = true;
+            return true;
+        }
+
+        // "PR:<adr>=<wert|->;..." – adressen: "4000C000,4000C018,..." (hex). "-" = Modul ohne Takt
+        public string PeekRegisters(string addresses)
+        {
+            var sb = new System.Text.StringBuilder("PR:");
+            peeking = true;
+            try
+            {
+                foreach(var part in addresses.Split(','))
+                {
+                    ulong a;
+                    if(!ulong.TryParse(part.Trim(), System.Globalization.NumberStyles.HexNumber, null, out a)) continue;
+                    peekNoClock = false;
+                    uint v = machine.SystemBus.ReadDoubleWord(a);
+                    sb.Append(a.ToString("X8")).Append('=').Append(peekNoClock ? "-" : v.ToString("X8")).Append(';');
+                }
+            }
+            finally
+            {
+                peeking = false;
+            }
+            return sb.ToString();
+        }
+
+        // "MEM:<adr hex>:<Bytes hex>" – nur Flash und SRAM (Peripherie über PeekRegisters)
+        public string ReadMemory(ulong address, int count)
+        {
+            count = Math.Max(1, Math.Min(count, 4096));
+            bool flash = address < FlashSize && address + (ulong)count <= FlashSize;
+            bool sram = address >= SramBase && address + (ulong)count <= SramBase + SramSize;
+            if(!flash && !sram)
+            {
+                return "MEM:ERR:nur Flash 0x00000000-0x000FFFFF und SRAM 0x20000000-0x2003FFFF lesbar, Peripherie im Reiter Peripherie";
+            }
+            var bytes = machine.SystemBus.ReadBytes(address, count, true);
+            return "MEM:" + address.ToString("X8") + ":" + BitConverter.ToString(bytes).Replace("-", "");
+        }
+
+        // "CR:R0=<hex>;...;PC=<hex>;xPSR=<hex>;..." – Kernregister des Cortex-M4
+        public string GetCpuRegisters()
+        {
+            var cpu = machine.GetPeripheralsOfType(typeof(ICPUWithRegisters)).Cast<ICPUWithRegisters>().FirstOrDefault();
+            if(cpu == null) return "CR:";
+            var sb = new System.Text.StringBuilder("CR:");
+            foreach(var r in cpu.GetRegisters())
+            {
+                if(r.Aliases == null || r.Aliases.Length == 0) continue;
+                string name = r.Aliases[0];
+                string shown;
+                if(!ShownRegisters.TryGetValue(name, out shown)) continue;
+                sb.Append(shown).Append('=').Append(cpu.GetRegister(r.Index).RawValue.ToString("X8")).Append(';');
+            }
+            return sb.ToString();
+        }
+
+        private static readonly Dictionary<string, string> ShownRegisters = new Dictionary<string, string>
+        {
+            {"R0", "R0"}, {"R1", "R1"}, {"R2", "R2"}, {"R3", "R3"}, {"R4", "R4"}, {"R5", "R5"}, {"R6", "R6"},
+            {"R7", "R7"}, {"R8", "R8"}, {"R9", "R9"}, {"R10", "R10"}, {"R11", "R11"}, {"R12", "R12"},
+            {"SP", "SP"}, {"LR", "LR"}, {"PC", "PC"}, {"CPSR", "xPSR"}, {"PRIMASK", "PRIMASK"},
+            {"FAULTMASK", "FAULTMASK"}, {"BasePri", "BASEPRI"}, {"Control", "CONTROL"}, {"OtherSP", "SP_inaktiv"},
+        };
+
         // "ST:<Zeit ns>:<Reset-Anzahl>:<letzter Reset ns>:<Systemtakt Hz>:<CPU-Zustand>:<halted 0/1>:
         //  <Befehle>:<PC hex>:<Funktion am PC>"
         // CPU-Zustand: Running, Paused, InReset, Aborted, ...; halted = wartet (z. B. WFI);
@@ -63,8 +142,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             var cpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault();
             if(cpu != null)
             {
-                state = machine.IsPaused ? "Paused" : cpu.EmulationState.ToString();
-                halted = cpu.IsHalted;
+                HookWfi(cpu);
+                state = cpu.ExecutionMode == ExecutionMode.SingleStep ? "Step"
+                      : machine.IsPaused ? "Paused" : cpu.EmulationState.ToString();
+                halted = cpu.IsHalted || inWfi;
                 instr = cpu.ExecutedInstructions;
                 pc = cpu.PC.RawValue;
                 string name;
@@ -219,6 +300,21 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private Dictionary<long, uint> other;
         private uint rsclkcfg, pllfreq0, pllfreq1;
         private readonly uint moscFrequency;
+        // WFI (CPU schläft bis zum nächsten Interrupt) meldet Renode nur über einen Hook
+        private void HookWfi(ICPU cpu)
+        {
+            if(wfiHooked) return;
+            var tcpu = cpu as TranslationCPU;
+            if(tcpu == null) return;
+            tcpu.AddHookAtWfiStateChange(isInWfi => inWfi = isInWfi);
+            wfiHooked = true;
+        }
+
+        [ThreadStatic] private static bool peeking;
+        [ThreadStatic] private static bool peekNoClock;
+        private const ulong FlashSize = 0x100000, SramBase = 0x20000000, SramSize = 0x40000;
+        private volatile bool inWfi;
+        private bool wfiHooked;
         private readonly IMachine machine;
         private int resetCount;
         private ulong lastResetNs;
