@@ -89,7 +89,9 @@ eingereiht.
   zwei Spalten) und teilen sich die Höhe. Pendel, OLED, Keypad und 7-Segment-Anzeige skalieren mit.
   - Kopfzeile eines Panels anklicken (oder ▾): ein-/ausklappen – die übrigen Panels bekommen den Platz.
     Eingeklappte Panels laufen weiter (Terminal, Anzeigen, WebSockets).
-  - Kopfzeile ziehen: Panel verschieben; an den linken/rechten Rand ziehen = neue Spalte (höchstens 4).
+  - Kopfzeile ziehen: Panel verschieben; an den linken/rechten Rand oder auf die Trennlinie zwischen zwei
+    Spalten ziehen = neue Spalte an dieser Stelle (blaue senkrechte Linie; höchstens 6 Spalten und so viele,
+    wie bei mindestens 240 px Breite passen).
   - Trennlinie zwischen Spalten ziehen: Breite ändern, Doppelklick: beide gleich breit.
   - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, **↺ Standardlayout**
     (zurück zur Standardanordnung, alles sichtbar; mobil am Ende der Sprungleiste).

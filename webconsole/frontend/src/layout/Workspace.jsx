@@ -7,7 +7,8 @@ import { PanelContext } from './PanelContext.js';
  *
  * Desktop ("fit"): alles passt auf eine Seite, die Seite scrollt nicht. Die Panels einer Spalte
  * teilen sich die Höhe (Gewicht "grow"), Panels ohne grow behalten ihre natürliche Höhe.
- * Kopfzeile ziehen = Panel verschieben (auch an den linken/rechten Rand -> neue Spalte),
+ * Kopfzeile ziehen = Panel verschieben (an den linken/rechten Rand oder auf die Trennlinie zwischen
+ * zwei Spalten -> neue Spalte an dieser Stelle),
  * Kopfzeile klicken = ein-/ausklappen, Trennlinie zwischen Spalten ziehen = Breite ändern.
  *
  * Mobil: eine Spalte in Layout-Reihenfolge, die Seite scrollt; eine Sprungleiste in der
@@ -23,8 +24,9 @@ import { PanelContext } from './PanelContext.js';
 
 const FIT_QUERY = '(min-width: 760px) and (min-height: 520px)';
 const MIN_COL_PX = 240;
-const MAX_COLS = 4;
+const MAX_COLS = 6;
 const EDGE_PX = 28;
+const GAP_ZONE_PX = 18; // so weit links/rechts der Trennlinie zwischen zwei Spalten gilt „neue Spalte hier“
 const STORE_PREFIX = 'renode4mc.layout.v1.';
 
 export function useFitMode() {
@@ -222,6 +224,14 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
         if (x < r.left + EDGE_PX) return { newCol: 0, ind: { left: r.left, top: r.top, width: 4, height: r.height } };
         if (x > r.right - EDGE_PX)
           return { newCol: L.cols.length, ind: { left: r.right - 4, top: r.top, width: 4, height: r.height } };
+        // zwischen zwei Spalten (auf der Trennlinie) ablegen = neue Spalte an dieser Stelle
+        const gutters = [...ws.querySelectorAll(':scope > .ws-gutter')];
+        for (let g = 0; g < gutters.length; g++) {
+          const gr = gutters[g].getBoundingClientRect();
+          const mid = gr.left + gr.width / 2;
+          if (Math.abs(x - mid) <= GAP_ZONE_PX)
+            return { newCol: g + 1, ind: { left: mid - 2, top: r.top, width: 4, height: r.height } };
+        }
       }
       let ci = 0;
       let best = Infinity;
