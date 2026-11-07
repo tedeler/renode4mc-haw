@@ -75,7 +75,8 @@ Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar an
 | Anzeige | Quelle | Verfahren |
 |---|---|---|
 | LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`) |
-| UART0 | `CreateServerSocketTerminal 3335` | Bytestrom, unverändert durchgereicht |
+| UART0 | `sysbus.uart0.host` (PC-Terminal) → `CreateServerSocketTerminal 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
+| Leitungen (Oszilloskop) | `sysbus.uart0 GetEdges` | **Polling** alle 100 ms, nur solange ein Browser die Leitung abonniert hat |
 | OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **Polling** alle 100 ms, nur bei Änderung übertragen |
 | LEDs mit `path` (andere Versuche) | `<path> State` | Polling alle 100 ms |
 
@@ -93,7 +94,8 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 |---|---|---|---|
 | LEDs D1, D2, D3, D4 | PN1, PN0, PF4, PF0 | `TivaGPIOPort` → `wsBridge` | Anzeige |
 | Taster USR_SW1, USR_SW2 | PJ0, PJ1 (gedrückt = LOW, Pull-up nötig) | `TivaGPIOPort` (Eingang) | Knopf: gedrückt halten = LOW |
-| UART0 | PA0 RX, PA1 TX | `TivaUART` | Terminal (xterm.js), Eingaben gehen an RX |
+| UART0 | PA0 RX, PA1 TX | `TivaUART` | Terminal (xterm.js), Eingaben gehen an RX; Baudrate/Format des Terminals wählbar |
+| PC-Terminal | an UART0 | `UartHostTerminal` | Einstellung unter dem Terminal (Baud, Daten, Parität, Stopp) |
 | I2C0 | PB2 SCL, PB3 SDA | `TivaI2C` (Master) | – |
 | OLED SSD1306 128×64 | I2C0, 0x3C | `SSD1306I2C` | Canvas, 4-fach vergrößert |
 | Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
@@ -103,7 +105,9 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 
 | Datei | Kurzbeschreibung |
 |---|---|
-| `TivaUART.cs` | PL011-ähnlicher UART des TM4C129. DR, FR, IBRD/FBRD/LCRH, CTL, IFLS, IM/RIS/MIS/ICR, ID-Register. Empfangs-FIFO 16 Byte mit Overrun. RX-, RT-, TX- und OE-Interrupt. Clock-Gating `RCGCUART`. Senden ist sofort fertig (keine Baudraten-Zeit). |
+| `TivaUART.cs` | PL011-ähnlicher UART des TM4C129. DR (mit FE/PE/BE/OE), RSR, FR, IBRD/FBRD/LCRH (auch BRK), CTL (HSE, EOT, LBE), CC, IFLS, IM/RIS/MIS/ICR, ID-Register. Sende- und Empfangs-FIFO 16 Zeichen, Overrun. RX-, RT-, TX-, FE-, PE-, BE- und OE-Interrupt. Clock-Gating `RCGCUART`. Sendet Flanken mit Baudraten-Timing (TXFF/TXFE/BUSY zeitrichtig), empfängt durch Abtasten der Flanken in der Bitmitte. Prüft, ob PA0/PA1 per AFSEL/DEN/PCTL als U0RX/U0TX geschaltet sind. |
+| `UartLine.cs` | Gemeinsame Teile der UART-Leitung: Format und Bitdauer, Encoder (Byte → Flanken), Decoder (Flanken → Zeichen, Framing-/Paritätsfehler, Break), Flankenpuffer `SignalRecorder` für das Oszilloskop, Zeitgeber in ns. |
+| `UartHostTerminal.cs` | PC mit Terminalprogramm am anderen Ende von UART0. Dekodiert die Flanken mit `TerminalBaudRate`/`Format` und gibt Bytes an das Socket-Terminal; Tastatureingaben werden Flanken auf U0RX. |
 | `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
@@ -200,6 +204,9 @@ Browser → Server:
 { "type": "keypad", "row": 1, "col": 1, "pressed": true }   // Matrix-Koordinate, nicht die Taste
 { "type": "sensor", "value": 120 }                          // cm, wird auf min..max begrenzt
 { "type": "pendulum", "frequency": 12.5 }                   // Hz, auf minFrequency..maxFrequency begrenzt
+{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // PC-Terminal; gilt auch nach Neustarts
+{ "type": "subscribe", "signals": ["uart0.tx", "uart0.rx"] } // Flanken abonnieren (Oszilloskop)
+{ "type": "unsubscribe", "signals": ["uart0.tx"] }
 ```
 
 Server → Browser:
@@ -210,9 +217,17 @@ Server → Browser:
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
 { "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …] }
+{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // an alle, nach jeder Änderung
+{ "type": "signals", "signals": [{ "name": "uart0.tx", "label": "U0TX (PA1)", "idle": 1,
+                                   "protocol": { "kind": "uart", "baud": 115107.914, "format": "8N1" } }, …] }
+{ "type": "edges", "name": "uart0.tx", "now": 1100000, "level": 1,
+  "edges": [[1000000, 0], [1008687, 1], …], "lost": 0 }        // lost nur, wenn > 0
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
+
+`hello` enthält zusätzlich `uartConfig: { baud, format }`, die aktuelle Einstellung des
+PC-Terminals.
 
 `fb.data` ist der Framebuffer im SSD1306-Page-Format, wie er auf dem Display zu sehen ist:
 Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
@@ -235,6 +250,34 @@ jeder Frequenz nur ein kurzes Stück Spur hinter dem Stab; ein stehendes Bild wi
 entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattdessen das Bild aus
 `pd.data` (letzter Schwung je Richtung, ohne Abklingen). Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
 (Zeit beginnt bei 0), wird die Zeitlinie verworfen.
+
+### UART-Leitung als Flanken (Signalstrom)
+
+UART0 überträgt keine Bytes, sondern Pegelwechsel mit Zeitstempel in **Nanosekunden virtueller
+Zeit** (`sim/models/UartLine.cs`). Der Sender (`TivaUART`) rechnet die Flankenzeiten aus IBRD,
+FBRD, LCRH, CTL.HSE und dem UART-Takt (Systemtakt aus RSCLKCFG/PLLFREQ bzw. PIOSC) aus; jede
+Flankenzeit wird einzeln gerundet, die Bitabstände stimmen also auf 1 ns. Der Empfänger tastet
+in der Bitmitte ab, gemessen ab der fallenden Flanke des Startbits und mit **seiner** Baudrate:
+
+- Mikrocontroller → PC: `UartHostTerminal` (Einstellung im UART-Monitor) dekodiert U0TX.
+- PC → Mikrocontroller: Tastatureingaben werden mit der Terminal-Einstellung zu Flanken auf U0RX;
+  `TivaUART` dekodiert sie mit der Einstellung der Firmware und meldet FE/PE/BE in DR und RIS.
+
+Passt die Einstellung nicht zusammen, entstehen falsche Zeichen wie an der echten Hardware (z. B.
+7N1-Firmware, Terminal 8N1: 0xC8/0x86 statt „H“). Achtung, auch das ist echt: Ändert man die
+Einstellung, während die Firmware **lückenlos** sendet, kann sich der Empfänger auf eine falsche
+fallende Flanke einrasten und dort bleiben (bei „H“ in 7N1 kommen dann unsichtbare 0x06). Abhilfe
+wie im Labor: Firmware neu starten. Die Terminal-Einstellung wird vor dem Start gesetzt
+(`$uartBaud`, `$uartFormat` im `.resc`), die ersten Zeichen kommen dann richtig an.
+
+**Für das Oszilloskop:** Das Backend fragt `GetEdges` nur ab, solange ein Browser eine Leitung
+abonniert hat. Jede `edges`-Nachricht enthält alle Pegelwechsel seit der vorigen, bis zur Zeit
+`now` ist die Leitung vollständig bekannt (dazwischen konstant `level`). Zeiten sind ganze Zahlen,
+streng steigend, jede Flanke wechselt den Pegel. Beim ersten Abo werden alte Flanken verworfen.
+Das Modell puffert bis zu 200 000 Flanken je Leitung; was davon verloren geht, steht in `lost`.
+Flankenformat am Renode-Monitor: `SE:<name>:<now>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;…`
+(erste Zeit absolut, weitere relativ). Leitungen werden in der Versuchs-JSON unter `signals`
+eingetragen.
 
 ### Reconnect
 
@@ -262,13 +305,20 @@ der Auswahlliste.
 
 ```
 $elf?=@/tmp/app.elf
+$uartBaud?=115200                                   # PC-Terminal, setzt die Web-Konsole
+$uartFormat?="8N1"
 include @models/MeinModell.cs                       # nur falls eigene Modelle nötig
 include @tm4c1294.resc                              # Basis: Modelle, Maschine, Plattform, LoadELF
-machine LoadPlatformDescription @experiments/<id>.repl
+machine LoadPlatformDescription @experiments/<id>.repl   # enthält  host: UART.UartHostTerminal @ uart0
+sysbus.uart0.host TerminalBaudRate $uartBaud
+sysbus.uart0.host Format $uartFormat
 emulation CreateServerSocketTerminal 3335 "uart0term" false
-connector Connect sysbus.uart0 uart0term
+connector Connect sysbus.uart0.host uart0term
 start
 ```
+
+Ohne `UartHostTerminal` kann das Terminal wie früher direkt an `sysbus.uart0` hängen; der UART
+gibt dann jedes Zeichen am Ende seines Frames als Byte aus (ohne Baudraten-Prüfung).
 
 Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeichnis.
 
@@ -278,7 +328,12 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
 {
   "title": "Anzeigename im Dropdown",
   "machine": "tm4c1294",                       // Maschinenname aus tm4c1294.resc
-  "uart":   { "label": "UART0 – 115200 8N1" },
+  "uart":   { "label": "UART0", "host": "sysbus.uart0.host",   // PC-Terminal (UartHostTerminal)
+              "baud": 115200, "format": "8N1" },              // Standard-Einstellung des Terminals
+  "signals": [                                                // Leitungen für das Oszilloskop
+    { "name": "uart0.tx", "label": "U0TX (PA1)", "path": "sysbus.uart0" },
+    { "name": "uart0.rx", "label": "U0RX (PA0)", "path": "sysbus.uart0" }
+  ],
   "ledBridge": "ws://127.0.0.1:9000",          // LED-Bridge aus der Basisplattform
   "leds": [
     { "id": "D1", "label": "D1 (PN1)", "color": "#22c55e", "bridge": 0 },   // Eingang 0 von wsBridge
@@ -380,7 +435,13 @@ cd webconsole/backend
 npm start &                                                       # oder Container
 node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
 node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
+node test/e2e_signals.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
 ```
+
+`test/e2e_signals.js` prüft den Signalstrom: `signals` mit der Baudrate der Firmware, Flanken
+streng steigend und auf dem Bitraster (8687,5 ns bei 16 MHz, IBRD 8, FBRD 44), ein unabhängiger
+Dekoder im Test liest daraus dieselben Texte wie das Terminal, Tastendruck als Flanken auf
+`uart0.rx`, Terminal auf 9600 → Zeichensalat, zurück auf 115200 → lesbar.
 
 `test/e2e_versuch2.js` prüft Versuch 2 mit der Lab-04-Firmware: Startmeldung, gemessene
 Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
@@ -392,8 +453,9 @@ die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau
 
 - **Eine Simulation pro Container**, keine Benutzerverwaltung, keine Authentifizierung. Für den
   Betrieb im Netz gehört der Container hinter einen Reverse-Proxy mit Anmeldung.
-- **Timing:** Renode ist nicht zyklengenau (siehe [ROADMAP.md](ROADMAP.md)). UART und I2C senden
-  ohne Baudraten- bzw. Busverzögerung. Die Ultraschall-Messung ist sofort fertig.
+- **Timing:** Renode ist nicht zyklengenau (siehe [ROADMAP.md](ROADMAP.md)). UART0 sendet mit
+  Baudraten-Timing (Flanken auf 1 ns genau), I2C ohne Busverzögerung. Die Ultraschall-Messung ist
+  sofort fertig. Der RX-Timeout-Interrupt (RT) ist vereinfacht („Daten liegen an“), µDMA fehlt.
 - **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
   mit 10 Bildern/s aktualisiert.
 - **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode

@@ -33,6 +33,8 @@ export function ControlSocketProvider({ children }) {
   const [leds, setLeds] = useState({});
   const [renodeState, setRenodeState] = useState('unknown');
   const [lastError, setLastError] = useState(null);
+  const [uartConfig, setUartConfig] = useState(null);
+  const signalListeners = useRef(new Set());
   const frameListeners = useRef(new Set());
   const lastFrame = useRef(null);
   const pendulumListeners = useRef(new Set());
@@ -62,6 +64,15 @@ export function ControlSocketProvider({ children }) {
         setLeds(msg.leds || {});
         if (msg.fb) emitFrame(decodeFrame(msg.fb));
         if (msg.pd) emitPendulum(decodePendulum(msg.pd));
+        if (msg.uartConfig) setUartConfig(msg.uartConfig);
+        break;
+      case 'uartconfig':
+        setUartConfig({ baud: msg.baud, format: msg.format });
+        break;
+      case 'signals':
+      case 'edges':
+        // Signalstrom (Flanken der Leitungen, z. B. uart0.tx) für Oszilloskop/Logikanalysator
+        signalListeners.current.forEach((fn) => fn(msg));
         break;
       case 'leds':
         setLeds({ ...msg.states });
@@ -109,6 +120,12 @@ export function ControlSocketProvider({ children }) {
     return () => pendulumListeners.current.delete(fn);
   }, []);
 
+  /** Nachrichten "signals" und "edges" (Abo vorher mit send({type:'subscribe', signals:[...]})) */
+  const subscribeSignalStream = useCallback((fn) => {
+    signalListeners.current.add(fn);
+    return () => signalListeners.current.delete(fn);
+  }, []);
+
   const value = useMemo(
     () => ({
       status,
@@ -118,10 +135,13 @@ export function ControlSocketProvider({ children }) {
       subscribeFrame,
       subscribePendulum,
       subscribePendulumEvents,
+      subscribeSignalStream,
+      uartConfig,
       lastError,
       clearError: () => setLastError(null),
     }),
-    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, lastError],
+    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, subscribeSignalStream,
+      uartConfig, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

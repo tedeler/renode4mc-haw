@@ -6,7 +6,13 @@
 //                            10 Schwingungen pro Sekunde (Periode 100 ms); zur Laufzeit einstellbar
 //                            mit  sysbus.gpioM.pendel PeriodUs <us>  (Web-Konsole: Schieberegler)
 //   Ultraschall MB1242       I2C0 (PB2 SCL, PB3 SDA), Adresse 0x70
+//   PC-Terminal             an UART0 (virtueller COM-Port), Standard 115200 8N1; in der
+//                            Web-Konsole einstellbar (sysbus.uart0.host TerminalBaudRate/Format)
 //   (LEDs D1..D4, Taster USR_SW1/2 und UART0 stammen aus der Basisplattform.)
+
+host: UART.UartHostTerminal @ uart0
+    baudRate: 115200
+    format: "8N1"
 
 sensor: Sensors.MaxBotixI2C @ i2c0 0x70
 

@@ -3,9 +3,11 @@
 // Modelliert wird das, was für Lehrbeispiele nötig ist:
 //  * Clock-Gating:  RCGC*/SCGC*/DCGC* (Takt freigeben) und PR* (Peripherie bereit)
 //  * Kennung DID0/DID1
+//  * Systemtakt aus RSCLKCFG/PLLFREQ0/PLLFREQ1 (Property SystemClockFrequency, z. B. für die
+//    Baudrate der UARTs). PLLSTAT.LOCK und RIS.PLLLRIS/MOSCPUPRIS lesen sich immer als 1, damit
+//    SysCtlClockFreqSet nicht hängen bleibt. Die CPU selbst läuft unverändert weiter (Renode
+//    rechnet Befehle, keine Takte).
 // Alle anderen Register werden gespeichert und wieder gelesen (ohne Funktion).
-// Die Takterzeugung (PLL, SysCtlClockFreqSet) ist NICHT modelliert: der Simulator läuft
-// mit dem Reset-Takt PIOSC = 16 MHz.
 using System.Collections.Generic;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Logging;
@@ -15,9 +17,41 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
     public class TivaSysCtl : IDoubleWordPeripheral, IKnownSize
     {
-        public TivaSysCtl(IMachine machine)
+        // moscFrequency: Quarz am Hauptoszillator (EK-TM4C1294XL: 25 MHz)
+        public TivaSysCtl(IMachine machine, uint moscFrequency = 25000000)
         {
+            this.moscFrequency = moscFrequency;
             Reset();
+        }
+
+        // Systemtakt in Hz laut RSCLKCFG (Reset: PIOSC 16 MHz)
+        public double SystemClockFrequency
+        {
+            get
+            {
+                uint cfg = rsclkcfg;
+                if((cfg & RsclkcfgUsepll) != 0)
+                {
+                    double fin = SourceFrequency((cfg >> 24) & 0xF);
+                    double m = (pllfreq0 & 0x3FF) + ((pllfreq0 >> 10) & 0x3FF) / 1024.0;
+                    double q = ((pllfreq1 >> 8) & 0x1F) + 1;
+                    double n = (pllfreq1 & 0x1F) + 1;
+                    double vco = fin * m / (q * n);
+                    return vco / ((cfg & 0x3FF) + 1);
+                }
+                return SourceFrequency((cfg >> 20) & 0xF) / (((cfg >> 10) & 0x3FF) + 1);
+            }
+        }
+
+        private double SourceFrequency(uint source)
+        {
+            switch(source)
+            {
+                case 2: return 33000;            // LFIOSC (ca.)
+                case 3: return moscFrequency;    // MOSC
+                case 4: return 32768;            // RTC
+                default: return 16000000;        // PIOSC
+            }
         }
 
         // true, wenn im Register RCGC<offset> das Bit <bit> gesetzt ist.
@@ -53,6 +87,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 case Did0: return Did0Value;
                 case Did1: return Did1Value;
+                case Ris: return risAlways;
+                case Rsclkcfg: return rsclkcfg;
+                case Pllfreq0: return pllfreq0;
+                case Pllfreq1: return pllfreq1;
+                case Pllstat: return PllstatLock;
                 default:
                     uint value;
                     other.TryGetValue(offset, out value);
@@ -80,7 +119,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }
             else
             {
-                other[offset] = value;
+                switch(offset)
+                {
+                    // MEMTIMU und NEWFREQ lösen nur etwas aus und lesen sich als 0
+                    case Rsclkcfg: rsclkcfg = value & ~(RsclkcfgMemtimu | RsclkcfgNewfreq); break;
+                    case Pllfreq0: pllfreq0 = value; break;
+                    case Pllfreq1: pllfreq1 = value; break;
+                    default: other[offset] = value; break;
+                }
             }
         }
 
@@ -90,6 +136,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             scgc = new uint[RegisterCount];
             dcgc = new uint[RegisterCount];
             other = new Dictionary<long, uint>();
+            rsclkcfg = pllfreq0 = pllfreq1 = 0;
         }
 
         // Offsets und Feldwerte wie in tm4c1294ncpdt.h (SYSCTL_..._R, SYSCTL_DID0_..., SYSCTL_DID1_...);
@@ -102,6 +149,12 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         // (Bauteil auf dem EK-TM4C1294XL: TM4C1294NCPDTI)
         private const uint Did1Value = 0x10000000 | 0x00000000 | 0x001F0000 | 0x0000C000 | 0x00000020 |
                                        0x00000008 | 0x00000004 | 0x00000002;
+        private const long Ris = 0x050, Rsclkcfg = 0x0B0, Pllfreq0 = 0x160, Pllfreq1 = 0x164, Pllstat = 0x168;
+        private const uint RsclkcfgMemtimu = 0x80000000, RsclkcfgNewfreq = 0x40000000, RsclkcfgUsepll = 0x10000000;
+        private const uint PllstatLock = 0x00000001;
+        // RIS: PLL eingerastet (PLLLRIS), Hauptoszillator angelaufen (MOSCPUPRIS)
+        private const uint RisPlllris = 0x00000040, RisMoscpupris = 0x00000100;
+        private const uint risAlways = RisPlllris | RisMoscpupris;
         private const long RcgcBase = 0x600;
         private const long ScgcBase = 0x700;
         private const long DcgcBase = 0x800;
@@ -112,5 +165,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private uint[] scgc;
         private uint[] dcgc;
         private Dictionary<long, uint> other;
+        private uint rsclkcfg, pllfreq0, pllfreq1;
+        private readonly uint moscFrequency;
     }
 }

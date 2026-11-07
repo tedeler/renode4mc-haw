@@ -64,7 +64,7 @@ async function startExperiment(exp) {
   if (exp.ledBridge) ports.push({ port: Number(new URL(exp.ledBridge).port), name: 'LED-Bridge' });
   await assertPortsFree(ports);
 
-  await renode.start(exp.id, exp.rescPath, cfg.elfPath);
+  await renode.start(exp.id, exp.rescPath, cfg.elfPath, control.terminalSettings(exp));
   const alive = () => renode.running;
   // Reihenfolge: UART-Socket existiert erst, wenn das .resc-Skript die Maschine angelegt hat
   await uart.attach(cfg.renodeStartTimeoutMs, alive);

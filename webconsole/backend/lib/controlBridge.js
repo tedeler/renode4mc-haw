@@ -8,6 +8,9 @@ const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
+// Flanken einer Leitung (sim/models/UartLine.cs, SignalRecorder.Format):
+// SE:<name>:<now ns>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;...
+const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/g;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -21,8 +24,12 @@ const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
  *   { type: "keypad", row, col, pressed }      Keypad: Zeile/Spalte der Matrix, nicht die Taste
  *   { type: "sensor", value }                  Distanz in cm
  *   { type: "pendulum", frequency }            Pendelfrequenz in Hz (Pendeldisplay)
+ *   { type: "uartconfig", baud, format }       Einstellung des PC-Terminals (z. B. 9600, "7N1");
+ *                                              gilt auch für spätere Neustarts von Renode
+ *   { type: "subscribe", signals: [name, …] }  Flanken dieser Leitungen abonnieren (Oszilloskop)
+ *   { type: "unsubscribe", signals: [name, …] }
  * Server -> Client
- *   { type: "hello", experiment, renode, leds, fb, pd }
+ *   { type: "hello", experiment, renode, leds, fb, pd, uartConfig }
  *   { type: "leds", states: { [id]: boolean } }
  *   { type: "fb", width, height, on, invert, data }   data = Base64, SSD1306-Page-Format
  *   { type: "pd", columns, periodUs, phase, leds, data }
@@ -34,6 +41,15 @@ const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
  *                                                     Pendel-Ereignisse seit dem letzten Abruf (LED-Wechsel
  *                                                     mit virtueller Zeit t in us und Phase phi in 1/10000
  *                                                     halber Schwingung) für die Wiedergabe im Browser
+ *   { type: "uartconfig", baud, format }      aktuelle Terminal-Einstellung (an alle)
+ *   { type: "signals", signals: [{ name, label, idle, protocol? }] }
+ *                                                     Leitungen des Versuchs; protocol = { kind: "uart",
+ *                                                     baud, format } (Einstellung des Senders); nach dem
+ *                                                     Verbinden, nach subscribe und bei Änderungen
+ *   { type: "edges", name, now, level, edges: [[t, level], …], lost? }
+ *                                                     Flanken einer abonnierten Leitung seit dem letzten
+ *                                                     Abruf; t und now in ns virtueller Zeit, level = Pegel
+ *                                                     bei now; bis now ist die Leitung vollständig bekannt
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -51,6 +67,9 @@ class ControlBridge {
     this.polling = false;
     this.ledSocket = null;
     this.ledRetry = null;
+    this.uartSettings = null; // vom Browser gewählte Terminal-Einstellung (null = Standard des Versuchs)
+    this.signalInfo = {}; // name -> { baud, format } laut Modell
+    this.freshPaths = new Set(); // Pfade, deren alter Flankenpuffer beim nächsten Abruf verworfen wird
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
@@ -70,6 +89,32 @@ class ControlBridge {
     for (const ws of this.wss.clients) if (ws.readyState === WebSocket.OPEN) ws.send(data);
   }
 
+  /** Terminal-Einstellung für den Versuch: Wahl des Browsers oder Standard aus der JSON-Datei */
+  terminalSettings(exp = this.experiment) {
+    if (!exp || !exp.uart || !exp.uart.host) return null;
+    return this.uartSettings || { baud: exp.uart.baud, format: exp.uart.format };
+  }
+
+  _signalsMessage() {
+    const sigs = (this.experiment && this.experiment.signals) || [];
+    return {
+      type: 'signals',
+      signals: sigs.map((sig) => {
+        const info = this.signalInfo[sig.name];
+        const d = { name: sig.name, label: sig.label || sig.name, idle: 1 };
+        if (info && info.baud > 0) d.protocol = { kind: 'uart', baud: info.baud, format: info.format };
+        return d;
+      }),
+    };
+  }
+
+  _subscribedPaths() {
+    const names = new Set();
+    for (const ws of this.wss.clients) for (const n of ws.signals || []) names.add(n);
+    const sigs = (this.experiment && this.experiment.signals) || [];
+    return [...new Set(sigs.filter((sig) => names.has(sig.name)).map((sig) => sig.path))];
+  }
+
   _hello() {
     return {
       type: 'hello',
@@ -78,11 +123,14 @@ class ControlBridge {
       leds: this.ledStates,
       fb: this.lastFrame,
       pd: this.lastPendulum,
+      uartConfig: this.terminalSettings(),
     };
   }
 
   _onClient(ws) {
+    ws.signals = new Set();
     this._send(ws, this._hello());
+    if (this.experiment) this._send(ws, this._signalsMessage());
     ws.on('message', async (raw) => {
       let msg;
       try {
@@ -91,7 +139,7 @@ class ControlBridge {
         return this._send(ws, { type: 'error', message: 'Ungültiges JSON' });
       }
       try {
-        await this._handle(msg);
+        await this._handle(msg, ws);
       } catch (e) {
         this._send(ws, { type: 'error', message: e.message });
       }
@@ -99,7 +147,36 @@ class ControlBridge {
   }
 
   /** Übersetzt ein UI-Kommando in Renode-Monitor-Befehle (Pfade nur aus der Versuchs-Konfiguration). */
-  async _handle(msg) {
+  async _handle(msg, ws) {
+    switch (msg.type) {
+      case 'subscribe':
+      case 'unsubscribe': {
+        const names = Array.isArray(msg.signals) ? msg.signals.filter((n) => typeof n === 'string') : [];
+        const before = new Set(this._subscribedPaths());
+        for (const n of names) {
+          if (msg.type === 'subscribe') ws.signals.add(n);
+          else ws.signals.delete(n);
+        }
+        // Neu abgefragte Pfade: Flanken aus der Zeit ohne Abonnenten verwerfen
+        for (const p of this._subscribedPaths()) if (!before.has(p)) this.freshPaths.add(p);
+        if (msg.type === 'subscribe' && this.experiment) this._send(ws, this._signalsMessage());
+        return;
+      }
+      case 'uartconfig': {
+        const baud = Number(msg.baud);
+        const format = String(msg.format || '').toUpperCase();
+        if (!experiments.isValidUartSettings(baud, format)) throw new Error('Ungültige Terminal-Einstellung');
+        this.uartSettings = { baud, format };
+        const exp = this.experiment;
+        if (this.attached && exp && exp.uart && exp.uart.host) {
+          await this.monitor.execute(`${exp.uart.host} TerminalBaudRate ${baud}`, { priority: true });
+          await this.monitor.execute(`${exp.uart.host} Format "${format}"`, { priority: true });
+        }
+        this._broadcast({ type: 'uartconfig', baud, format });
+        return;
+      }
+      default:
+    }
     if (!this.attached || !this.experiment) throw new Error('Renode läuft nicht');
     const exp = this.experiment;
     const run = (cmd) => this.monitor.execute(cmd, { priority: true });
@@ -165,6 +242,8 @@ class ControlBridge {
     this.ledStates = Object.fromEntries((experiment.leds || []).map((l) => [l.id, false]));
     this.lastFrame = null;
     this.lastPendulum = null;
+    this.signalInfo = {};
+    this.freshPaths.clear();
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -182,6 +261,7 @@ class ControlBridge {
     }
     this._connectLedBridge();
     this._broadcast(this._hello());
+    this._broadcast(this._signalsMessage());
     this._startPolling();
   }
 
@@ -299,10 +379,52 @@ class ControlBridge {
           this._broadcast({ type: 'pdev', now: [+e[1], +e[2], +e[3], +e[4]], ev });
         }
       }
+
+      await this._pollSignals(mon);
     } catch (e) {
       if (this.attached) console.error(`[control] Poll-Fehler: ${e.message}`);
     } finally {
       this.polling = false;
+    }
+  }
+
+  /** Flanken der abonnierten Leitungen abholen und an die Abonnenten verteilen */
+  async _pollSignals(mon) {
+    let infoChanged = false;
+    for (const path of this._subscribedPaths()) {
+      const out = await mon.execute(`${path} GetEdges`);
+      const discard = this.freshPaths.delete(path);
+      for (const m of out.matchAll(SE_RE)) {
+        const name = m[1];
+        const baud = Number(m[4]);
+        const format = m[5];
+        const old = this.signalInfo[name];
+        if (!old || old.baud !== baud || old.format !== format) {
+          this.signalInfo[name] = { baud, format };
+          infoChanged = true;
+        }
+        const msg = { type: 'edges', name, now: Number(m[2]), level: Number(m[3]), edges: [] };
+        if (!discard) {
+          let t = 0;
+          m[7].split(';').forEach((x, i) => {
+            if (!x) return;
+            const [d, l] = x.split(',');
+            t = i === 0 ? Number(d) : t + Number(d);
+            msg.edges.push([t, Number(l)]);
+          });
+          if (+m[6] > 0) msg.lost = +m[6];
+        }
+        const data = JSON.stringify(msg);
+        for (const ws of this.wss.clients) {
+          if (ws.readyState === WebSocket.OPEN && ws.signals && ws.signals.has(name)) ws.send(data);
+        }
+      }
+    }
+    if (infoChanged) {
+      const data = JSON.stringify(this._signalsMessage());
+      for (const ws of this.wss.clients) {
+        if (ws.readyState === WebSocket.OPEN && ws.signals && ws.signals.size) ws.send(data);
+      }
     }
   }
 

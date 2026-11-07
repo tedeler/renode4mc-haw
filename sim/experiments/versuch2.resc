@@ -6,6 +6,9 @@
 # Variable $elf: Pfad zur Firmware (.out/.elf), Standard /tmp/app.elf (Upload der Web-Konsole).
 
 $elf?=@/tmp/app.elf
+# Einstellung des PC-Terminals an UART0 (setzt die Web-Konsole aus der Auswahl im UART-Monitor)
+$uartBaud?=115200
+$uartFormat?="8N1"
 
 # Zusätzliche Gerätemodelle dieses Versuchs (vor dem Laden der .repl kompilieren)
 include @models/MaxBotixI2C.cs
@@ -21,10 +24,13 @@ emulation SetGlobalQuantum "0.00001"
 # Versuchsspezifische Erweiterung: Pendeldisplay an Port M/L, Sensor an I2C0
 machine LoadPlatformDescription @experiments/versuch2.repl
 
-# UART0 (virtueller COM-Port) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
+# UART0 (virtueller COM-Port): Das PC-Terminal (sysbus.uart0.host, dekodiert die Flanken der
+# Leitung mit seiner eigenen Baudrate) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
 # Die Web-Konsole verbindet sich damit (Backend-Brücke -> ws://<host>:3333 -> xterm.js).
 # Ohne Web-Konsole:  nc localhost 3335
+sysbus.uart0.host TerminalBaudRate $uartBaud
+sysbus.uart0.host Format $uartFormat
 emulation CreateServerSocketTerminal 3335 "uart0term" false
-connector Connect sysbus.uart0 uart0term
+connector Connect sysbus.uart0.host uart0term
 
 start

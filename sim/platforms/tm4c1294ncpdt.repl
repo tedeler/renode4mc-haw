@@ -178,10 +178,18 @@ timer7: Timers.TivaTimer @ sysbus 0x400E1000
     IRQB -> nvic@101
 
 // UART0..7 (TivaUART). UART0 = virtueller COM-Port des Boards (PA0 RX / PA1 TX).
-// Ausgabe z. B. mit:  emulation CreateServerSocketTerminal 3335 "term" false; connector Connect sysbus.uart0 term
+// Die Leitung wird als Flanken mit Zeitstempel übertragen (models/UartLine.cs). Gegenstelle ist
+// der PC (UartHostTerminal), angemeldet in der Versuchs-.repl:  host: UART.UartHostTerminal @ uart0
+// Ohne Gegenstelle gibt der UART Bytes aus, z. B. für
+//   emulation CreateServerSocketTerminal 3335 "term" false; connector Connect sysbus.uart0 term
+// UART0 prüft, ob PA1/PA0 per AFSEL/DEN/PCTL (Funktion 1) als U0TX/U0RX geschaltet sind.
 uart0: UART.TivaUART @ sysbus 0x4000C000
     sysCtl: sysctl
     clockBit: 0
+    pinPort: gpioA
+    txPin: 1
+    rxPin: 0
+    pinFunction: 1
     IRQ -> nvic@5
 
 uart1: UART.TivaUART @ sysbus 0x4000D000

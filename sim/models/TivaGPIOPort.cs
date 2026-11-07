@@ -32,6 +32,18 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
 
         public GPIO IRQ { get; private set; }
 
+        // true, wenn der Pin einer Peripherie-Funktion zugeordnet ist: AFSEL=1, DEN=1 und im
+        // GPIOPCTL-Feld des Pins steht 'function' (z. B. PA1: 1 = U0TX)
+        public bool IsPinFunction(int pin, uint function)
+        {
+            if(pin < 0 || pin > 7) return false;
+            uint pctl;
+            other.TryGetValue(Pctl, out pctl);
+            return ((afsel >> pin) & 1) != 0 && ((den >> pin) & 1) != 0 && ((pctl >> (4 * pin)) & 0xF) == function;
+        }
+
+        public string PortName { get { return portName; } }
+
         public override void OnGPIO(int number, bool value)
         {
             if(number < 0 || number > 7) return;
@@ -196,7 +208,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         private const long RcgcGpio = 0x608;
         private const long Dir = 0x400, Is = 0x404, Ibe = 0x408, Iev = 0x40C, Im = 0x410, Ris = 0x414,
                            Mis = 0x418, Icr = 0x41C, Afsel = 0x420, Pur = 0x510, Pdr = 0x514,
-                           Den = 0x51C, Pp = 0xFC0;
+                           Den = 0x51C, Pctl = 0x52C, Pp = 0xFC0;
 
         private readonly TivaSysCtl sysCtl;
         private readonly int clockBit;
