@@ -389,3 +389,5 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .scope-warn { color: var(--warn); }
 .scope-disabled { opacity: 0.45; }
 .pendulum-slow { color: var(--warn); }
+/* beim Verschieben: Trennlinien als mögliche Ablageorte für eine neue Spalte andeuten */
+body.ws-dragging .ws-gutter::after { background: var(--border); }
