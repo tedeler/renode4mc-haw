@@ -307,9 +307,9 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .scope-screen { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 6px;
   background: #0b0f12; border: 2px solid #2b3238; border-radius: 8px; padding: 8px; }
 .scope-canvas { display: block; width: 100%; height: auto; max-height: 60vh; object-fit: contain; border-radius: 3px; background: #05080a; }
-.scope-readout { display: flex; flex-wrap: wrap; gap: 14px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.scope-readout { display: flex; flex-wrap: nowrap; gap: 14px; height: 18px; line-height: 18px; overflow: hidden; white-space: nowrap; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .scope-tb { color: var(--text); }
-.scope-state { margin-left: auto; font-weight: 700; }
+.scope-state { margin-left: auto; font-weight: 700; flex: 0 0 auto; min-width: 9.5em; text-align: right; }
 .scope-state.trig { color: var(--ok); }
 .scope-state.auto { color: var(--accent); }
 .scope-state.warte { color: var(--warn); }
@@ -335,5 +335,7 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .scope-ch.on { opacity: 1; }
 .scope-ch legend label { color: var(--ch); font-weight: 700; display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .scope-ch .scope-row input[type='range'] { accent-color: var(--ch); }
-.scope-foot { display: flex; flex-wrap: wrap; gap: 16px; }
+.scope-foot { display: flex; flex-wrap: nowrap; gap: 16px; height: 18px; line-height: 18px; overflow: hidden; white-space: nowrap; }
+.scope-foot > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .scope-warn { color: var(--warn); }
+.scope-disabled { opacity: 0.45; }
