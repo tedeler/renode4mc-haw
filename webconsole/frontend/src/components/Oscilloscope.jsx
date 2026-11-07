@@ -183,10 +183,10 @@ function drawTrace(ctx, tr, ta, tb, xOf, yOf, color) {
 }
 
 /** Auswahl einer Quelle: erst die benannten Signale des Versuchs, dann alle Pins nach Port */
-function SourceSelect({ value, onChange, signals, labels }) {
+function SourceSelect({ value, onChange, signals, labels, disabled = false }) {
   const label = (pin) => (labels.has(pin) ? `${pin} – ${labels.get(pin)}` : pin);
   return (
-    <select className="scope-select" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select className="scope-select" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
       <option value="">– aus –</option>
       {signals.length > 0 && (
         <optgroup label="Signale dieses Versuchs">
@@ -495,7 +495,7 @@ export default function Oscilloscope({ experimentId, scope }) {
   const stateText = {
     trig: 'Trig’d',
     auto: 'Auto',
-    warte: 'Warte auf Trigger',
+    warte: 'Warten …',
     stop: 'Stop',
   }[info.state];
 
@@ -519,7 +519,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               {cfg.trigger.source === 'EXT' ? `EXT ${cfg.trigger.ext || '–'}` : cfg.trigger.source}{' '}
               {cfg.trigger.edge === 'rising' ? '↑' : '↓'} {fmtV(cfg.trigger.level)}
             </span>
-            <span className={`scope-state ${info.state}`}>{renodeState === 'running' ? stateText : 'Renode steht'}</span>
+            <span className={`scope-state ${info.state}`} title={info.state === 'warte' ? 'Warte auf Trigger' : undefined}>{renodeState === 'running' ? stateText : 'Renode steht'}</span>
           </div>
         </div>
 
@@ -564,12 +564,16 @@ export default function Oscilloscope({ experimentId, scope }) {
                 <option value="EXT">Extern</option>
               </select>
             </label>
-            {cfg.trigger.source === 'EXT' && (
-              <label className="scope-row">
-                <span>Ext. Eingang</span>
-                <SourceSelect value={cfg.trigger.ext} onChange={(p) => setTrig({ ext: p })} signals={signals} labels={labels} />
-              </label>
-            )}
+            <label className={`scope-row ${cfg.trigger.source === 'EXT' ? '' : 'scope-disabled'}`}>
+              <span>Ext. Eingang</span>
+              <SourceSelect
+                value={cfg.trigger.ext}
+                onChange={(p) => setTrig({ ext: p })}
+                signals={signals}
+                labels={labels}
+                disabled={cfg.trigger.source !== 'EXT'}
+              />
+            </label>
             <div className="scope-row">
               <span>Flanke</span>
               <div className="scope-seg">
