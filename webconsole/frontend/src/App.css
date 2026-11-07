@@ -339,3 +339,4 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .scope-foot > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .scope-warn { color: var(--warn); }
 .scope-disabled { opacity: 0.45; }
+.pendulum-slow { color: var(--warn); }

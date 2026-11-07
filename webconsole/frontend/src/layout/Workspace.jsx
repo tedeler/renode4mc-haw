@@ -17,7 +17,8 @@ import { PanelContext } from './PanelContext.js';
  * die Spalte wechseln. So bleiben Terminal-Inhalt, Canvas-Bilder und WebSockets beim Verschieben
  * erhalten.
  *
- * Das Layout wird je Versuch im Browser gespeichert; "Layout zurücksetzen" zeigt wieder alles.
+ * Das Layout wird je Versuch im Browser gespeichert (localStorage); "↺ Standardlayout" stellt die
+ * Standardanordnung wieder her, alle Panels ausgeklappt.
  */
 
 const FIT_QUERY = '(min-width: 760px) and (min-height: 520px)';
@@ -371,11 +372,11 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
         </button>
       )}
       <button
-        className="btn small ghost icon"
+        className="btn small ghost"
         onClick={reset}
-        title="Layout zurücksetzen: alle Panels sichtbar, Anordnung wie beim ersten Start"
+        title="Zurück zum Standardlayout: alle Panels sichtbar, Anordnung wie beim ersten Start (die gespeicherte Anordnung dieses Versuchs wird ersetzt)"
       >
-        ↺
+        ↺ Standardlayout
       </button>
     </div>
   ) : (
@@ -390,8 +391,8 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
           {byId[id]?.title ?? id}
         </button>
       ))}
-      <button className="chip ghost" onClick={reset} title="Layout zurücksetzen (alles ausgeklappt)">
-        ↺
+      <button className="chip ghost" onClick={reset} title="Zurück zum Standardlayout (alles ausgeklappt)">
+        ↺ Standardlayout
       </button>
     </nav>
   );
