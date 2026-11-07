@@ -10,6 +10,17 @@
 // Senden passiert sofort (TX-FIFO ist immer leer, BUSY=0). Die Baudrate wird nur
 // berechnet (Property BaudRate), nicht zeitlich nachgebildet.
 //
+// Strenge Prüfung wie auf dem Board (Warnungen erscheinen in der Web-Konsole unter "Diagnose"):
+//  * Datenblatt 19.3.2: IBRD/FBRD gelten erst nach dem nächsten Schreiben von UARTLCRH;
+//    IBRD = 0 ist ungültig. Änderungen an IBRD/FBRD/LCRH bei UARTEN = 1 werden gemeldet.
+//  * WLEN < 8 Bit: nur die unteren Datenbits werden übertragen.
+//  * Mit  ConnectPins <gpio> <rx> <tx>  (z. B. im .resc:  sysbus.uart0 ConnectPins sysbus.gpioA 0 1)
+//    werden die Pins geprüft: Takt, AFSEL, PCTL = 1, DEN. Stimmt etwas nicht, verlässt kein Zeichen
+//    den Chip bzw. kommt keins an.
+//  * Mit  ExpectedBaudRate <Baud>  und  ExpectedFormat "8N1"  ist die Gegenstelle (Terminal)
+//    eingestellt. Passt die Konfiguration der Firmware nicht (Baudrate mehr als BaudTolerance
+//    daneben oder anderes Format), kommt wie auf dem Board Zeichensalat an – in beide Richtungen.
+//
 // Anschluss im Renode-Monitor, z. B.:
 //   emulation CreateServerSocketTerminal 3335 "term" false
 //   connector Connect sysbus.uart0 term
@@ -17,6 +28,7 @@ using System.Collections.Generic;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals.Bus;
+using Antmicro.Renode.Peripherals.GPIOPort;
 using Antmicro.Renode.Peripherals.Miscellaneous;
 
 namespace Antmicro.Renode.Peripherals.UART
@@ -29,6 +41,7 @@ namespace Antmicro.Renode.Peripherals.UART
             this.sysCtl = sysCtl;
             this.clockBit = clockBit;
             this.frequency = frequency;
+            this.machine = machine;
             IRQ = new GPIO();
             Reset();
         }
@@ -60,6 +73,21 @@ namespace Antmicro.Renode.Peripherals.UART
                 uint clkDiv = (ctl & CtlHse) != 0 ? 8u : 16u;
                 return (uint)(frequency / (clkDiv * divisor) + 0.5);
             }
+        }
+
+        // Einstellung der Gegenstelle (Terminal). 0 = keine Prüfung
+        public uint ExpectedBaudRate { get; set; }
+        public string ExpectedFormat { get; set; } = "8N1";
+        public double BaudTolerance { get; set; } = 0.025;
+
+        // Aktuelle Konfiguration der Firmware, z. B. "9600 7N1"
+        public string Configuration { get { return string.Format("{0} {1}", EffectiveBaud(), Format()); } }
+
+        public void ConnectPins(TivaGPIOPort port, int rxPin, int txPin)
+        {
+            pinPort = port;
+            this.rxPin = rxPin;
+            this.txPin = txPin;
         }
 
         public uint ReadDoubleWord(long offset)
@@ -106,19 +134,38 @@ namespace Antmicro.Renode.Peripherals.UART
                 case Dr: WriteData((byte)value); break;
                 case Rsr: rsr = 0; break;     // ECR: Schreiben löscht die Fehler
                 case Ilpr: ilpr = value & 0xFF; break;
-                case Ibrd: ibrd = value & 0xFFFF; break;
-                case Fbrd: fbrd = value & 0x3F; break;
+                case Ibrd:
+                    WarnIfEnabled("UARTIBRD");
+                    ibrd = value & 0xFFFF;
+                    baudPending = true;
+                    break;
+                case Fbrd:
+                    WarnIfEnabled("UARTFBRD");
+                    fbrd = value & 0x3F;
+                    baudPending = true;
+                    break;
                 case Lcrh:
+                    WarnIfEnabled("UARTLCRH");
                     lcrh = value & 0xFF;
+                    latchedIbrd = ibrd;          // Datenblatt: Schreiben von LCRH übernimmt IBRD/FBRD
+                    latchedFbrd = fbrd;
+                    baudPending = false;
                     break;
                 case Ctl:
                     ctl = value;
+                    if((value & CtlUarten) != 0 && (value & (CtlLbe | CtlSiren | CtlSmart | CtlEot)) != 0)
+                    {
+                        Warn("ctlBits", "UARTCTL: Loopback, IrDA, Smartcard und EOT sind im Simulator nicht modelliert.");
+                    }
                     break;
                 case Ifls: ifls = value & 0x3F; break;
                 case Im: im = value & 0x17F2; break;
                 case Icr: ris &= ~value; break;
                 case Dmactl: dmactl = value & 0x7; break;
-                case Cc: cc = value & 0xF; break;
+                case Cc:
+                    cc = value & 0xF;
+                    if(cc != 0 && cc != 5) Warn("cc", string.Format("UARTCC = 0x{0:X} ist reserviert (0x0 = Systemtakt, 0x5 = ALTCLK).", cc));
+                    break;
                 case Fr: case Ris: case Mis: break; // nur lesbar
                 default: other[offset] = value; break;
             }
@@ -130,15 +177,93 @@ namespace Antmicro.Renode.Peripherals.UART
             base.Reset();
             rsr = ilpr = ibrd = fbrd = lcrh = im = ris = dmactl = cc = 0;
             ctl = 0x300;   // TXE, RXE
+            latchedIbrd = latchedFbrd = 0;
+            baudPending = false;
+            warned = new HashSet<string>();
+            lastConfigWarning = null;
+            lock(lineLock) { line.Clear(); lineBusy = false; }
             ifls = 0x12;   // RX und TX: 1/2 voll
             clockWarned = false;
             other = new Dictionary<long, uint>();
             if(IRQ != null) IRQ.Unset();
         }
 
+        // Zeichen vom Terminal. Mit ExpectedBaudRate kommen sie im Takt der Leitung an (ein Zeichen
+        // pro Rahmen aus Start-, Daten-, Paritäts- und Stoppbits) – wie auf dem Board: Bei 9600 Bit/s
+        // 7N1 also ca. alle 0,94 ms, auch wenn das Terminal eine ganze Zeile auf einmal schickt.
+        public override void WriteChar(byte value)
+        {
+            if(ExpectedBaudRate == 0)
+            {
+                base.WriteChar(value);
+                return;
+            }
+            bool start;
+            lock(lineLock)
+            {
+                if(line.Count >= MaxLine)
+                {
+                    Warn("lineFull", "Mehr als 4096 Zeichen vom Terminal unterwegs – weitere verworfen.");
+                    return;
+                }
+                line.Enqueue(value);
+                start = !lineBusy;
+                lineBusy = true;
+            }
+            if(start) machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+        }
+
+        private void LineNext()
+        {
+            byte value;
+            bool more;
+            lock(lineLock)
+            {
+                if(line.Count == 0)
+                {
+                    lineBusy = false;
+                    return;
+                }
+                value = line.Dequeue();
+                more = line.Count > 0;
+                if(!more) lineBusy = false;
+            }
+            base.WriteChar(value);
+            if(more) machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+        }
+
+        // Dauer eines Zeichens auf der Leitung nach der Einstellung des Terminals
+        private Antmicro.Renode.Time.TimeInterval FrameTime()
+        {
+            string f = ExpectedFormat ?? "8N1";
+            int bits = 1 + 8 + 1;
+            if(f.Length == 3 && char.IsDigit(f[0]) && char.IsDigit(f[2]))
+            {
+                bits = 1 + (f[0] - '0') + (f[1] == 'N' ? 0 : 1) + (f[2] - '0');
+            }
+            ulong us = (ulong)System.Math.Ceiling(bits * 1e6 / ExpectedBaudRate);
+            return Antmicro.Renode.Time.TimeInterval.FromMicroseconds(System.Math.Max(1UL, us));
+        }
+
         // Zeichen von außen (Terminal): bei vollem FIFO verwerfen und Overrun melden (wie Hardware)
         protected override void WriteCharInner(byte value, UARTFrame frame)
         {
+            if(!IsReceiveEnabled)
+            {
+                Warn("rxOff", "Zeichen vom Terminal verworfen – Empfänger nicht eingeschaltet (UARTCTL: UARTEN, RXE).");
+                return;
+            }
+            string pins = PinProblem(rxPin, "RX");
+            if(pins != null)
+            {
+                Warn("rxPin", "Zeichen vom Terminal kommt nicht an – " + pins);
+                return;
+            }
+            if(!ConfigMatches("Empfangen"))
+            {
+                value = Garble(value);
+            }
+            value = (byte)(value & DataMask());
             if(IsReceiveEnabled && Count >= FifoDepth)
             {
                 rsr |= RsrOe;
@@ -204,8 +329,110 @@ namespace Antmicro.Renode.Peripherals.UART
                     clockBit, c);
                 return;
             }
-            TransmitCharacter(c);
             ris |= IntTx;   // Sendepuffer sofort wieder frei
+            if(EffectiveDivisor() <= 0)
+            {
+                Warn("ibrd0", "Baudrate nicht eingestellt: UARTIBRD = 0 (bzw. IBRD/FBRD nicht mit einem Schreiben von UARTLCRH übernommen) – es wird nichts gesendet.");
+                return;
+            }
+            if(baudPending)
+            {
+                Warn("lcrhMissing", "UARTIBRD/UARTFBRD geschrieben, aber danach UARTLCRH nicht: Datenblatt 19.3.2 – die neue Baudrate gilt erst nach dem Schreiben von UARTLCRH.");
+            }
+            string pins = PinProblem(txPin, "TX");
+            if(pins != null)
+            {
+                Warn("txPin", "Zeichen verlässt den Chip nicht – " + pins);
+                return;
+            }
+            c = (byte)(c & DataMask());
+            TransmitCharacter(ConfigMatches("Senden") ? c : Garble(c));
+        }
+
+        private double EffectiveDivisor()
+        {
+            return latchedIbrd == 0 ? 0 : latchedIbrd + latchedFbrd / 64.0;
+        }
+
+        private uint EffectiveBaud()
+        {
+            double d = EffectiveDivisor();
+            if(d <= 0) return 0;
+            uint clkDiv = (ctl & CtlHse) != 0 ? 8u : 16u;
+            return (uint)(frequency / (clkDiv * d) + 0.5);
+        }
+
+        private int DataBits { get { return 5 + (int)((lcrh >> 5) & 3); } }
+
+        private uint DataMask()
+        {
+            return (1u << DataBits) - 1;
+        }
+
+        private string Format()
+        {
+            char parity = 'N';
+            if((lcrh & LcrhPen) != 0)
+            {
+                bool even = (lcrh & LcrhEps) != 0;
+                parity = (lcrh & LcrhSps) != 0 ? (even ? 'S' : 'M') : (even ? 'E' : 'O');
+            }
+            return string.Format("{0}{1}{2}", DataBits, parity, (lcrh & LcrhStp2) != 0 ? 2 : 1);
+        }
+
+        // Passt die Konfiguration zur Gegenstelle? Meldet einen Unterschied einmal je Konfiguration.
+        private bool ConfigMatches(string what)
+        {
+            if(ExpectedBaudRate == 0) return true;
+            uint baud = EffectiveBaud();
+            string format = Format();
+            double error = baud == 0 ? 1 : System.Math.Abs((double)baud - ExpectedBaudRate) / ExpectedBaudRate;
+            bool ok = error <= BaudTolerance && format == ExpectedFormat;
+            string config = baud + " " + format;
+            if(!ok && lastConfigWarning != config)
+            {
+                lastConfigWarning = config;
+                this.Log(LogLevel.Warning,
+                    "UART{0}: Firmware ist auf {1} Baud {2} eingestellt (IBRD = {3}, FBRD = {4}, LCRH = 0x{5:X2}), das Terminal erwartet {6} Baud {7}" +
+                    " (Abweichung {8:F1} %, erlaubt {9:F1} %). Beim {10} kommt nur Zeichensalat an.",
+                    clockBit, baud, format, latchedIbrd, latchedFbrd, lcrh, ExpectedBaudRate, ExpectedFormat,
+                    error * 100, BaudTolerance * 100, what);
+            }
+            if(ok && lastConfigWarning != null && lastConfigWarning != "ok")
+            {
+                lastConfigWarning = "ok";
+                this.Log(LogLevel.Warning, "UART{0}: Konfiguration jetzt korrekt ({1} Baud {2}).", clockBit, baud, format);
+            }
+            return ok;
+        }
+
+        // Falsch eingestellte Gegenstelle: aus einem Zeichen wird ein anderes (nicht druckbar)
+        private static byte Garble(byte c)
+        {
+            return (byte)(0x80 | ((c * 37 + 11) & 0x7F));
+        }
+
+        private string PinProblem(int pin, string name)
+        {
+            if(pinPort == null) return null;
+            string p = pinPort.CheckAlternateFunction(pin, 1);
+            return p == null ? null : string.Format("UART{0} {1}-Pin falsch konfiguriert: {2}", clockBit, name, p);
+        }
+
+        private void WarnIfEnabled(string reg)
+        {
+            if((ctl & CtlUarten) != 0)
+            {
+                Warn("en" + reg, reg + " geändert, während der UART eingeschaltet ist (UARTEN = 1). Datenblatt 19.4: UART zuerst ausschalten.");
+            }
+        }
+
+        private void Warn(string key, string message)
+        {
+            if(warned.Add(key))
+            {
+                this.Log(LogLevel.Warning, "UART{0}: {1}", clockBit, message);
+            }
         }
 
         private uint Flags()
@@ -251,7 +478,8 @@ namespace Antmicro.Renode.Peripherals.UART
         private const uint FrRxfe = 1u << 4, FrRxff = 1u << 6, FrTxfe = 1u << 7;
         private const uint LcrhPen = 1u << 1, LcrhEps = 1u << 2, LcrhStp2 = 1u << 3, LcrhFen = 1u << 4,
                            LcrhSps = 1u << 7;
-        private const uint CtlUarten = 1u << 0, CtlHse = 1u << 5, CtlTxe = 1u << 8, CtlRxe = 1u << 9;
+        private const uint CtlUarten = 1u << 0, CtlSiren = 1u << 1, CtlSmart = 1u << 3, CtlEot = 1u << 4,
+                           CtlHse = 1u << 5, CtlLbe = 1u << 7, CtlTxe = 1u << 8, CtlRxe = 1u << 9;
         private const uint IntRx = 1u << 4, IntTx = 1u << 5, IntRt = 1u << 6, IntOe = 1u << 10;
         private const uint RsrOe = 1u << 3;
 
@@ -261,5 +489,16 @@ namespace Antmicro.Renode.Peripherals.UART
         private uint rsr, ilpr, ibrd, fbrd, lcrh, ctl, ifls, im, ris, dmactl, cc;
         private bool clockWarned;
         private Dictionary<long, uint> other;
+        private uint latchedIbrd, latchedFbrd;
+        private bool baudPending;
+        private HashSet<string> warned;
+        private string lastConfigWarning;
+        private TivaGPIOPort pinPort;
+        private readonly IMachine machine;
+        private readonly object lineLock = new object();
+        private readonly Queue<byte> line = new Queue<byte>();
+        private bool lineBusy;
+        private const int MaxLine = 4096;
+        private int rxPin, txPin;
     }
 }

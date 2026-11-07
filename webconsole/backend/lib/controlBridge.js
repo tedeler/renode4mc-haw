@@ -8,6 +8,12 @@ const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
+const BCD_RE = /BCD:([0-9A-F-]{4}):([01]{2}):([0-9A-F]{2})/;
+const CIO_RE = /CIO:([A-Za-z0-9+/=]*)/;
+// Renode-Logzeile: "[12:00:00.0000] [WARNING] tm4c1294/gpioM: GPIO Port M: ..."
+const DIAG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
+const CIO_HISTORY_BYTES = 16384;
+const MAX_DIAGNOSTICS = 100;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -21,6 +27,7 @@ const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
  *   { type: "keypad", row, col, pressed }      Keypad: Zeile/Spalte der Matrix, nicht die Taste
  *   { type: "sensor", value }                  Distanz in cm
  *   { type: "pendulum", frequency }            Pendelfrequenz in Hz (Pendeldisplay)
+ *   { type: "clearDiagnostics" }               Diagnose-Liste leeren
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd }
  *   { type: "leds", states: { [id]: boolean } }
@@ -34,6 +41,11 @@ const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
  *                                                     Pendel-Ereignisse seit dem letzten Abruf (LED-Wechsel
  *                                                     mit virtueller Zeit t in us und Phase phi in 1/10000
  *                                                     halber Schwingung) für die Wiedergabe im Browser
+ *   { type: "bcd", digits, enable, data }      BCD-Anzeige: digits = 4 Zeichen (0-9, A-F, "-" = dunkel),
+ *                                                     enable = "<EN links><EN rechts>", data = D7..D0 hex
+ *   { type: "cio", data }                             printf-Ausgabe (CCS-Konsole), Base64; im hello: cio = alles bisher
+ *   { type: "diag", level, message, count }           Warnung/Fehler aus Renode (Fehlkonfiguration usw.);
+ *                                                     im hello: diagnostics = [{level, message, count}]
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -47,6 +59,9 @@ class ControlBridge {
     this.ledStates = {};
     this.lastFrame = null;
     this.lastPendulum = null;
+    this.lastBcd = null;
+    this.cioHistory = Buffer.alloc(0);
+    this.diagnostics = [];
     this.pollTimer = null;
     this.polling = false;
     this.ledSocket = null;
@@ -78,7 +93,34 @@ class ControlBridge {
       leds: this.ledStates,
       fb: this.lastFrame,
       pd: this.lastPendulum,
+      bcd: this.lastBcd,
+      cio: this.cioHistory.toString('base64'),
+      diagnostics: this.diagnostics,
     };
+  }
+
+  /** Neue Renode-Instanz: Diagnose und printf-Ausgabe des vorigen Laufs verwerfen. */
+  resetDiagnostics() {
+    this.diagnostics = [];
+    this.cioHistory = Buffer.alloc(0);
+    this._broadcast({ type: 'diagReset' });
+  }
+
+  /** Renode-Logzeile; Warnungen und Fehler gehen an alle Browser (gleiche Meldung: Zähler). */
+  diagnostic(line) {
+    const m = DIAG_RE.exec(line);
+    if (!m) return;
+    const level = m[1] === 'ERROR' ? 'error' : 'warning';
+    const message = m[2].trim();
+    if (!message) return;
+    let d = this.diagnostics.find((x) => x.message === message);
+    if (d) d.count += 1;
+    else {
+      d = { level, message, count: 1 };
+      this.diagnostics.push(d);
+      if (this.diagnostics.length > MAX_DIAGNOSTICS) this.diagnostics.shift();
+    }
+    this._broadcast({ type: 'diag', ...d });
   }
 
   _onClient(ws) {
@@ -100,6 +142,11 @@ class ControlBridge {
 
   /** Übersetzt ein UI-Kommando in Renode-Monitor-Befehle (Pfade nur aus der Versuchs-Konfiguration). */
   async _handle(msg) {
+    if (msg && msg.type === 'clearDiagnostics') {
+      this.diagnostics = [];
+      this._broadcast({ type: 'diagReset' });
+      return;
+    }
     if (!this.attached || !this.experiment) throw new Error('Renode läuft nicht');
     const exp = this.experiment;
     const run = (cmd) => this.monitor.execute(cmd, { priority: true });
@@ -112,10 +159,12 @@ class ControlBridge {
         if (btn.path) {
           // Renode-Peripherie Miscellaneous.Button
           await run(`${btn.path} ${pressed ? 'Press' : 'Release'}`);
+        } else if (pressed) {
+          // Gedrückt: Taster verbindet den Pin mit GND (activeLow) bzw. VCC
+          await run(`${btn.port} OnGPIO ${btn.pin} ${!btn.activeLow}`);
         } else {
-          // Pegel direkt am GPIO-Eingang; activeLow: gedrückt = LOW (Taster gegen GND, Pull-up)
-          const level = btn.activeLow ? !pressed : pressed;
-          await run(`${btn.port} OnGPIO ${btn.pin} ${level}`);
+          // Losgelassen: Pin ist offen – nur der Pull-up/-down der Firmware bestimmt den Pegel
+          await run(`${btn.port} ReleaseInput ${btn.pin}`);
         }
         break;
       }
@@ -165,6 +214,7 @@ class ControlBridge {
     this.ledStates = Object.fromEntries((experiment.leds || []).map((l) => [l.id, false]));
     this.lastFrame = null;
     this.lastPendulum = null;
+    this.lastBcd = null;
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -278,6 +328,26 @@ class ControlBridge {
             data: m[5],
           };
           this._broadcast(this.lastFrame);
+        }
+      }
+
+      if (exp.bcd) {
+        const m = BCD_RE.exec(await mon.execute(`${exp.bcd.path} GetState`));
+        if (m && (!this.lastBcd || this.lastBcd.digits !== m[1] || this.lastBcd.enable !== m[2] || this.lastBcd.data !== m[3])) {
+          this.lastBcd = { type: 'bcd', digits: m[1], enable: m[2], data: m[3] };
+          this._broadcast(this.lastBcd);
+        }
+      }
+
+      if (exp.cio) {
+        const m = CIO_RE.exec(await mon.execute(`${exp.cio.path} GetOutput`));
+        if (m && m[1]) {
+          const bytes = Buffer.from(m[1], 'base64');
+          this.cioHistory = Buffer.concat([this.cioHistory, bytes]);
+          if (this.cioHistory.length > CIO_HISTORY_BYTES) {
+            this.cioHistory = this.cioHistory.subarray(this.cioHistory.length - CIO_HISTORY_BYTES);
+          }
+          this._broadcast({ type: 'cio', data: m[1] });
         }
       }
 

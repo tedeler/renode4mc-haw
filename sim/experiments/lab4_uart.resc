@@ -1,0 +1,39 @@
+:name: Lab 4 (EK-TM4C1294XL, UART)
+:description: TM4C1294 mit UART0-Terminal (9600 7N1), LEDs D1-D4, USR_SW1/2, printf-Konsole
+
+# Startskript für die Web-Konsole (webconsole/). Wird mit Arbeitsverzeichnis sim/ gestartet:
+#   renode --disable-gui --port 1234 -e "s @experiments/lab4_uart.resc"
+# Variable $elf: Pfad zur Firmware (.out/.elf), Standard /tmp/app.elf (Upload der Web-Konsole).
+
+$elf?=@/tmp/app.elf
+
+# Zusätzliche Gerätemodelle dieses Versuchs (vor dem Laden der .repl kompilieren)
+
+include @models/TiCioConsole.cs
+
+# Basis: alle Tiva-Modelle, Maschine "tm4c1294", Plattform tm4c1294ncpdt.repl, Firmware laden
+include @tm4c1294.resc
+
+# Feinere Zeitscheibe (10 us statt 100 us): externe Signale (Keypad, Ultraschall, Pendel) brauchen
+# genaue Zeitpunkte. Renode rechnet die CPU sonst in 100-us-Stücken.
+emulation SetGlobalQuantum "0.00001"
+
+# Versuchsspezifische Erweiterung
+machine LoadPlatformDescription @experiments/lab4_uart.repl
+
+# printf -> CCS-Konsole: Adresse von _CIOBUF_ aus der ELF-Datei
+sysbus.cio ElfPath $elf
+
+# UART0: Pins prüfen (PA0 = U0RX, PA1 = U0TX: AFSEL, PCTL = 1, DEN) und Einstellung des Terminals.
+# Passt die Firmware nicht dazu, kommt wie auf dem Board nichts bzw. Zeichensalat an.
+sysbus.uart0 ConnectPins sysbus.gpioA 0 1
+sysbus.uart0 ExpectedBaudRate 9600
+sysbus.uart0 ExpectedFormat "7N1"
+
+# UART0 (virtueller COM-Port) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
+# Die Web-Konsole verbindet sich damit (Backend-Brücke -> ws://<host>:3333 -> xterm.js).
+# Ohne Web-Konsole:  nc localhost 3335
+emulation CreateServerSocketTerminal 3335 "uart0term" false
+connector Connect sysbus.uart0 uart0term
+
+start

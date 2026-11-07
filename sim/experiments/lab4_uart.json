@@ -1,0 +1,60 @@
+{
+  "title": "Lab 4 – UART: LEDs per Terminal schalten, SW1-Interrupt",
+  "machine": "tm4c1294",
+  "uart": {
+    "label": "UART0 (PA0 RX / PA1 TX) – Terminal wie Tera Term: 9600 Bit/s 7N1, lokales Echo, Empfang CR → CR+LF",
+    "localEcho": true,
+    "crlf": true
+  },
+  "ledBridge": "ws://127.0.0.1:9000",
+  "leds": [
+    {
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "bridge": 0
+    },
+    {
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "bridge": 1
+    },
+    {
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "bridge": 2
+    },
+    {
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "bridge": 3
+    }
+  ],
+  "buttons": [
+    {
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "port": "sysbus.gpioJ",
+      "pin": 0,
+      "activeLow": true
+    },
+    {
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "port": "sysbus.gpioJ",
+      "pin": 1,
+      "activeLow": true
+    }
+  ],
+  "cio": {
+    "path": "sysbus.cio",
+    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+  },
+  "solution": {
+    "example": "lab08_uart_leds",
+    "label": "Musterlösung (examples/lab08_uart_leds)"
+  }
+}

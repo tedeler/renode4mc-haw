@@ -1,0 +1,74 @@
+{
+  "title": "Lab 3 – NVIC: LED-Pendel und HC-SR04 mit Interrupts",
+  "machine": "tm4c1294",
+  "uart": {
+    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1"
+  },
+  "ledBridge": "ws://127.0.0.1:9000",
+  "leds": [
+    {
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "bridge": 0
+    },
+    {
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "bridge": 1
+    },
+    {
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "bridge": 2
+    },
+    {
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "bridge": 3
+    }
+  ],
+  "buttons": [
+    {
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "port": "sysbus.gpioJ",
+      "pin": 0,
+      "activeLow": true
+    },
+    {
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "port": "sysbus.gpioJ",
+      "pin": 1,
+      "activeLow": true
+    }
+  ],
+  "cio": {
+    "path": "sysbus.cio",
+    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+  },
+  "sensor": {
+    "path": "sysbus.gpioD.hcsr04",
+    "min": 0,
+    "max": 350,
+    "unit": "cm",
+    "initial": 65,
+    "title": "Ultraschall HC-SR04",
+    "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo"
+  },
+  "pendulum": {
+    "path": "sysbus.gpioM.pendel",
+    "label": "8 LEDs an PM0–PM7 (PM7 = LED 7 oben), Signal R/L an PL0: steigende Flanke = linker, fallende = rechter Umkehrpunkt",
+    "frequency": 8.3,
+    "minFrequency": 2,
+    "maxFrequency": 15
+  },
+  "solution": {
+    "example": "lab07_nvic_pendel",
+    "label": "Musterlösung (examples/lab07_nvic_pendel)"
+  }
+}

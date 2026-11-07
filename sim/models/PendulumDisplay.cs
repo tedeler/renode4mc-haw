@@ -9,6 +9,10 @@
 //       HIGH, solange das Pendel RECHTS von der Mitte steht, LOW, solange es LINKS steht.
 //       Steigende Flanke = Pendel läuft nach rechts durch die Mitte,
 //       fallende Flanke  = Pendel läuft nach links durch die Mitte.
+//     Mit  syncMode: "direction"  (HAW-Pendel, Lab 2/3 des Mikrocontroller-Praktikums) gilt stattdessen:
+//       HIGH, solange das Pendel von links nach rechts schwingt, LOW von rechts nach links.
+//       Steigende Flanke = linker Umkehrpunkt, fallende Flanke = rechter Umkehrpunkt.
+//       Frequenzwechsel gelten dann ab dem nächsten Umkehrpunkt (dort steht das Pendel still).
 //   * Bewegung: Auslenkung u = sin(pi * phi), u = -1 (ganz links) .. +1 (ganz rechts).
 //     phi zählt die halben Schwingungen: phi = 0, 1, 2, ... sind die Durchgänge durch die Mitte.
 //     Eine halbe Schwingung dauert PeriodUs / 2 (Standard: Periode 100000 us = 10 Hz).
@@ -55,13 +59,21 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         public const uint MinPeriodUs = 10000;     // 100 Hz
         public const uint MaxPeriodUs = 20000000;  // 0,05 Hz
 
-        public PendulumDisplay(IMachine machine, uint periodUs = 100000, int columns = 120)
+        // syncMode: "position" (Standard, HIGH = rechts von der Mitte) oder "direction" (siehe oben)
+        public PendulumDisplay(IMachine machine, uint periodUs = 100000, int columns = 120, string syncMode = "position")
         {
             if(columns < 8 || columns > 512)
             {
                 throw new ArgumentException("PendulumDisplay: 8..512 Spalten");
             }
+            if(syncMode != "position" && syncMode != "direction")
+            {
+                throw new ArgumentException("PendulumDisplay: syncMode muss \"position\" oder \"direction\" sein");
+            }
             this.machine = machine;
+            directionSync = syncMode == "direction";
+            // Zeitpunkte des Sync-Wechsels: Nulldurchgänge (phi = 0, 1, 2, ...) bzw. Umkehrpunkte (phi = 0,5; 1,5; ...)
+            phaseOffset = directionSync ? 0.5 : 0.0;
             initialHalfUs = HalfOf(periodUs);
             Columns = columns;
             Sync = new GPIO();
@@ -148,14 +160,16 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 pendingHalfUs = 0;
                 halfCount = 0;
                 anchorUs = ClockUs();
-                anchorPhase = 0;
+                anchorPhase = phaseOffset;
                 events.Clear();
                 leds = 0;
-                lastPaintPhase = 0;
+                lastPaintPhase = phaseOffset;
                 Array.Clear(image, 0, image.Length);
                 version++;
             }
-            Sync.Set(true); // phi = 0: Pendel in der Mitte, läuft nach rechts
+            // phi = 0: Pendel in der Mitte, läuft nach rechts (HIGH = rechts);
+            // direction: phi = 0,5: rechter Umkehrpunkt, läuft jetzt nach links (LOW)
+            Sync.Set(!directionSync);
             halfPeriod.Enabled = true;
         }
 
@@ -180,20 +194,21 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             lock(sync)
             {
                 // Zeitpunkt des Durchgangs exakt aus der Phase (nicht von der Uhr lesen)
-                double crossingUs = anchorUs + (halfCount + 1 - anchorPhase) * halfUs;
-                PaintUntil(halfCount + 1.0); // bis genau zum Durchgang (alte Periode)
+                double crossingPhase = phaseOffset + halfCount + 1;
+                double crossingUs = anchorUs + (crossingPhase - anchorPhase) * halfUs;
+                PaintUntil(crossingPhase); // bis genau zum Durchgang (alte Periode)
                 halfCount++;
                 if(pendingHalfUs != 0)
                 {
                     anchorUs = crossingUs;
-                    anchorPhase = halfCount;
+                    anchorPhase = crossingPhase;
                     halfUs = pendingHalfUs;
                     newHalfUs = pendingHalfUs;
                     pendingHalfUs = 0;
                     version++; // Periode ist Teil des Frames
                     Record(crossingUs);  // Frequenzwechsel: neue Geschwindigkeit ab hier
                 }
-                level = halfCount % 2 == 0;
+                level = (halfCount % 2 == 0) != directionSync;
             }
             if(newHalfUs != 0)
             {
@@ -344,6 +359,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private ulong lastReported = ulong.MaxValue;
         private double lastReportedPhase = -1;
         private readonly IMachine machine;
+        private readonly bool directionSync;
+        private readonly double phaseOffset;
         private double anchorUs;
         private double anchorPhase;
         private const int MaxEvents = 20000;

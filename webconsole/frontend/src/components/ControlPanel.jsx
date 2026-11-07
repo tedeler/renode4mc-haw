@@ -7,8 +7,11 @@ import DistanceSensor from './DistanceSensor.jsx';
 import Keypad from './Keypad.jsx';
 import PendulumDisplay from './PendulumDisplay.jsx';
 import Widget from './Widget.jsx';
+import BcdDisplay from './BcdDisplay.jsx';
+import CioConsole from './CioConsole.jsx';
+import Diagnostics from './Diagnostics.jsx';
 
-function Panel({ experiment }) {
+function Panel({ experiment, solution }) {
   const { status, renodeState, leds, lastError, clearError } = useControlSocket();
 
   return (
@@ -21,6 +24,11 @@ function Panel({ experiment }) {
           Renode: <b className={`renode-${renodeState}`}>{renodeState}</b>
         </span>
         <span className="exp-title">{experiment.title}</span>
+        {solution && (
+          <span className="solution-badge" title={experiment.solution?.label}>
+            Musterlösung läuft – so soll es aussehen
+          </span>
+        )}
         {lastError && (
           <span className="panel-error" onClick={clearError} title="Klicken zum Schließen">
             ⚠ {lastError}
@@ -28,8 +36,14 @@ function Panel({ experiment }) {
         )}
       </div>
 
+      <Diagnostics />
+
       <div className="grid">
-        <UartMonitor label={experiment.uart?.label} />
+        <UartMonitor label={experiment.uart?.label} localEcho={!!experiment.uart?.localEcho} crlf={!!experiment.uart?.crlf} />
+
+        {experiment.cio && <CioConsole label={experiment.cio.label} />}
+
+        {experiment.bcd && <BcdDisplay label={experiment.bcd.label} />}
 
         {experiment.oled && (
           <OledDisplay
@@ -69,6 +83,8 @@ function Panel({ experiment }) {
             max={experiment.sensor.max}
             unit={experiment.sensor.unit}
             label={experiment.sensor.label}
+            initial={experiment.sensor.initial}
+            title={experiment.sensor.title}
           />
         )}
 
@@ -77,6 +93,10 @@ function Panel({ experiment }) {
             layout={experiment.keypad.layout}
             rowPins={experiment.keypad.rowPins}
             colPins={experiment.keypad.colPins}
+            rowNames={experiment.keypad.rowNames}
+            colNames={experiment.keypad.colNames}
+            title={experiment.keypad.title}
+            label={experiment.keypad.label}
           />
         )}
       </div>
@@ -85,10 +105,10 @@ function Panel({ experiment }) {
 }
 
 /** Control Panel: verbindet sich nach erfolgreichem Upload mit Renode (über die Backend-Bridges). */
-export default function ControlPanel({ experiment }) {
+export default function ControlPanel({ experiment, solution = false }) {
   return (
     <ControlSocketProvider>
-      <Panel experiment={experiment} />
+      <Panel experiment={experiment} solution={solution} />
     </ControlSocketProvider>
   );
 }

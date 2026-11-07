@@ -6,6 +6,9 @@
  *   <id>.repl  Plattform-Erweiterung (optional, vom .resc geladen)
  *   <id>.json  Widget-Konfiguration für die Web-Konsole (optional)
  *
+ * Musterlösung: "solution": { "example": "<Beispiel>", "label": "..." } in der JSON-Datei verweist auf
+ *   sim/solutions/<Beispiel>.elf (gebaut von tools/build-solutions.sh bzw. im Docker-Image).
+ *
  * Alle Renode-Pfade aus der JSON-Datei werden validiert, weil das Backend aus ihnen
  * Monitor-Befehle baut. Der Browser schickt nie Pfade, nur IDs und Werte.
  */
@@ -47,6 +50,8 @@ function validate(cfg, file) {
     }
   });
   if (cfg.oled) assertPath(cfg.oled.path, `${file} oled`);
+  if (cfg.bcd) assertPath(cfg.bcd.path, `${file} bcd`);
+  if (cfg.cio) assertPath(cfg.cio.path, `${file} cio`);
   if (cfg.sensor) assertPath(cfg.sensor.path, `${file} sensor`);
   if (cfg.pendulum) {
     const pd = cfg.pendulum;
@@ -58,6 +63,9 @@ function validate(cfg, file) {
     assert([pd.frequency, pd.minFrequency, pd.maxFrequency].every((f) => typeof f === 'number' && f >= 0.05 && f <= 100) &&
       pd.minFrequency <= pd.frequency && pd.frequency <= pd.maxFrequency,
     `${file} pendulum: 0.05 <= minFrequency <= frequency <= maxFrequency <= 100 (Hz)`);
+  }
+  if (cfg.solution) {
+    assert(isValidId(cfg.solution.example), `${file} solution.example: Name eines Beispiels (examples/<name>)`);
   }
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
@@ -84,7 +92,9 @@ function load(simDir, sub, id) {
     cfg = { ...cfg, ...JSON.parse(fs.readFileSync(json, 'utf8')), id };
   }
   // Pfad relativ zum Simulator-Verzeichnis (Arbeitsverzeichnis von Renode)
-  return { ...validate(cfg, json), rescPath: `${sub}/${id}.resc` };
+  const v = validate(cfg, json);
+  const solutionPath = v.solution ? path.join(simDir, 'solutions', `${v.solution.example}.elf`) : null;
+  return { ...v, rescPath: `${sub}/${id}.resc`, solutionPath };
 }
 
 function list(simDir, sub) {
@@ -98,7 +108,7 @@ function list(simDir, sub) {
     .map((id) => {
       try {
         const c = load(simDir, sub, id);
-        return c && { id: c.id, title: c.title };
+        return c && { id: c.id, title: c.title, solution: solutionInfo(c) };
       } catch (e) {
         console.error(`[experiments] ${e.message}`);
         return null;
@@ -108,16 +118,28 @@ function list(simDir, sub) {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** Musterlösung für das Frontend: { label, available } oder null */
+function solutionInfo(cfg) {
+  if (!cfg || !cfg.solution) return null;
+  return {
+    label: cfg.solution.label || `Musterlösung (examples/${cfg.solution.example})`,
+    available: !!cfg.solutionPath && fs.existsSync(cfg.solutionPath),
+  };
+}
+
 /** Konfiguration ohne interne Felder (für das Frontend). */
 function publicView(cfg) {
   if (!cfg) return null;
-  const { rescPath, ledBridge, ...rest } = cfg;
+  const { rescPath, ledBridge, solutionPath: _s, ...rest } = cfg;
   return {
     ...rest,
+    solution: solutionInfo(cfg),
     leds: (rest.leds || []).map(({ path: _p, bridge: _b, ...l }) => l),
     buttons: (rest.buttons || []).map(({ path: _p, port: _q, pin: _n, activeLow: _a, ...b }) => b),
     keypad: rest.keypad && { ...rest.keypad, path: undefined },
     oled: rest.oled && { ...rest.oled, path: undefined },
+    bcd: rest.bcd && { ...rest.bcd, path: undefined },
+    cio: rest.cio && { ...rest.cio, path: undefined },
     sensor: rest.sensor && { ...rest.sensor, path: undefined },
     pendulum: rest.pendulum && { ...rest.pendulum, path: undefined },
   };
