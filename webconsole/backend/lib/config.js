@@ -24,6 +24,8 @@ module.exports = Object.freeze({
   // Simulator-Verzeichnis aus dem Repository (models/, platforms/, tm4c1294.resc, experiments/).
   // Renode wird mit diesem Arbeitsverzeichnis gestartet, damit die relativen Pfade der .resc stimmen.
   simDir: process.env.SIM_DIR || repoSimDir,
+  // TI-Headerdatei für die Registernamen der Simulations-Anzeige
+  headerPath: process.env.HEADER_PATH || path.resolve(__dirname, '..', '..', '..', 'common', 'tm4c1294ncpdt.h'),
   experimentsSubdir: process.env.EXPERIMENTS_SUBDIR || 'experiments',
 
   elfPath: process.env.ELF_PATH || '/tmp/app.elf',

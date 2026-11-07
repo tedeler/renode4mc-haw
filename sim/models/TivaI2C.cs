@@ -206,7 +206,7 @@ namespace Antmicro.Renode.Peripherals.I2C
             uint s = 0;
             if(busyReads > 0)
             {
-                busyReads--;
+                if(!TivaSysCtl.Peeking) busyReads--;   // Anzeige verbraucht das BUSY nicht
                 s |= StBusy;
             }
             if(error) s |= StError;
@@ -228,6 +228,7 @@ namespace Antmicro.Renode.Peripherals.I2C
                 clockWarned = false;
                 return true;
             }
+            if(TivaSysCtl.PeekClockOff()) return false;
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,

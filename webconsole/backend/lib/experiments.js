@@ -74,6 +74,7 @@ function validate(cfg, file) {
   }
   if (cfg.reset) assertPath(cfg.reset.path, `${file} reset.path`);
   if (cfg.status) assertPath(cfg.status.path, `${file} status.path`);
+  if (cfg.debug) assertPath(cfg.debug.cpu, `${file} debug.cpu`);
   (cfg.signals || []).forEach((sig, i) => {
     assert(typeof sig.name === 'string' && SIGNAL_RE.test(sig.name), `${file} signals[${i}].name wie "uart0.tx"`);
     assertPath(sig.path, `${file} signals[${i}].path`);
@@ -142,6 +143,7 @@ function publicView(cfg) {
     uart: rest.uart && { ...rest.uart, host: undefined },
     reset: !!rest.reset,
     status: !!rest.status,
+    debug: !!rest.debug,
     signals: (rest.signals || []).map(({ path: _p, ...sig }) => sig),
   };
 }

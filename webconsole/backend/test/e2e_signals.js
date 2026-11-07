@@ -12,6 +12,8 @@
  *  - Terminal auf 9600 Baud gestellt: Zeichensalat; zurück auf 115200: wieder lesbar
  *  - Simulations-Anzeige ("watch"/"sim"): Firmware, CPU, Zeit, UART-Einstellungen
  *  - Reset-Taster: Firmware startet neu (Startmeldung), Sensorwert (außerhalb des Chips) bleibt
+ *  - Debugger: Pause (Zeit steht), Schritt, Weiter, Kernregister, Disassembly, Speicher über ein
+ *    Symbol, Peripherie-Register ohne Nebenwirkung, Modul ohne Takt, keine Renode-Warnungen
  *
  *   node test/e2e_signals.js <lab03_webkonsole.out> [http://localhost:3000]
  *
@@ -96,6 +98,12 @@ function decodeUart(edges, baud, format) {
   c.on('message', (d) => {
     const m = JSON.parse(d.toString());
     if (m.type === 'hello') uartConfig = m.uartConfig;
+    // Neustart von Renode (Upload): Zeit beginnt wieder bei 0
+    if (m.type === 'renode' && m.state === 'stopped') {
+      lastNow = {};
+      edges['uart0.tx'] = [];
+      edges['uart0.rx'] = [];
+    }
     if (m.type === 'uartconfig') uartConfig = { baud: m.baud, format: m.format };
     if (m.type === 'signals') for (const s of m.signals) signals[s.name] = s;
     if (m.type === 'error') errors.push(m.message);
@@ -211,6 +219,41 @@ function decodeUart(edges, baud, format) {
   check('Reset an alle gemeldet', resets === 1);
   check('nach dem Reset: Sensor weiterhin 55 cm', await waitFor(() => /Abstand:\s+55 cm/.test(uart.subarray(mark).toString('latin1')), 5000));
   check('sim: Reset gezählt', await waitFor(() => sim.resets && sim.resets.count === 1, 3000), JSON.stringify(sim.resets));
+
+  // Debugger
+  let meta = null;
+  c.on('message', (d) => {
+    const m = JSON.parse(d.toString());
+    if (m.type === 'simmeta') meta = m;
+  });
+  send({ type: 'watch', sim: false });
+  await sleep(100);
+  send({ type: 'watch', sim: true, memory: { addr: 'ticks', count: 16 }, periph: 'UART0' });
+  check('simmeta: Module aus der Headerdatei', await waitFor(() => meta && meta.modules.includes('UART0') && meta.modules.includes('GPIO A')));
+  check('sim: Speicher über Symbol "ticks"', await waitFor(() => sim.memory && sim.memory.symbol === 'ticks' && sim.memory.addr >= 0x20000000),
+    JSON.stringify(sim.memory));
+  check('sim: UART0-Register (FR, IBRD = 8)', await waitFor(() => sim.periph && sim.periph.module === 'UART0' &&
+    sim.periph.regs.find((r) => r.name === 'UART0_IBRD_R').value === 8));
+  check('sim: Kernregister (PC, SP)', sim.regs && sim.regs.some((r) => r.name === 'PC') && sim.regs.some((r) => r.name === 'SP'));
+  send({ type: 'pause' });
+  check('Pause -> angehalten', await waitFor(() => sim.stopped && sim.cpu.state === 'Paused', 3000), sim.cpu.state);
+  const tp = sim.time.virtualNs;
+  await sleep(1000);
+  check('Pause: Simulationszeit steht', sim.time.virtualNs === tp);
+  check('Pause: Disassembly ab PC', sim.disasm && sim.disasm.length > 0 && sim.disasm[0].addr === parseInt(sim.cpu.pc, 16),
+    JSON.stringify(sim.disasm && sim.disasm[0]));
+  send({ type: 'step', count: 50 });
+  check('Schritt -> Einzelschritt-Modus', await waitFor(() => sim.cpu.state === 'Step', 3000), sim.cpu.state);
+  send({ type: 'continue' });
+  check('Weiter -> läuft', await waitFor(() => !sim.stopped && sim.cpu.state === 'Running', 3000), sim.cpu.state);
+  const tc = sim.time.virtualNs;
+  check('Weiter: Simulationszeit läuft', await waitFor(() => sim.time.virtualNs > tc, 3000));
+  send({ type: 'watch', sim: true, periph: 'UART1' });
+  check('UART1 ohne Takt erkannt', await waitFor(() => sim.periph && sim.periph.module === 'UART1' && sim.periph.noClock));
+  // erwartet ist nur die Warnung des Terminals aus dem Test mit 9600 Baud weiter oben
+  const other = sim.warnings.filter((w) => !/uart0\.host: Terminal/.test(w.text));
+  check('Meldungen: Terminal-Warnung vom 9600-Test angezeigt', sim.warnings.length > other.length);
+  check('keine weiteren Warnungen von Renode (Anzeige liest ohne Nebenwirkung)', other.length === 0, JSON.stringify(other));
 
   check('keine Fehlermeldungen vom Backend', errors.length === 0, errors.join('; '));
   u.close();

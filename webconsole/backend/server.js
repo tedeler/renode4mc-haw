@@ -29,6 +29,7 @@ const uart = new UartBridge({
 });
 
 const control = new ControlBridge({
+  headerPath: cfg.headerPath,
   wsPort: cfg.controlWsPort,
   renodeHost: cfg.renodeHost,
   monitorPort: cfg.renodeMonitorPort,
