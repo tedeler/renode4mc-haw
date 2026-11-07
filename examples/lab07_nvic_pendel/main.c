@@ -11,7 +11,7 @@
  *   ultrasonic_hcsr04.h/.c   HC-SR04 an PD0/PD1: Timer2A (periodisch) triggert, Port-D-ISR misst
  *   pendulum_haw.h/.c        LED-Pendel an PM0..PM7/PL0: Port-L-ISR, Timer0A (16 Bit One-Shot)
  *   zeitbasis.h/.c           Timer1A freilaufend als gemeinsame Zeitbasis (nur lesen)
- *   register.h               Registeradressen aus dem Datenblatt
+ *   board.h                  Takt, NVIC-Nummern; Register aus tm4c1294ncpdt.h (common/)
  *
  *   Timer   Betriebsart                    Aufgabe
  *   Timer0A 16 Bit One-Shot, Prescaler 16  Zeitpunkt der nächsten Bildspalte (einziger One-Shot)

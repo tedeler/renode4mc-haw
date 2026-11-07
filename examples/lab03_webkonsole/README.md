@@ -39,17 +39,27 @@ Zusatz-Hardware.
 
 ## 2. Das Programm verstehen (`main.c`)
 
-| Register | Adresse | Wirkung hier |
-|---|---|---|
-| `RCGCUART` / `PRUART` | `0x400FE618` / `0x400FEA18` | Bit 0: Takt für UART0 |
-| `RCGCI2C` / `PRI2C` | `0x400FE620` / `0x400FEA20` | Bit 0: Takt für I2C0 |
-| `UARTIBRD` / `UARTFBRD` | `0x4000C024` / `0x4000C028` | 8 / 44 → 115200 Baud bei 16 MHz |
-| `UARTLCRH` | `0x4000C02C` | 8 Datenbits, FIFO an |
-| `UARTCTL` | `0x4000C030` | `UARTEN`, `TXE`, `RXE` |
-| `I2CMCR` | `0x40020020` | `0x10`: Master einschalten |
-| `I2CMTPR` | `0x4002000C` | 7 → 100 kHz bei 16 MHz |
-| `I2CMSA` / `I2CMDR` / `I2CMCS` | `0x40020000` / `…08` / `…04` | Adresse+R/W, Datenbyte, Befehl/Status |
-| `GPIOIEV` (Port K) | `0x4006140C` | Spalten: Interrupt bei steigender Flanke |
+Alle Register und Bits kommen aus `tm4c1294ncpdt.h` (siehe Lab 01); im Programm steht keine Adresse.
+
+| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+|---|---|---|---|
+| `RCGCUART` / `PRUART` | `SYSCTL_RCGCUART_R` / `SYSCTL_PRUART_R` | `0x400FE618` / `0x400FEA18` | `…_R0` (Bit 0): Takt für UART0 |
+| `RCGCI2C` / `PRI2C` | `SYSCTL_RCGCI2C_R` / `SYSCTL_PRI2C_R` | `0x400FE620` / `0x400FEA20` | `…_R0` (Bit 0): Takt für I2C0 |
+| `UARTIBRD` / `UARTFBRD` | `UART0_IBRD_R` / `UART0_FBRD_R` | `0x4000C024` / `0x4000C028` | 8 / 44 → 115200 Baud bei 16 MHz |
+| `UARTLCRH` | `UART0_LCRH_R` | `0x4000C02C` | `UART_LCRH_WLEN_8 \| UART_LCRH_FEN`: 8 Datenbits, FIFO an |
+| `UARTCTL` | `UART0_CTL_R` | `0x4000C030` | `UART_CTL_UARTEN`, `UART_CTL_TXE`, `UART_CTL_RXE` |
+| `I2CMCR` | `I2C0_MCR_R` | `0x40020020` | `I2C_MCR_MFE`: Master einschalten |
+| `I2CMTPR` | `I2C0_MTPR_R` | `0x4002000C` | 7 → 100 kHz bei 16 MHz |
+| `I2CMSA` / `I2CMDR` / `I2CMCS` | `I2C0_MSA_R` / `I2C0_MDR_R` / `I2C0_MCS_R` | `0x40020000` / `…08` / `…04` | Adresse+R/W, Datenbyte, Befehl/Status (`I2C_MCS_RUN`, `…_START`, `…_STOP`, `…_ACK`) |
+| `GPIOIEV` (Port K) | `GPIO_PORTK_IEV_R` | `0x4006140C` | Spalten: Interrupt bei steigender Flanke |
+
+Zwei Dinge, die die Headerdatei **nicht** enthält und die deshalb in `main.c` stehen:
+- die Pin-Funktionen für `GPIOPCTL` (Datenblatt, Tabelle „GPIO Pins and Alternate Functions“:
+  PA0/PA1 → Funktion 1 = U0RX/U0TX, PB2/PB3 → Funktion 2 = I2C0SCL/I2C0SDA) und
+- die NVIC-Nummern: `IRQ_GPIOJ = INT_GPIOJ − 16 = 51` → Bit 19 in `NVIC_EN1_R` (51 − 32).
+
+**Einzelne Pins schreiben:** `GPIO_PORTK_DATA_BITS_R[maske] = wert` ändert nur die Pins, deren Bit in
+`maske` gesetzt ist (Adressmaskierung des `GPIODATA`-Registers, Datenblatt Kapitel GPIO, „Data Register Operation“).
 
 **Baudrate:** `BRD = 16 000 000 / (16 · 115 200) = 8,6806` → `IBRD = 8`,
 `FBRD = round(0,6806 · 64) = 44`.
@@ -61,11 +71,11 @@ Zusatz-Hardware.
 ```c
 // Ruhezustand: alle Zeilen HIGH -> ein Tastendruck macht seine Spalte HIGH -> Interrupt (GPIOK_Handler)
 for (zeile = 0; zeile < 4; zeile++) {
-    GPIO_DATA_M(GPIOK_BASE, KP_ROWS) = 1u << zeile;          // nur diese Zeile HIGH
-    spalten = (GPIO_DATA_M(GPIOK_BASE, KP_COLS) & KP_COLS) >> 4;
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile;          // nur diese Zeile HIGH
+    spalten = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> 4;
     if (spalten) { taste = keymap[zeile][erste gesetzte Spalte]; break; }
 }
-GPIO_DATA_M(GPIOK_BASE, KP_ROWS) = KP_ROWS;                  // wieder alle Zeilen HIGH
+GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // wieder alle Zeilen HIGH
 ```
 
 ## 3. Variante A: Im Simulator (Web-Konsole)
@@ -97,11 +107,11 @@ und Keypad fehlen. Der Simulator meldet einmal je Adresse *„kein Gerät unter 
 
 ### Selbst ausprobieren
 
-- Entfernen Sie `SYSCTL_RCGCI2C |= …`. Das Programm bleibt in der Warteschleife auf `PRI2C`
-  hängen, und es erscheint keine Ausgabe. Warum? Entfernen Sie zusätzlich `(SYSCTL_PRI2C & 1u) == 0`
+- Entfernen Sie `SYSCTL_RCGCI2C_R |= …`. Das Programm bleibt in der Warteschleife auf `PRI2C`
+  hängen, und es erscheint keine Ausgabe. Warum? Entfernen Sie zusätzlich `(SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0`
   aus der Bedingung. Jetzt warnt der Simulator *„I2C0: Zugriff … ohne Takt!“*.
 - Ändern Sie `OLED_ADDR` auf `0x3D`. Was gibt `i2c_wait()` zurück?
-- Entfernen Sie in `keypad_scan()` das Setzen der Zeile (`GPIO_DATA_M(… KP_ROWS) = 1u << zeile`).
+- Entfernen Sie in `keypad_scan()` das Setzen der Zeile (`GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile`).
   Welche Taste wird erkannt?
 
 ## 4. Variante B: Auf dem Board
@@ -118,7 +128,7 @@ Den UART sehen Sie z. B. mit `picocom -b 115200 /dev/ttyACM0`.
 
 1. Geben Sie zusätzlich die Zeit seit dem Start (in Sekunden, aus `ticks`) auf OLED-Zeile 2 aus.
 2. Senden Sie über das Terminal den Befehl `L` → alle LEDs aus, `H` → alle an.
-3. Schalten Sie den UART-Empfang auf Interrupt um (`UARTIM` Bit 4/6, `UART0_Handler`, NVIC IRQ 5).
+3. Schalten Sie den UART-Empfang auf Interrupt um (`UART0_IM_R` mit `UART_IM_RXIM`/`UART_IM_RTIM`, `UART0_Handler`, NVIC IRQ `INT_UART0 − 16` = 5).
 4. Bauen Sie eine Code-Sperre: Nach der Eingabe `1234#` auf dem Keypad leuchtet D1 für 2 s.
 
 ## 6. Hinweise zum Simulator

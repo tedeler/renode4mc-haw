@@ -35,43 +35,25 @@
  * Die Zeitpunkte werden ABSOLUT ab dem linken Umkehrpunkt gerechnet (wie lab04), damit sich
  * keine Verzögerungen aufaddieren. Th wird bei jedem Schwung neu gemessen (ca. 8,3 Hz).
  *
- * Alle Adressen stammen aus dem Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
+ * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include "tm4c1294ncpdt.h"
 
-#define REG(adresse)        (*(volatile uint32_t *)(adresse))
 #define SYSTEM_CLOCK_HZ     16000000u
 #define TAKTE_PRO_US        (SYSTEM_CLOCK_HZ / 1000000u)
 
 /* ---------------------------------------------------------------------------------------------
- * Register
+ * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h (common/).
+ * Ports A-J heißen dort GPIO_PORTx_AHB_..._R (hier Port D), die Ports K-Q ohne AHB.
+ * GPIO_PORTx_DATA_BITS_R[m]: Zugriff nur auf die Pins in Maske m (Adressmaskierung, Bits 9:2).
+ * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Zeiten).
  * ------------------------------------------------------------------------------------------- */
-#define SYSCTL_RCGCTIMER    REG(0x400FE000 + 0x604)
-#define SYSCTL_RCGCGPIO     REG(0x400FE000 + 0x608)
-#define SYSCTL_PRTIMER      REG(0x400FE000 + 0xA04)
-#define SYSCTL_PRGPIO       REG(0x400FE000 + 0xA08)
-
-#define GPIO_DATA(base)     REG((base) + 0x3FC)
-#define GPIO_DATA_M(base,m) REG((base) + ((m) << 2))
-#define GPIO_DIR(base)      REG((base) + 0x400)
-#define GPIO_DEN(base)      REG((base) + 0x51C)
-
-#define GPIOD_BASE          0x4005B000u
-#define GPIOL_BASE          0x40062000u
-#define GPIOM_BASE          0x40063000u
-#define PORT_D              (1u << 3)
-#define PORT_L              (1u << 10)
-#define PORT_M              (1u << 11)
-
-#define TIMER_CFG(base)     REG((base) + 0x000)
-#define TIMER_TAMR(base)    REG((base) + 0x004)
-#define TIMER_CTL(base)     REG((base) + 0x00C)
-#define TIMER_TAILR(base)   REG((base) + 0x028)
-#define TIMER_TAV(base)     REG((base) + 0x050)
-#define TIMER2_BASE         0x40032000u
-#define TIMER_2             (1u << 2)
+#define PORTS               (SYSCTL_RCGCGPIO_R3 | SYSCTL_RCGCGPIO_R10 | SYSCTL_RCGCGPIO_R11) /* D, L, M */
+#define PORTS_BEREIT        (SYSCTL_PRGPIO_R3 | SYSCTL_PRGPIO_R10 | SYSCTL_PRGPIO_R11)
 
 /* Pins */
 #define PENDEL_LEDS         0xFFu              /* PM0..PM7 */
@@ -85,7 +67,7 @@
  * ------------------------------------------------------------------------------------------- */
 static inline uint32_t jetzt(void)
 {
-    return TIMER_TAV(TIMER2_BASE);
+    return TIMER2_TAV_R;
 }
 
 static inline uint32_t vergangen(uint32_t seit)
@@ -103,7 +85,7 @@ static void warte_takte(uint32_t takte)
 
 static inline bool rl(void)
 {
-    return (GPIO_DATA_M(GPIOL_BASE, PENDEL_RL) & PENDEL_RL) != 0;
+    return (GPIO_PORTL_DATA_BITS_R[PENDEL_RL] & PENDEL_RL) != 0;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -187,13 +169,13 @@ static void schwung_zeichnen(uint32_t start, uint32_t halbePeriode)
         while (vergangen(start) < ziel)
         {
             if (!rl()) {                                      /* schon rechts angekommen */
-                GPIO_DATA(GPIOM_BASE) = 0;
+                GPIO_PORTM_DATA_R = 0;
                 return;
             }
         }
-        GPIO_DATA(GPIOM_BASE) = muster[i];
+        GPIO_PORTM_DATA_R = muster[i];
     }
-    GPIO_DATA(GPIOM_BASE) = 0;
+    GPIO_PORTM_DATA_R = 0;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -206,21 +188,21 @@ static void schwung_zeichnen(uint32_t start, uint32_t halbePeriode)
 
 static int32_t abstand_messen(void)
 {
-    if (GPIO_DATA_M(GPIOD_BASE, US_ECHO))
+    if (GPIO_PORTD_AHB_DATA_BITS_R[US_ECHO])
     {
         return -1;                             /* letzte Messung (ohne Echo) läuft noch */
     }
-    GPIO_DATA_M(GPIOD_BASE, US_TRIGGER) = US_TRIGGER;
+    GPIO_PORTD_AHB_DATA_BITS_R[US_TRIGGER] = US_TRIGGER;
     warte_takte(12u * TAKTE_PRO_US);           /* Trigger mindestens 10 us HIGH */
-    GPIO_DATA_M(GPIOD_BASE, US_TRIGGER) = 0;   /* fallende Flanke startet die Messung */
+    GPIO_PORTD_AHB_DATA_BITS_R[US_TRIGGER] = 0; /* fallende Flanke startet die Messung */
 
     uint32_t t = jetzt();
-    while (!GPIO_DATA_M(GPIOD_BASE, US_ECHO))
+    while (!GPIO_PORTD_AHB_DATA_BITS_R[US_ECHO])
     {
         if (vergangen(t) > ECHO_START_MAX_US * TAKTE_PRO_US) return -1;
     }
     uint32_t anfang = jetzt();
-    while (GPIO_DATA_M(GPIOD_BASE, US_ECHO))
+    while (GPIO_PORTD_AHB_DATA_BITS_R[US_ECHO])
     {
         if (vergangen(anfang) > ECHO_MAX_US * TAKTE_PRO_US) return -1;
     }
@@ -230,26 +212,26 @@ static int32_t abstand_messen(void)
 
 static void init(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_D | PORT_L | PORT_M;
-    SYSCTL_RCGCTIMER |= TIMER_2;
-    while ((SYSCTL_PRGPIO & (PORT_D | PORT_L | PORT_M)) != (PORT_D | PORT_L | PORT_M)) {}
-    while ((SYSCTL_PRTIMER & TIMER_2) == 0) {}
+    SYSCTL_RCGCGPIO_R |= PORTS;
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R2;
+    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT) {}
+    while ((SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R2) == 0) {}
 
-    GPIO_DIR(GPIOM_BASE) |= PENDEL_LEDS;       /* LEDs: Ausgang */
-    GPIO_DEN(GPIOM_BASE) |= PENDEL_LEDS;
-    GPIO_DATA(GPIOM_BASE) = 0;
-    GPIO_DIR(GPIOL_BASE) &= ~PENDEL_RL;        /* R/L: Eingang (vom Pendel getrieben) */
-    GPIO_DEN(GPIOL_BASE) |= PENDEL_RL;
-    GPIO_DATA_M(GPIOD_BASE, US_TRIGGER) = 0;
-    GPIO_DIR(GPIOD_BASE) = (GPIO_DIR(GPIOD_BASE) | US_TRIGGER) & ~US_ECHO;
-    GPIO_DEN(GPIOD_BASE) |= US_TRIGGER | US_ECHO;
+    GPIO_PORTM_DIR_R |= PENDEL_LEDS;           /* LEDs: Ausgang */
+    GPIO_PORTM_DEN_R |= PENDEL_LEDS;
+    GPIO_PORTM_DATA_R = 0;
+    GPIO_PORTL_DIR_R &= ~PENDEL_RL;            /* R/L: Eingang (vom Pendel getrieben) */
+    GPIO_PORTL_DEN_R |= PENDEL_RL;
+    GPIO_PORTD_AHB_DATA_BITS_R[US_TRIGGER] = 0;
+    GPIO_PORTD_AHB_DIR_R = (GPIO_PORTD_AHB_DIR_R | US_TRIGGER) & ~US_ECHO;
+    GPIO_PORTD_AHB_DEN_R |= US_TRIGGER | US_ECHO;
 
     /* Timer2A: 32 Bit, periodisch, freilaufend von 0xFFFFFFFF abwärts */
-    TIMER_CTL(TIMER2_BASE) = 0;
-    TIMER_CFG(TIMER2_BASE) = 0x0;
-    TIMER_TAMR(TIMER2_BASE) = 0x2u;
-    TIMER_TAILR(TIMER2_BASE) = 0xFFFFFFFFu;
-    TIMER_CTL(TIMER2_BASE) = 1u;
+    TIMER2_CTL_R = 0;
+    TIMER2_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER2_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
+    TIMER2_TAILR_R = 0xFFFFFFFFu;
+    TIMER2_CTL_R = TIMER_CTL_TAEN;
 }
 
 int main(void)

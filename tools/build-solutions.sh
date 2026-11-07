@@ -20,7 +20,7 @@ for ex in $SOLUTIONS; do
     dir="$ROOT/examples/$ex"
     echo "[build-solutions] $ex"
     "$CC" -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -Os -g -Wall -nostartfiles --specs=nano.specs \
-        -T "$ROOT/tools/gcc/link.ld" -I "$dir" \
+        -T "$ROOT/tools/gcc/link.ld" -I "$dir" -I "$ROOT/common" \
         "$dir"/*.c "$ROOT/common/startup_tm4c1294.c" "$ROOT/tools/gcc/crt.c" "$ROOT/tools/gcc/cio_gcc.c" \
         -o "$OUT/$ex.elf"
 done

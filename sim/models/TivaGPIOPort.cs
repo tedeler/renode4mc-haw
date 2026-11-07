@@ -160,7 +160,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             if(!ClockOk(offset)) return 0;
 
-            if(offset <= 0x3FC)
+            if(offset <= Data)
             {
                 uint mask = (uint)((offset >> 2) & 0xFF);
                 CheckRead(mask);
@@ -195,7 +195,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             if(!ClockOk(offset)) return;
             uint old = ReceiverLevels();
 
-            if(offset <= 0x3FC)
+            if(offset <= Data)
             {
                 uint mask = (uint)((offset >> 2) & 0xFF);
                 dataLatch = (dataLatch & ~mask) | (value & mask);
@@ -475,6 +475,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             return false;
         }
 
+        // Register-Offsets wie in tm4c1294ncpdt.h (GPIO_PORTx_..._R); geprüft mit tools/check_header.py
+        private const long Data = 0x3FC;
         private const long RcgcGpio = 0x608;
         private const long Dir = 0x400, Is = 0x404, Ibe = 0x408, Iev = 0x40C, Im = 0x410, Ris = 0x414,
                            Mis = 0x418, Icr = 0x41C, Afsel = 0x420, Pur = 0x510, Pdr = 0x514,

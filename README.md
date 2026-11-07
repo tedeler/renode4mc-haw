@@ -53,6 +53,8 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, UART, I2C, WebSocket-Brücke, OLED, Ultraschall, Keypad, Pendeldisplay), LED-Anzeige `visualizer/ek-tm4c1294xl.html`, Versuche für die Web-Konsole `experiments/` |
 | `webconsole/` | Web-Konsole: Node.js-Backend, React-Frontend, `Dockerfile`, `docker-compose.yml` |
 | `tools/ccs-import.sh` | CCS-Projekt ohne Oberfläche importieren und bauen |
+| `tools/check_header.py` | Simulator-Hardware, Vektortabelle und Beispiele gegen `common/tm4c1294ncpdt.h` prüfen |
+| `common/tm4c1294ncpdt.h` | Registernamen und Bitkonstanten von TI (wird von allen Beispielen eingebunden) |
 | `docs/` | `INSTALL_LINUX.md`, `TOOLCHAIN.md` (Konzept, CCS-Debugging des Simulators), `ROADMAP.md` (weitere Peripherie), `WEBCONSOLE.md` (Web-Konsole: Architektur, Protokolle, eigene Versuche) |
 
 ## Simulierte Hardware

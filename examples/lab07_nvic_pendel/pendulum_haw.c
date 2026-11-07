@@ -1,5 +1,5 @@
 #include "pendulum_haw.h"
-#include "register.h"
+#include "board.h"
 #include "zeitbasis.h"
 
 #define PENDEL_LEDS         0xFFu              /* PM0..PM7 */
@@ -49,19 +49,19 @@ static void timer_stellen(void)
     uint32_t us = ziel > vorbei ? (ziel - vorbei) / TAKTE_PRO_US : 0u;
     if (us < 1u) us = 1u;
     if (us > 0x10000u) us = 0x10000u;
-    TIMER_TAILR(TIMER0_BASE) = us - 1u;
-    TIMER_CTL(TIMER0_BASE) = TIMER_CTL_TAEN;   /* One-Shot: lädt TAILR/TAPR und startet */
+    TIMER0_TAILR_R = us - 1u;
+    TIMER0_CTL_R = TIMER_CTL_TAEN;   /* One-Shot: lädt TAILR/TAPR und startet */
 }
 
 /* Timer0A (16 Bit, One-Shot): alle fälligen Ereignisse ausgeben, dann das nächste planen */
 void TIMER0A_Handler(void)
 {
-    TIMER_ICR(TIMER0_BASE) = TIMER_ICR_TATOCINT;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
     if (!zeichnet) return;
     uint32_t vorbei = zeitbasis_seit(schwungStart);
     while (ereignis < EREIGNISSE && vorbei + TAKTE_PRO_US / 2u >= zielTakte(ereignis))
     {
-        GPIO_DATA(GPIOM_BASE) = aktiv[ereignis];
+        GPIO_PORTM_DATA_R = aktiv[ereignis];
         ereignis++;
     }
     if (ereignis < EREIGNISSE)
@@ -71,7 +71,7 @@ void TIMER0A_Handler(void)
     else
     {
         zeichnet = false;
-        GPIO_DATA(GPIOM_BASE) = 0;
+        GPIO_PORTM_DATA_R = 0;
     }
 }
 
@@ -79,8 +79,8 @@ void TIMER0A_Handler(void)
 void GPIOL_Handler(void)
 {
     uint32_t jetzt = zeitbasis_jetzt();
-    GPIO_ICR(GPIOL_BASE) = PENDEL_RL;
-    if (GPIO_DATA_M(GPIOL_BASE, PENDEL_RL))
+    GPIO_PORTL_ICR_R = PENDEL_RL;
+    if (GPIO_PORTL_DATA_BITS_R[PENDEL_RL])
     {
         /* linker Umkehrpunkt: Schwung links -> rechts beginnt, Bild ausgeben */
         schwungStart = jetzt;
@@ -105,8 +105,8 @@ void GPIOL_Handler(void)
             halbePeriode = th;
         }
         zeichnet = false;
-        TIMER_CTL(TIMER0_BASE) = 0;
-        GPIO_DATA(GPIOM_BASE) = 0;
+        TIMER0_CTL_R = 0;
+        GPIO_PORTM_DATA_R = 0;
     }
 }
 
@@ -176,32 +176,33 @@ uint32_t pendulum_halbePeriodeUs(void)
 
 void pendulum_init(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_L | PORT_M;
-    SYSCTL_RCGCTIMER |= TIMER_0;
-    while ((SYSCTL_PRGPIO & (PORT_L | PORT_M)) != (PORT_L | PORT_M)) {}
-    while ((SYSCTL_PRTIMER & TIMER_0) == 0) {}
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R10 | SYSCTL_RCGCGPIO_R11;          /* L, M */
+    SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R0;
+    while ((SYSCTL_PRGPIO_R & (SYSCTL_PRGPIO_R10 | SYSCTL_PRGPIO_R11)) !=
+           (SYSCTL_PRGPIO_R10 | SYSCTL_PRGPIO_R11)) {}
+    while ((SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R0) == 0) {}
 
-    GPIO_DATA(GPIOM_BASE) = 0;
-    GPIO_DIR(GPIOM_BASE) |= PENDEL_LEDS;
-    GPIO_DEN(GPIOM_BASE) |= PENDEL_LEDS;
+    GPIO_PORTM_DATA_R = 0;
+    GPIO_PORTM_DIR_R |= PENDEL_LEDS;
+    GPIO_PORTM_DEN_R |= PENDEL_LEDS;
 
     /* R/L: Eingang, Interrupt an beiden Flanken */
-    GPIO_DIR(GPIOL_BASE) &= ~PENDEL_RL;
-    GPIO_DEN(GPIOL_BASE) |= PENDEL_RL;
-    GPIO_IM(GPIOL_BASE) &= ~PENDEL_RL;
-    GPIO_IS(GPIOL_BASE) &= ~PENDEL_RL;
-    GPIO_IBE(GPIOL_BASE) |= PENDEL_RL;
-    GPIO_ICR(GPIOL_BASE) = PENDEL_RL;
-    GPIO_IM(GPIOL_BASE) |= PENDEL_RL;
+    GPIO_PORTL_DIR_R &= ~PENDEL_RL;
+    GPIO_PORTL_DEN_R |= PENDEL_RL;
+    GPIO_PORTL_IM_R &= ~PENDEL_RL;
+    GPIO_PORTL_IS_R &= ~PENDEL_RL;
+    GPIO_PORTL_IBE_R |= PENDEL_RL;
+    GPIO_PORTL_ICR_R = PENDEL_RL;
+    GPIO_PORTL_IM_R |= PENDEL_RL;
 
     /* Timer0A: 16 Bit One-Shot, Prescaler 16 (1 us) – der einzige One-Shot-Timer */
-    TIMER_CTL(TIMER0_BASE) = 0;
-    TIMER_CFG(TIMER0_BASE) = TIMER_CFG_16BIT;
-    TIMER_TAMR(TIMER0_BASE) = TIMER_TAMR_ONESHOT;
-    TIMER_TAPR(TIMER0_BASE) = PRESCALER;
-    TIMER_TAILR(TIMER0_BASE) = 0xFFFFu;
-    TIMER_ICR(TIMER0_BASE) = TIMER_ICR_TATOCINT;
-    TIMER_IMR(TIMER0_BASE) = TIMER_IMR_TATOIM;
+    TIMER0_CTL_R = 0;
+    TIMER0_CFG_R = TIMER_CFG_16_BIT;
+    TIMER0_TAMR_R = TIMER_TAMR_TAMR_1_SHOT;
+    TIMER0_TAPR_R = PRESCALER;
+    TIMER0_TAILR_R = 0xFFFFu;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
+    TIMER0_IMR_R = TIMER_IMR_TATOIM;
 
     nvic_enable(IRQ_TIMER0A);
     nvic_enable(IRQ_GPIOL);

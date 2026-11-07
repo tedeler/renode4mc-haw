@@ -41,27 +41,5 @@ hcsr04: Sensors.HcSr04 @ gpioD
 gpioD:
     0 -> hcsr04@0
 
-// Timer 4..7: Interrupts zum NVIC (in der Basisplattform nicht angeschlossen) und Timer 6/7 an den
-// Adressen des TM4C1294 (0x400E0000 / 0x400E1000; die Basisplattform hat sie an 0x40036000/7000).
-timer4:
-    IRQA -> nvic@63
-    IRQB -> nvic@64
-
-timer5:
-    IRQA -> nvic@65
-    IRQB -> nvic@66
-
-gptm6: Timers.TivaTimer @ sysbus 0x400E0000
-    sysCtl: sysctl
-    clockBit: 6
-    IRQA -> nvic@98
-    IRQB -> nvic@99
-
-gptm7: Timers.TivaTimer @ sysbus 0x400E1000
-    sysCtl: sysctl
-    clockBit: 7
-    IRQA -> nvic@100
-    IRQB -> nvic@101
-
 // printf() -> CCS-Konsole (Hook auf C$$IO$$ des TI-Laufzeitsystems); Adresse nur Platzhalter
 cio: Miscellaneous.TiCioConsole @ sysbus <0xF0000000, +0x100>

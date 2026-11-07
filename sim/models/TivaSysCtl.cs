@@ -51,8 +51,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
             switch(offset)
             {
-                case 0x000: return 0x180F0000; // DID0: Klasse TM4C129
-                case 0x004: return 0x10A1A000; // DID1
+                case Did0: return Did0Value;
+                case Did1: return Did1Value;
                 default:
                     uint value;
                     other.TryGetValue(offset, out value);
@@ -92,11 +92,21 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             other = new Dictionary<long, uint>();
         }
 
+        // Offsets und Feldwerte wie in tm4c1294ncpdt.h (SYSCTL_..._R, SYSCTL_DID0_..., SYSCTL_DID1_...);
+        // geprüft mit tools/check_header.py
+        private const long Did0 = 0x000, Did1 = 0x004;
+        // DID0: VER_1 | CLASS_TM4C129 | MAJ_REVA | MIN_2 (Revision A2; driverlib erkennt am CLASS-Feld
+        // einen TM4C129, z. B. in SysCtlClockFreqSet)
+        private const uint Did0Value = 0x10000000 | 0x000A0000 | 0x00000000 | 0x00000002;
+        // DID1: VER_1 | FAM_TIVA | PRTNO_TM4C1294NCPDT | PINCNT_128 | TEMP_I | PKG_QFP | ROHS | QUAL_FQ
+        // (Bauteil auf dem EK-TM4C1294XL: TM4C1294NCPDTI)
+        private const uint Did1Value = 0x10000000 | 0x00000000 | 0x001F0000 | 0x0000C000 | 0x00000020 |
+                                       0x00000008 | 0x00000004 | 0x00000002;
         private const long RcgcBase = 0x600;
         private const long ScgcBase = 0x700;
         private const long DcgcBase = 0x800;
         private const long PrBase = 0xA00;
-        private const int RegisterCount = 32;
+        private const int RegisterCount = 40;   // RCGCWD (0x600) ... RCGCEMAC (0x69C)
 
         private uint[] rcgc;
         private uint[] scgc;

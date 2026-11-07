@@ -6,14 +6,14 @@
 #define ZEITBASIS_H_
 
 #include <stdint.h>
-#include "register.h"
+#include "board.h"
 
 void zeitbasis_init(void);
 
 /* aktueller Stand (zählt abwärts) */
 static inline uint32_t zeitbasis_jetzt(void)
 {
-    return TIMER_TAV(TIMER1_BASE);
+    return TIMER1_TAV_R;
 }
 
 /* Takte seit "seit" (auch über den Überlauf hinweg richtig) */

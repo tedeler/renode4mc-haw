@@ -26,32 +26,22 @@
  * Im Simulator ist diese Anstiegszeit nachgebildet (20 us): Ohne wait() erscheinen Tasten auch in
  * der falschen Spalte.
  *
- * Alle Adressen stammen aus dem Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
+ * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
-
-#define REG(adresse)        (*(volatile uint32_t *)(adresse))
+#include "tm4c1294ncpdt.h"
 
 /* ---------------------------------------------------------------------------------------------
- * Register
+ * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h (common/).
+ * Ports A-J heißen dort GPIO_PORTx_AHB_..._R, die Ports K-Q (hier benutzt) ohne AHB.
+ * GPIO_PORTx_DATA_BITS_R[m]: Zugriff nur auf die Pins in Maske m (Adressmaskierung, Bits 9:2).
+ * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Wartezeiten).
  * ------------------------------------------------------------------------------------------- */
-#define SYSCTL_RCGCGPIO     REG(0x400FE000 + 0x608)
-#define SYSCTL_PRGPIO       REG(0x400FE000 + 0xA08)
-
-#define GPIO_DATA_M(base,m) REG((base) + ((m) << 2))       /* nur die Bits in Maske m */
-#define GPIO_DIR(base)      REG((base) + 0x400)
-#define GPIO_PUR(base)      REG((base) + 0x510)
-#define GPIO_DEN(base)      REG((base) + 0x51C)
-
-#define GPIOK_BASE          0x40061000u
-#define GPIOL_BASE          0x40062000u
-#define GPIOM_BASE          0x40063000u
-
-#define PORT_K              (1u << 9)
-#define PORT_L              (1u << 10)
-#define PORT_M              (1u << 11)
+#define PORTS               (SYSCTL_RCGCGPIO_R9 | SYSCTL_RCGCGPIO_R10 | SYSCTL_RCGCGPIO_R11) /* K, L, M */
+#define PORTS_BEREIT        (SYSCTL_PRGPIO_R9 | SYSCTL_PRGPIO_R10 | SYSCTL_PRGPIO_R11)
 
 /* Pins */
 #define KP_X                0x0Fu              /* PM0..PM3: Spalten X1..X4 (Ausgang) */
@@ -90,23 +80,23 @@ static void wait(unsigned int steps)
 
 static void ports_init(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_K | PORT_L | PORT_M;
-    while ((SYSCTL_PRGPIO & (PORT_K | PORT_L | PORT_M)) != (PORT_K | PORT_L | PORT_M))
+    SYSCTL_RCGCGPIO_R |= PORTS;
+    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT)
     {
     }
     /* Keypad: X Ausgang (Ruhe = 1), Y Eingang. Der Pull-up sitzt auf dem Keypad; der interne
      * Pull-up schadet nicht und hält Y auch ohne angeschlossenes Keypad auf 1. */
-    GPIO_DATA_M(GPIOM_BASE, KP_X) = KP_X;
-    GPIO_DIR(GPIOM_BASE) = (GPIO_DIR(GPIOM_BASE) | KP_X) & ~KP_Y;
-    GPIO_PUR(GPIOM_BASE) |= KP_Y;
-    GPIO_DEN(GPIOM_BASE) |= KP_X | KP_Y;
+    GPIO_PORTM_DATA_BITS_R[KP_X] = KP_X;
+    GPIO_PORTM_DIR_R = (GPIO_PORTM_DIR_R | KP_X) & ~KP_Y;
+    GPIO_PORTM_PUR_R |= KP_Y;
+    GPIO_PORTM_DEN_R |= KP_X | KP_Y;
 
     /* BCD-Anzeige: alles Ausgang, Freigaben aus */
-    GPIO_DATA_M(GPIOL_BASE, BCD_EN_RECHTS | BCD_EN_LINKS) = 0;
-    GPIO_DIR(GPIOK_BASE) |= BCD_DATA;
-    GPIO_DEN(GPIOK_BASE) |= BCD_DATA;
-    GPIO_DIR(GPIOL_BASE) |= BCD_EN_RECHTS | BCD_EN_LINKS;
-    GPIO_DEN(GPIOL_BASE) |= BCD_EN_RECHTS | BCD_EN_LINKS;
+    GPIO_PORTL_DATA_BITS_R[BCD_EN_RECHTS | BCD_EN_LINKS] = 0;
+    GPIO_PORTK_DIR_R |= BCD_DATA;
+    GPIO_PORTK_DEN_R |= BCD_DATA;
+    GPIO_PORTL_DIR_R |= BCD_EN_RECHTS | BCD_EN_LINKS;
+    GPIO_PORTL_DEN_R |= BCD_EN_RECHTS | BCD_EN_LINKS;
 }
 
 /*
@@ -118,9 +108,9 @@ static uint32_t keypad_scan(uint32_t *zeile, uint32_t *spalte)
     uint32_t anzahl = 0;
     for (uint32_t x = 0; x < 4u; x++)
     {
-        GPIO_DATA_M(GPIOM_BASE, KP_X) = ~(1u << x) & KP_X;  /* nur Spalte x auf 0 */
+        GPIO_PORTM_DATA_BITS_R[KP_X] = ~(1u << x) & KP_X;  /* nur Spalte x auf 0 */
         wait(WAIT_SCAN);                                    /* Laufzeit der Leitungen abwarten */
-        uint32_t y = (~GPIO_DATA_M(GPIOM_BASE, KP_Y) & KP_Y) >> 4; /* 1 = Zeile auf 0 gezogen */
+        uint32_t y = (~GPIO_PORTM_DATA_BITS_R[KP_Y] & KP_Y) >> 4; /* 1 = Zeile auf 0 gezogen */
         for (uint32_t r = 0; r < 4u; r++)
         {
             if (y & (1u << r))
@@ -131,17 +121,17 @@ static uint32_t keypad_scan(uint32_t *zeile, uint32_t *spalte)
             }
         }
     }
-    GPIO_DATA_M(GPIOM_BASE, KP_X) = KP_X;                   /* Ruhezustand */
+    GPIO_PORTM_DATA_BITS_R[KP_X] = KP_X;                   /* Ruhezustand */
     return anzahl;
 }
 
 /* Schreibt einen Wert (zwei BCD-Ziffern) in ein Modul: Daten anlegen, EN kurz auf 1 */
 static void bcd_schreiben(uint32_t en, uint8_t zweiZiffern)
 {
-    GPIO_DATA_M(GPIOK_BASE, BCD_DATA) = zweiZiffern;
-    GPIO_DATA_M(GPIOL_BASE, en) = en;
+    GPIO_PORTK_DATA_BITS_R[BCD_DATA] = zweiZiffern;
+    GPIO_PORTL_DATA_BITS_R[en] = en;
     wait(10u);
-    GPIO_DATA_M(GPIOL_BASE, en) = 0;
+    GPIO_PORTL_DATA_BITS_R[en] = 0;
 }
 
 /* Zeigt vier Ziffern an (Ziffer 3 = links ... Ziffer 0 = rechts, je 4 Bit) */

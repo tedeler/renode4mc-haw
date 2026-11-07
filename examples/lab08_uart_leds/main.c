@@ -26,58 +26,29 @@
  *        Nummern der leuchtenden LEDs und CR. Steht in der Vektortabelle als GPIOJ_Handler
  *        (common/startup_tm4c1294.c), hier per Alias.
  *
- * Alle Adressen stammen aus dem Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
+ * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
-
-#define REG(adresse)        (*(volatile uint32_t *)(adresse))
+#include "tm4c1294ncpdt.h"
 
 /* ---------------------------------------------------------------------------------------------
- * Register
+ * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h (common/).
+ * Ports A-J heißen dort GPIO_PORTx_AHB_..._R (hier A, F, J), die Ports K-Q ohne AHB (hier N).
+ * GPIO_PORTx_DATA_BITS_R[m]: Zugriff nur auf die Pins in Maske m (Adressmaskierung, Bits 9:2).
+ * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Pin-Funktionen, IRQs).
  * ------------------------------------------------------------------------------------------- */
-#define SYSCTL_RCGCGPIO     REG(0x400FE000 + 0x608)
-#define SYSCTL_RCGCUART     REG(0x400FE000 + 0x618)
-#define SYSCTL_PRGPIO       REG(0x400FE000 + 0xA08)
-#define SYSCTL_PRUART       REG(0x400FE000 + 0xA18)
+/* GPIOPCTL: je 4 Bit pro Pin wählen die alternative Funktion (Datenblatt, Tabelle
+ * "GPIO Pins and Alternate Functions"). Dafür hat die Headerdatei keine Konstanten. */
+#define PCTL_MASKE(pin)     (0xFu << (4u * (pin)))
+#define PCTL_FUNKTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
+#define PCTL_UART0          1u                   /* PA0 = U0RX, PA1 = U0TX */
 
-#define GPIO_DATA_M(base,m) REG((base) + ((m) << 2))
-#define GPIO_DIR(base)      REG((base) + 0x400)
-#define GPIO_IS(base)       REG((base) + 0x404)
-#define GPIO_IBE(base)      REG((base) + 0x408)
-#define GPIO_IEV(base)      REG((base) + 0x40C)
-#define GPIO_IM(base)       REG((base) + 0x410)
-#define GPIO_ICR(base)      REG((base) + 0x41C)
-#define GPIO_AFSEL(base)    REG((base) + 0x420)
-#define GPIO_PUR(base)      REG((base) + 0x510)
-#define GPIO_DEN(base)      REG((base) + 0x51C)
-#define GPIO_PCTL(base)     REG((base) + 0x52C)
-
-#define GPIOA_BASE          0x40058000u
-#define GPIOF_BASE          0x4005D000u
-#define GPIOJ_BASE          0x40060000u
-#define GPION_BASE          0x40064000u
-#define PORT_A              (1u << 0)
-#define PORT_F              (1u << 5)
-#define PORT_J              (1u << 8)
-#define PORT_N              (1u << 12)
-
-#define UART0_DR            REG(0x4000C000 + 0x000)
-#define UART0_FR            REG(0x4000C000 + 0x018)
-#define UART0_IBRD          REG(0x4000C000 + 0x024)
-#define UART0_FBRD          REG(0x4000C000 + 0x028)
-#define UART0_LCRH          REG(0x4000C000 + 0x02C)
-#define UART0_CTL           REG(0x4000C000 + 0x030)
-#define UART_FR_RXFE        (1u << 4)
-#define UART_FR_TXFF        (1u << 5)
-#define UART_LCRH_WLEN_7    (0x2u << 5)          /* 7 Datenbits, keine Parität, 1 Stoppbit, ohne FIFO */
-#define UART_CTL_UARTEN     (1u << 0)
-#define UART_CTL_TXE        (1u << 8)
-#define UART_CTL_RXE        (1u << 9)
-
-#define NVIC_EN1            REG(0xE000E104)      /* IRQ 32..63 */
-#define IRQ_GPIOJ           51u
+/* NVIC: INT_... aus der Headerdatei ist die Nummer in der Vektortabelle; der NVIC zählt
+ * ab dem ersten Peripherie-Interrupt (Eintrag 16). EN1 = IRQ 32..63. */
+#define IRQ_GPIOJ           (INT_GPIOJ - 16u)    /* 51 */
 
 /* Pins */
 #define LED_D1              (1u << 1)            /* PN1 */
@@ -85,6 +56,8 @@
 #define LED_D3              (1u << 4)            /* PF4 */
 #define LED_D4              (1u << 0)            /* PF0 */
 #define SW1                 (1u << 0)            /* PJ0 */
+#define PINS_UART0          0x03u                /* PA0 = U0RX, PA1 = U0TX */
+#define ZEICHEN_7BIT        0x7Fu                /* 7N1: nur Bits 6:0 sind Daten */
 
 /* ---------------------------------------------------------------------------------------------
  * LEDs 1..4
@@ -93,10 +66,10 @@ static bool led_an(uint32_t nr)
 {
     switch (nr)
     {
-        case 1: return GPIO_DATA_M(GPION_BASE, LED_D1) != 0;
-        case 2: return GPIO_DATA_M(GPION_BASE, LED_D2) != 0;
-        case 3: return GPIO_DATA_M(GPIOF_BASE, LED_D3) != 0;
-        default: return GPIO_DATA_M(GPIOF_BASE, LED_D4) != 0;
+        case 1: return GPIO_PORTN_DATA_BITS_R[LED_D1] != 0;
+        case 2: return GPIO_PORTN_DATA_BITS_R[LED_D2] != 0;
+        case 3: return GPIO_PORTF_AHB_DATA_BITS_R[LED_D3] != 0;
+        default: return GPIO_PORTF_AHB_DATA_BITS_R[LED_D4] != 0;
     }
 }
 
@@ -104,10 +77,10 @@ static void led_setzen(uint32_t nr, bool an)
 {
     switch (nr)
     {
-        case 1: GPIO_DATA_M(GPION_BASE, LED_D1) = an ? LED_D1 : 0; break;
-        case 2: GPIO_DATA_M(GPION_BASE, LED_D2) = an ? LED_D2 : 0; break;
-        case 3: GPIO_DATA_M(GPIOF_BASE, LED_D3) = an ? LED_D3 : 0; break;
-        default: GPIO_DATA_M(GPIOF_BASE, LED_D4) = an ? LED_D4 : 0; break;
+        case 1: GPIO_PORTN_DATA_BITS_R[LED_D1] = an ? LED_D1 : 0; break;
+        case 2: GPIO_PORTN_DATA_BITS_R[LED_D2] = an ? LED_D2 : 0; break;
+        case 3: GPIO_PORTF_AHB_DATA_BITS_R[LED_D3] = an ? LED_D3 : 0; break;
+        default: GPIO_PORTF_AHB_DATA_BITS_R[LED_D4] = an ? LED_D4 : 0; break;
     }
 }
 
@@ -116,28 +89,29 @@ static void led_setzen(uint32_t nr, bool an)
  * ------------------------------------------------------------------------------------------- */
 static void configPortA(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_A;
-    while ((SYSCTL_PRGPIO & PORT_A) == 0) {}
-    GPIO_DEN(GPIOA_BASE) |= 0x03u;                 /* PA1:0 digital */
-    GPIO_AFSEL(GPIOA_BASE) |= 0x03u;               /* PA1:0 alternative Funktion */
-    GPIO_PCTL(GPIOA_BASE) = (GPIO_PCTL(GPIOA_BASE) & ~0xFFu) | 0x11u;   /* U0RX, U0TX */
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R0;
+    while ((SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R0) == 0) {}
+    GPIO_PORTA_AHB_DEN_R |= PINS_UART0;             /* PA1:0 digital */
+    GPIO_PORTA_AHB_AFSEL_R |= PINS_UART0;           /* PA1:0 alternative Funktion */
+    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASKE(0) | PCTL_MASKE(1)))
+                          | PCTL_FUNKTION(0, PCTL_UART0) | PCTL_FUNKTION(1, PCTL_UART0);
 }
 
 static void configUart0(void)
 {
-    SYSCTL_RCGCUART |= 1u;
-    while ((SYSCTL_PRUART & 1u) == 0) {}
-    UART0_CTL &= ~UART_CTL_UARTEN;                 /* zum Konfigurieren ausschalten */
-    UART0_IBRD = 104;                              /* 16 MHz / (16 * 9600) = 104,17 */
-    UART0_FBRD = 11;                               /* 0,17 * 64 = 10,7 -> 11 */
-    UART0_LCRH = UART_LCRH_WLEN_7;                 /* 7N1; übernimmt auch IBRD/FBRD */
-    UART0_CTL |= UART_CTL_RXE | UART_CTL_TXE | UART_CTL_UARTEN;
+    SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
+    while ((SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0) {}
+    UART0_CTL_R &= ~UART_CTL_UARTEN;               /* zum Konfigurieren ausschalten */
+    UART0_IBRD_R = 104;                            /* 16 MHz / (16 * 9600) = 104,17 */
+    UART0_FBRD_R = 11;                             /* 0,17 * 64 = 10,7 -> 11 */
+    UART0_LCRH_R = UART_LCRH_WLEN_7;               /* 7N1 ohne FIFO; übernimmt auch IBRD/FBRD */
+    UART0_CTL_R |= UART_CTL_RXE | UART_CTL_TXE | UART_CTL_UARTEN;
 }
 
 static void uart_putc(char c)
 {
-    while (UART0_FR & UART_FR_TXFF) {}
-    UART0_DR = (uint8_t)c;
+    while (UART0_FR_R & UART_FR_TXFF) {}
+    UART0_DR_R = (uint8_t)c;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -151,35 +125,36 @@ void IntPortJHandler(void)
         if (led_an(nr)) uart_putc((char)('0' + nr));   /* ASCII: '1' = 0x31 */
     }
     uart_putc('\r');
-    GPIO_ICR(GPIOJ_BASE) = SW1;                         /* am Ende löschen: weniger Prellen */
+    GPIO_PORTJ_AHB_ICR_R = SW1;                         /* am Ende löschen: weniger Prellen */
 }
 /* Name in der Vektortabelle von common/startup_tm4c1294.c */
 void GPIOJ_Handler(void) __attribute__((alias("IntPortJHandler")));
 
 static void configPortJ(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_J;
-    while ((SYSCTL_PRGPIO & PORT_J) == 0) {}
-    GPIO_DIR(GPIOJ_BASE) &= ~SW1;
-    GPIO_PUR(GPIOJ_BASE) |= SW1;                   /* Taster braucht den internen Pull-up */
-    GPIO_DEN(GPIOJ_BASE) |= SW1;
-    GPIO_IM(GPIOJ_BASE) &= ~SW1;                   /* Datenblatt: erst maskieren ... */
-    GPIO_IS(GPIOJ_BASE) &= ~SW1;                   /* Flanke */
-    GPIO_IBE(GPIOJ_BASE) &= ~SW1;                  /* eine Flanke ... */
-    GPIO_IEV(GPIOJ_BASE) |= SW1;                   /* ... und zwar steigend */
-    GPIO_ICR(GPIOJ_BASE) = SW1;                    /* ... dann alte Ereignisse löschen */
-    GPIO_IM(GPIOJ_BASE) |= SW1;
-    NVIC_EN1 = 1u << (IRQ_GPIOJ - 32u);
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R8;
+    while ((SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R8) == 0) {}
+    GPIO_PORTJ_AHB_DIR_R &= ~SW1;
+    GPIO_PORTJ_AHB_PUR_R |= SW1;                   /* Taster braucht den internen Pull-up */
+    GPIO_PORTJ_AHB_DEN_R |= SW1;
+    GPIO_PORTJ_AHB_IM_R &= ~SW1;                   /* Datenblatt: erst maskieren ... */
+    GPIO_PORTJ_AHB_IS_R &= ~SW1;                   /* Flanke */
+    GPIO_PORTJ_AHB_IBE_R &= ~SW1;                  /* eine Flanke ... */
+    GPIO_PORTJ_AHB_IEV_R |= SW1;                   /* ... und zwar steigend */
+    GPIO_PORTJ_AHB_ICR_R = SW1;                    /* ... dann alte Ereignisse löschen */
+    GPIO_PORTJ_AHB_IM_R |= SW1;
+    NVIC_EN1_R = 1u << (IRQ_GPIOJ - 32u);
 }
 
 static void configLeds(void)
 {
-    SYSCTL_RCGCGPIO |= PORT_N | PORT_F;
-    while ((SYSCTL_PRGPIO & (PORT_N | PORT_F)) != (PORT_N | PORT_F)) {}
-    GPIO_DIR(GPION_BASE) |= LED_D1 | LED_D2;
-    GPIO_DEN(GPION_BASE) |= LED_D1 | LED_D2;
-    GPIO_DIR(GPIOF_BASE) |= LED_D3 | LED_D4;
-    GPIO_DEN(GPIOF_BASE) |= LED_D3 | LED_D4;
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R12 | SYSCTL_RCGCGPIO_R5;          /* N, F */
+    while ((SYSCTL_PRGPIO_R & (SYSCTL_PRGPIO_R12 | SYSCTL_PRGPIO_R5)) !=
+           (SYSCTL_PRGPIO_R12 | SYSCTL_PRGPIO_R5)) {}
+    GPIO_PORTN_DIR_R |= LED_D1 | LED_D2;
+    GPIO_PORTN_DEN_R |= LED_D1 | LED_D2;
+    GPIO_PORTF_AHB_DIR_R |= LED_D3 | LED_D4;
+    GPIO_PORTF_AHB_DEN_R |= LED_D3 | LED_D4;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -223,8 +198,8 @@ int main(void)
     while (1)
     {
         /* nicht blockierend: nur lesen, wenn ein Zeichen da ist */
-        if (UART0_FR & UART_FR_RXFE) continue;
-        unsigned char c = (unsigned char)(UART0_DR & 0x7Fu);
+        if (UART0_FR_R & UART_FR_RXFE) continue;
+        unsigned char c = (unsigned char)(UART0_DR_R & ZEICHEN_7BIT);
         cmdLineUart[n++] = c;
         if (c == 0x0D || n == sizeof cmdLineUart)
         {
