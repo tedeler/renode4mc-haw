@@ -24,6 +24,22 @@ function decodePendulum(msg) {
   return { columns: n, periodUs: msg.periodUs, phase: msg.phase, leds: msg.leds, lr, rl };
 }
 
+function base64ToBytes(b64) {
+  const bin = atob(b64 || '');
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Diagnose-Liste: gleiche Meldung -> Zähler aktualisieren */
+function mergeDiag(list, d) {
+  const i = list.findIndex((x) => x.message === d.message);
+  if (i < 0) return [...list, { level: d.level, message: d.message, count: d.count ?? 1 }].slice(-100);
+  const next = [...list];
+  next[i] = { ...next[i], count: d.count ?? next[i].count + 1 };
+  return next;
+}
+
 /**
  * Stellt den Control-WebSocket (Renode-Monitor-Bridge) allen Widgets zur Verfügung.
  * LED-Zustände liegen im React-State; Framebuffer werden an Subscriber
@@ -41,6 +57,20 @@ export function ControlSocketProvider({ children }) {
   const pendulumListeners = useRef(new Set());
   const pendulumEventListeners = useRef(new Set());
   const lastPendulum = useRef(null);
+  const [bcd, setBcd] = useState(null);
+  const [diagnostics, setDiagnostics] = useState([]);
+  const cioListeners = useRef(new Set());
+  const cioHistory = useRef(new Uint8Array(0));
+  const scopeListeners = useRef(new Set());
+
+  const emitCio = (bytes, reset) => {
+    if (reset) cioHistory.current = new Uint8Array(0);
+    const merged = new Uint8Array(cioHistory.current.length + bytes.length);
+    merged.set(cioHistory.current);
+    merged.set(bytes, cioHistory.current.length);
+    cioHistory.current = merged.length > 65536 ? merged.slice(merged.length - 65536) : merged;
+    cioListeners.current.forEach((fn) => fn(bytes, reset));
+  };
 
   const emitFrame = (frame) => {
     lastFrame.current = frame;
@@ -67,6 +97,21 @@ export function ControlSocketProvider({ children }) {
         if (msg.fb) emitFrame(decodeFrame(msg.fb));
         if (msg.pd) emitPendulum(decodePendulum(msg.pd));
         if (msg.uartConfig) setUartConfig(msg.uartConfig);
+        setBcd(msg.bcd || null);
+        setDiagnostics(msg.diagnostics || []);
+        emitCio(base64ToBytes(msg.cio), true);
+        break;
+      case 'bcd':
+        setBcd({ digits: msg.digits, enable: msg.enable, data: msg.data });
+        break;
+      case 'cio':
+        emitCio(base64ToBytes(msg.data), false);
+        break;
+      case 'diag':
+        setDiagnostics((list) => mergeDiag(list, msg));
+        break;
+      case 'diagReset':
+        setDiagnostics([]);
         break;
       case 'uartconfig':
         setUartConfig({ baud: msg.baud, format: msg.format });
@@ -87,6 +132,9 @@ export function ControlSocketProvider({ children }) {
         break;
       case 'pdev':
         pendulumEventListeners.current.forEach((fn) => fn(msg));
+        break;
+      case 'scope':
+        scopeListeners.current.forEach((fn) => fn(msg));
         break;
       case 'renode':
         setRenodeState(msg.state);
@@ -135,11 +183,26 @@ export function ControlSocketProvider({ children }) {
     return () => messageListeners.current.delete(l);
   }, []);
 
+  /** Oszilloskop-Daten (Pegelwechsel der angeforderten Pins), ohne Puffer */
+  const subscribeScope = useCallback((fn) => {
+    scopeListeners.current.add(fn);
+    return () => scopeListeners.current.delete(fn);
+  }, []);
+
+  /** printf-Ausgabe (CCS-Konsole): fn(bytes, reset); beim Anmelden kommt die bisherige Ausgabe */
+  const subscribeCio = useCallback((fn) => {
+    cioListeners.current.add(fn);
+    fn(cioHistory.current, true);
+    return () => cioListeners.current.delete(fn);
+  }, []);
+
   const value = useMemo(
     () => ({
       status,
       renodeState,
       leds,
+      bcd,
+      diagnostics,
       send,
       subscribeFrame,
       subscribePendulum,
@@ -147,11 +210,13 @@ export function ControlSocketProvider({ children }) {
       subscribeSignalStream,
       subscribeMessage,
       uartConfig,
+      subscribeCio,
+      subscribeScope,
       lastError,
       clearError: () => setLastError(null),
     }),
-    [status, renodeState, leds, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, subscribeSignalStream,
-      subscribeMessage, uartConfig, lastError],
+    [status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents,
+      subscribeSignalStream, subscribeMessage, uartConfig, subscribeCio, subscribeScope, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

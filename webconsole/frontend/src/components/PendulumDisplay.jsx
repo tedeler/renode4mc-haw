@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
+import ScaleBox from '../layout/ScaleBox.jsx';
 
 // Stehendes Pendel (wie ein Metronom): Drehpunkt UNTEN, die LEDs sitzen oben am Stab.
 // LED 0 ist die oberste (an der Spitze), LED 7 die unterste.
@@ -12,13 +13,25 @@ const ROW_STEP = 13; // Abstand der LEDs auf dem Stab
 const THETA_MAX = (30 * Math.PI) / 180; // größte Auslenkung (Winkel)
 const LED_RGB = '255, 84, 64';
 const ROD_COLOR = '#4b5058'; // dunkelgrau vor schwarzem Grund
-const DELAY_US = 200000; // Wiedergabe so weit hinter der Simulation (Daten kommen 10-mal pro Sekunde)
+const DELAY_US = 300000; // Wiedergabe so weit hinter der Simulation (Daten kommen 10-mal pro Sekunde, Renode stockt mitunter ~100 ms)
+// Wiedergabeuhr: Renode treibt die virtuelle Zeit ungleichmäßig voran (pro 100 ms Wanduhr mal 0,3 ms,
+// mal 150 ms). Die angezeigte Zeit läuft deshalb mit eigener, stetiger Geschwindigkeit: Grundrate =
+// gemessene Rate der Simulation über RATE_WINDOW_US, Abstand zum Soll wird über CATCHUP_US sanft
+// ausgeglichen (höchstens ±MAX_CORR). Erst ab SNAP_US Abstand (Neustart, Tab im Hintergrund) springt sie.
+const RATE_WINDOW_US = 3e6;
+const CATCHUP_US = 1e6;
+const MAX_CORR = 0.25;
+const SNAP_US = 1e6;
+const SPEED_TAU_US = 150000; // Geschwindigkeitsänderungen werden so weich gefiltert
+const SOFT_US = 80000; // so knapp vor dem Ende der Daten wird sanft abgebremst statt hart angehalten
 const MAX_ARC_STEP = 0.03; // Leuchtspur in Stücken von höchstens so viel Winkel (rad) zeichnen
 
 // Nachleuchtdauer: Regler logarithmisch von 1 ms bis 1 s
 const AFTERGLOW_MIN_MS = 1;
 const AFTERGLOW_MAX_MS = 1000;
-const AFTERGLOW_DEFAULT_MS = 10;
+// Standard: lange Nachleuchtdauer, damit sofort ein stehendes Bild zu sehen ist (wie für das Auge
+// beim echten Pendel). Je Versuch einstellbar über "afterglowMs" in der Versuchs-JSON.
+const AFTERGLOW_DEFAULT_MS = 1000;
 const sliderToMs = (v) => AFTERGLOW_MIN_MS * (AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS) ** (v / 1000);
 const msToSlider = (ms) => (1000 * Math.log(ms / AFTERGLOW_MIN_MS)) / Math.log(AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS);
 
@@ -47,8 +60,11 @@ const fmtMs = (ms) => (ms < 10 ? `${fmt(ms, 1)} ms` : `${fmt(ms, 0)} ms`);
 class Timeline {
   constructor() {
     this.s = [];
-    this.offset = null; // Wanduhr (us) - virtuelle Zeit (us)
     this.generation = 0; // zählt Neustarts von Renode
+    this.hist = []; // Ankunft der Nachrichten: { wall, t } für die Rate der Simulation
+    this.T = null; // angezeigte virtuelle Zeit
+    this.wallPrev = null;
+    this.speed = 1; // aktuelle Wiedergabegeschwindigkeit (virtuelle je Wanduhrzeit)
   }
 
   add(msg) {
@@ -57,11 +73,12 @@ class Timeline {
     const last = this.s[this.s.length - 1];
     if (last && t < last.t) {
       this.s = []; // Renode neu gestartet: Zeit beginnt bei 0
+      this.hist = [];
+      this.T = null;
       this.generation++;
     }
-    const measured = wall - t;
-    if (this.offset === null || !this.s.length || Math.abs(measured - this.offset) > 1e6) this.offset = measured;
-    else this.offset += 0.05 * (measured - this.offset); // Schwankungen der Übertragung glätten
+    this.hist.push({ wall, t });
+    while (this.hist.length > 2 && wall - this.hist[1].wall > RATE_WINDOW_US) this.hist.shift();
     for (const [et, ep, el, eper] of msg.ev) this.s.push({ t: et, phi: ep / 10000, leds: el, period: eper });
     this.s.push({ t, phi: phiQ / 10000, leds, period: periodUs });
     // Ältere Stützstellen als 3 s (virtuell) verwerfen, eine davor behalten
@@ -109,10 +126,67 @@ class Timeline {
     }
   }
 
-  /** virtuelle Zeit, die jetzt angezeigt wird (verzögert, nie über die Daten hinaus) */
+  /**
+   * Ausgleichsgerade virtuelle Zeit über Wanduhrzeit für die letzten Sekunden:
+   * rate = virtuelle je Wanduhrzeit (1 = Echtzeit), at(wall) = geschätzte Simulationszeit.
+   */
+  clock() {
+    const h = this.hist;
+    const last = h[h.length - 1];
+    const span = last.wall - h[0].wall;
+    if (h.length < 3 || span < 0.5e6) return { rate: 1, lag: DELAY_US, at: (w) => last.t + (w - last.wall) };
+    let mw = 0;
+    let mt = 0;
+    for (const p of h) {
+      mw += p.wall;
+      mt += p.t;
+    }
+    mw /= h.length;
+    mt /= h.length;
+    let cov = 0;
+    let vw = 0;
+    for (const p of h) {
+      cov += (p.wall - mw) * (p.t - mt);
+      vw += (p.wall - mw) ** 2;
+    }
+    const rate = Math.min(5, Math.max(0.02, cov / vw));
+    const at = (w) => mt + (w - mw) * rate;
+    // Abstand hinter der Geraden: so viel, dass auch Schübe der Simulation (Daten kommen stoßweise)
+    // aufgefangen werden, mindestens DELAY_US Wanduhrzeit
+    let behind = 0;
+    for (const p of h) behind = Math.max(behind, at(p.wall) - p.t);
+    const lag = Math.max(rate * DELAY_US, 1.5 * behind + rate * 100000);
+    return { rate, lag, at };
+  }
+
+  /** Geschwindigkeit der Simulation (1 = Echtzeit), für die Anzeige */
+  get simRate() {
+    return this.hist.length < 3 ? null : this.clock().rate;
+  }
+
+  /**
+   * Virtuelle Zeit, die jetzt angezeigt wird: etwa DELAY_US hinter der Simulation, nie über die Daten
+   * hinaus. Einmal pro Bild aufrufen – die Uhr läuft stetig weiter (keine Sprünge bei jeder Nachricht).
+   */
   displayTime() {
     if (!this.s.length) return null;
-    return Math.min(this.lastT, performance.now() * 1000 - this.offset - DELAY_US);
+    const wall = performance.now() * 1000;
+    const clock = this.clock();
+    const target = clock.at(wall) - clock.lag;
+    if (this.T === null || Math.abs(target - this.T) > SNAP_US) {
+      this.T = target;
+    } else {
+      const dt = Math.max(0, wall - this.wallPrev);
+      const corr = Math.max(-MAX_CORR, Math.min(MAX_CORR, (target - this.T) / (CATCHUP_US * clock.rate)));
+      const lead = this.lastT - this.T; // Vorrat an Daten
+      const brake = Math.max(0, Math.min(1, lead / (SOFT_US * clock.rate)));
+      const want = clock.rate * (1 + corr) * brake;
+      this.speed += (want - this.speed) * Math.min(1, dt / SPEED_TAU_US);
+      this.T += dt * this.speed;
+    }
+    this.wallPrev = wall;
+    this.T = Math.min(this.T, this.lastT);
+    return this.T;
   }
 }
 
@@ -289,18 +363,33 @@ function drawRod(ctx, theta, leds) {
  * Frequenz-Regler -> {type:"pendulum", frequency} -> Backend -> Monitor "<pendel> PeriodUs <us>"
  * (gedrosselt wie beim Distanzsensor; nach (Re-)Connect wird der Wert erneut gesetzt).
  */
-export default function PendulumDisplay({ label, frequency = 10, minFrequency = frequency, maxFrequency = frequency }) {
+export default function PendulumDisplay({
+  label,
+  frequency = 10,
+  minFrequency = frequency,
+  maxFrequency = frequency,
+  afterglowMs: initialAfterglowMs = AFTERGLOW_DEFAULT_MS,
+}) {
+  const startAfterglow = Math.min(AFTERGLOW_MAX_MS, Math.max(AFTERGLOW_MIN_MS, initialAfterglowMs));
   const { subscribePendulum, subscribePendulumEvents, send, status } = useControlSocket();
   const canvasRef = useRef(null);
   const latest = useRef(null);
   const stillDirty = useRef(true);
   const timeline = useRef(new Timeline());
   const viewRef = useRef('both');
-  const afterglowRef = useRef(AFTERGLOW_DEFAULT_MS);
+  const afterglowRef = useRef(startAfterglow);
   const [view, setView] = useState('both');
-  const [afterglowMs, setAfterglowMs] = useState(AFTERGLOW_DEFAULT_MS);
+  const [afterglowMs, setAfterglowMs] = useState(startAfterglow);
   const [hz, setHz] = useState(frequency);
   const [modelHz, setModelHz] = useState(null);
+  const [simRate, setSimRate] = useState(null);
+
+  // Geschwindigkeit der Simulation anzeigen: läuft sie langsamer als Echtzeit, schwingt das Pendel
+  // auf dem Bildschirm entsprechend langsamer (die virtuelle Zeit stimmt trotzdem)
+  useEffect(() => {
+    const iv = setInterval(() => setSimRate(timeline.current.simRate), 500);
+    return () => clearInterval(iv);
+  }, []);
   const pending = useRef(null);
   const timer = useRef(null);
 
@@ -401,46 +490,61 @@ export default function PendulumDisplay({ label, frequency = 10, minFrequency = 
 
   return (
     <Widget title="Pendeldisplay" subtitle={label} className="pendulum">
-      <div className="pendulum-stage">
-        <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
-      </div>
-      {adjustable && (
+      <ScaleBox maxScale={1.8} minH={160} flowMaxH={420}>
+        <div className="pendulum-stage">
+          <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
+        </div>
+      </ScaleBox>
+      <div className="pendulum-controls">
+        {adjustable && (
+          <label className="pendulum-freq">
+            <span>
+              Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
+            </span>
+            <input
+              type="range"
+              min={minFrequency}
+              max={maxFrequency}
+              step={0.1}
+              value={hz}
+              onChange={onFrequency}
+              className="sensor-range"
+              aria-label="Pendelfrequenz"
+            />
+          </label>
+        )}
         <label className="pendulum-freq">
           <span>
-            Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
+            Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
+            <span className="meta" title="So lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms">
+              (Auge: ca. 50–100 ms)
+            </span>
           </span>
           <input
             type="range"
-            min={minFrequency}
-            max={maxFrequency}
-            step={0.1}
-            value={hz}
-            onChange={onFrequency}
+            min={0}
+            max={1000}
+            step={1}
+            value={Math.round(msToSlider(afterglowMs))}
+            onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
             className="sensor-range"
-            aria-label="Pendelfrequenz"
+            aria-label="Nachleuchtdauer"
+            disabled={view === 'still'}
           />
         </label>
-      )}
-      <label className="pendulum-freq">
-        <span>
-          Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
-          <span className="meta">(so lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms)</span>
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(msToSlider(afterglowMs))}
-          onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
-          className="sensor-range"
-          aria-label="Nachleuchtdauer"
-          disabled={view === 'still'}
-        />
-      </label>
+      </div>
       <div className="pendulum-foot">
         <span className="meta">
-          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · Anzeige 0,2 s hinter der Simulation
+          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} · Anzeige 0,3 s hinter der Simulation
+          {simRate !== null && Math.abs(simRate - 1) > 0.1 && (
+            <span
+              className="pendulum-slow"
+              title="Renode rechnet nicht in Echtzeit – das Pendel schwingt auf dem Bildschirm entsprechend langsamer bzw. schneller, die Zeiten in der Firmware stimmen trotzdem."
+            >
+              {' '}
+              · Simulation: {fmt(simRate * 100, 0)} % Echtzeit
+            </span>
+          )}
         </span>
         <select className="pendulum-view" value={view} onChange={(e) => setView(e.target.value)}>
           {VIEWS.map((v) => (

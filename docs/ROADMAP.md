@@ -5,8 +5,10 @@
 > Register, FIFOs, Interrupts, Leitung als Flanken mit Baudraten-Timing, Framing-/Paritätsfehler,
 > Break; Systemtakt aus PLL-Registern; offen: µDMA, RX-Timeout-Zeit, IrDA/9-Bit). Zusätzlich –
 > abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
-> und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Lab 03).
-> Offen: M2 (SysTick-Test), M6 (ADC), M7 (weitere Labs).
+> und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Example 03).
+> Praktikumsversuche Lab 1–4 mit eigenen Umgebungen, Musterlösungen und strenger Registerprüfung:
+> [LABORE.md](LABORE.md). Offen: M2 (SysTick-Test), M6 (ADC), Timer-Capture/PWM, Bus-Fault bei
+> Zugriff ohne Takt.
 > Die folgenden Abschnitte beschreiben den ursprünglichen Plan.
 
 Ziel: Studierende schreiben normale TM4C1294-Firmware (Register oder TivaWare-`driverlib`) und
@@ -99,7 +101,7 @@ tatsächlich passt – sonst Eigenbau.
 - Abnahme: Poti im Browser → ADC-Wert per UART ausgegeben.
 
 ### M7 – Labs & Dokumentation
-- `lab02_systick`, `lab03_gpio_irq`, `lab04_timer`, `lab05_uart`, `lab06_adc` mit je
+- `example_systick`, `example_gpio_irq`, `example_timer`, `example_uart`, `example_adc` mit je
   `main.c`, `Makefile`, `sim.resc`, passender Visualizer-Seite.
 - Gemeinsame Startup-/Vektortabellen-Dateien in `labs/common/`.
 - Anleitung „Neues Lab anlegen“, Fehlersuche, bekannte Abweichungen zur Hardware.

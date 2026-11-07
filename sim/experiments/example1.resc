@@ -1,0 +1,33 @@
+:name: Example 1 (EK-TM4C1294XL)
+:description: TM4C1294 mit LEDs D1-D4, Tastern USR_SW1/2, UART0, OLED SSD1306, Ultraschall MB1242 und 4x3-Keypad
+
+# Startskript für die Web-Konsole (webconsole/). Wird mit Arbeitsverzeichnis sim/ gestartet:
+#   renode --disable-gui --port 1234 -e "s @experiments/example1.resc"
+# Variable $elf: Pfad zur Firmware (.out/.elf), Standard /tmp/app.elf (Upload der Web-Konsole).
+
+$elf?=@/tmp/app.elf
+# Einstellung des PC-Terminals an UART0 (setzt die Web-Konsole aus der Auswahl im UART-Monitor)
+$uartBaud?=115200
+$uartFormat?="8N1"
+
+# Zusätzliche Gerätemodelle dieses Versuchs (vor dem Laden der .repl kompilieren)
+include @models/SSD1306I2C.cs
+include @models/MaxBotixI2C.cs
+include @models/KeypadMatrix.cs
+
+# Basis: alle Tiva-Modelle, Maschine "tm4c1294", Plattform tm4c1294ncpdt.repl, Firmware laden
+include @tm4c1294.resc
+
+# Versuchsspezifische Erweiterung: OLED + Sensor an I2C0, Keypad an Port K
+machine LoadPlatformDescription @experiments/example1.repl
+
+# UART0 (virtueller COM-Port): Das PC-Terminal (sysbus.uart0.host, dekodiert die Flanken der
+# Leitung mit seiner eigenen Baudrate) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
+# Die Web-Konsole verbindet sich damit (Backend-Brücke -> ws://<host>:3333 -> xterm.js).
+# Ohne Web-Konsole:  nc localhost 3335
+sysbus.uart0.host TerminalBaudRate $uartBaud
+sysbus.uart0.host Format $uartFormat
+emulation CreateServerSocketTerminal 3335 "uart0term" false
+connector Connect sysbus.uart0.host uart0term
+
+start

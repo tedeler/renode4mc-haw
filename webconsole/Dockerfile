@@ -44,6 +44,17 @@ RUN case "${TARGETARCH:-amd64}" in \
  && tar xf /tmp/renode.tar.gz -C /opt/renode --strip-components=1 \
  && rm /tmp/renode.tar.gz
 
+# ---------- Stage 3b: Musterlösungen (examples/lab01..lab04) mit arm-none-eabi-gcc bauen -------------
+FROM ${NODE_IMAGE} AS solutions
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY common ./common
+COPY examples ./examples
+COPY tools ./tools
+RUN OUT=/out sh tools/build-solutions.sh
+
 # ---------- Stage 4: Runtime ---------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 # libssl3: wird von .NET (Renode) zur Laufzeit geladen; procps: pkill. Kein Compiler, keine IDE.
@@ -60,6 +71,8 @@ COPY --from=frontend /build/dist /app/public
 # Simulator aus dem Repository: Modelle, Plattform, Versuche (Renode-Arbeitsverzeichnis)
 COPY sim /opt/renode4mc/sim
 COPY common/tm4c1294ncpdt.h /opt/renode4mc/common/tm4c1294ncpdt.h
+# Musterlösungen für "Musterlösung starten" in der Web-Konsole
+COPY --from=solutions /out /opt/renode4mc/sim/solutions
 
 ENV NODE_ENV=production \
     PORT=3000 \

@@ -116,12 +116,12 @@ source ~/.bashrc
 ## 8. Alles prüfen (5 Minuten)
 
 **a) Simulator:** Ein fertiges Beispielprogramm bauen und simulieren (Details in
-`examples/lab01_blinky/README.md`):
+`examples/example01_blinky/README.md`):
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+cd ~/praktikum/renode4mc-haw/examples/example01_blinky
 make
-ucsim lab01_blinky.out
+ucsim example01_blinky.out
 ```
 
 Der Browser öffnet die LED-Anzeige; **D1 und D2 blinken abwechselnd**. Beenden: `Strg+C`.
@@ -133,7 +133,7 @@ Start fragt CCS nach einem Workspace-Ordner – den Vorschlag übernehmen.
 `lsusb` muss das Gerät zeigen (Schritt 5).
 
 Wenn a)–c) funktionieren, ist die Installation fertig. Weiter mit
-[Lab 01 – Blinky](../examples/lab01_blinky/README.md).
+[Example 01 – Blinky](../examples/example01_blinky/README.md).
 
 ---
 
@@ -152,9 +152,9 @@ sudo apt install openocd
 Board am Port **DEBUG** anschließen, dann im Ordner mit der `.out`-Datei:
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+cd ~/praktikum/renode4mc-haw/examples/example01_blinky
 make
-openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab01_blinky.out verify reset exit"
+openocd -f board/ti_ek-tm4c1294xl.cfg -c "program example01_blinky.out verify reset exit"
 ```
 
 Die Ausgabe muss `** Programming Finished **`, `** Verified OK **` und `** Resetting Target **`
@@ -172,7 +172,7 @@ Wichtig: Der Flash-Inhalt ist im Simulator und auf dem Board derselbe – Sie la
 `.out`-Datei, die Sie auch mit `ucsim` simulieren.
 
 *Test-Stand:* Mit einem EK-TM4C1294XL und OpenOCD 0.12.0 (Ubuntu) getestet: Programmieren, Verifizieren
-und Starten von `lab01_blinky.out` funktionieren. Das Blinken der LEDs wurde nicht optisch
+und Starten von `example01_blinky.out` funktionieren. Das Blinken der LEDs wurde nicht optisch
 kontrolliert, sondern über den Programmzähler (läuft in der Warteschleife). Ein
 TI-eigenes Werkzeug mit gleicher Funktion ist der **UniFlash** (GUI, ti.com/tool/UNIFLASH);
 das haben wir nicht getestet.

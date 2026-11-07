@@ -33,7 +33,8 @@ class RenodeManager extends EventEmitter {
   }
 
   _log(stream, line) {
-    this.emit('log', stream, line);
+    // ein Ereignis je Zeile (auch Stackframes): log(line, stream)
+    this.emit('log', line, stream);
     const msg = `[renode${stream === 'stderr' ? ':err' : ''}] ${line}`;
     if (stream === 'stderr') console.error(msg);
     else console.log(msg);
@@ -42,7 +43,6 @@ class RenodeManager extends EventEmitter {
     if (/^\s+at |^\s*--- End of /.test(line)) return;
     this.logTail.push(line);
     if (this.logTail.length > 80) this.logTail.shift();
-    this.emit('log', line);
   }
 
   /**

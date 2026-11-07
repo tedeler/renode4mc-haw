@@ -26,6 +26,18 @@
 // prüft der UART, ob die Pins per AFSEL/DEN/PCTL wirklich ihm gehören. Sonst erscheinen die
 // Flanken nicht auf der Leitung bzw. erreichen den Empfänger nicht (mit einer Warnung).
 //
+// Strenge Prüfung wie auf dem Board (Warnungen erscheinen in der Web-Konsole unter "Diagnose"):
+//  * Datenblatt 19.3.2: IBRD/FBRD gelten erst nach dem nächsten Schreiben von UARTLCRH;
+//    IBRD = 0 ist ungültig. Änderungen an IBRD/FBRD/LCRH bei UARTEN = 1 werden gemeldet.
+//  * Passt Baudrate (mehr als BaudTolerance daneben) oder Format nicht zur Gegenstelle
+//    (z. B. UartHostTerminal), wird das einmal je Konfiguration gemeldet. Was dabei ankommt,
+//    ergibt sich aus der Abtastung der Flanken (Zeichensalat, Framing-/Paritätsfehler).
+//  * IrDA (SIREN) und Smartcard (SMART) sind nicht modelliert (Warnung); CC muss 0x0 oder 0x5 sein.
+//
+// Pinpegel: Mit pinPort/txPin/rxPin übernimmt der UART die Pins (Ruhepegel HIGH) und legt die Flanken
+// von TX und RX auch auf die Pads (TivaGPIOPort.AlternateOutput) – der Tastkopf des Oszilloskops
+// (models/Oscilloscope.cs) sieht dort dieselben Rahmen.
+//
 // Anzeige (Oszilloskop der Web-Konsole):
 //   sysbus.uart0 GetEdges   -> "SE:uart0.tx:..." und "SE:uart0.rx:..." (Format in UartLine.cs,
 //                              SignalRecorder.Format), durch ein Leerzeichen getrennt
@@ -61,6 +73,11 @@ namespace Antmicro.Renode.Peripherals.UART
             decoder = new UartLineDecoder(() => CurrentFormat());
             IRQ = new GPIO();
             Reset();
+            if(pinPort != null)
+            {
+                if(txPin >= 0) pinPort.RegisterAlternateOutput(txPin, (int)pinFunction, true);
+                if(rxPin >= 0) pinPort.RegisterAlternateOutput(rxPin, (int)pinFunction, true);
+            }
         }
 
         public long Size { get { return 0x1000; } }
@@ -87,7 +104,8 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             get
             {
-                double divisor = ibrd + fbrd / 64.0;
+                // Datenblatt 19.3.2: wirksam sind IBRD/FBRD vom letzten Schreiben von UARTLCRH
+                double divisor = latchedIbrd == 0 ? 0 : latchedIbrd + latchedFbrd / 64.0;
                 if(divisor <= 0) return 0;
                 double clkDiv = (ctl & CtlHse) != 0 ? 8 : 16;
                 return UartClock / (clkDiv * divisor);
@@ -102,6 +120,12 @@ namespace Antmicro.Renode.Peripherals.UART
         public UartFrameFormat TransmitFormat { get { return CurrentFormat(); } }
 
         public ulong DecodedUntilNs { get { return decoder.DecodedUntilNs; } }
+
+        // Erlaubte Abweichung der Baudrate von der Gegenstelle, bevor gewarnt wird
+        public double BaudTolerance { get; set; } = 0.025;
+
+        // Aktuelle Einstellung der Firmware, z. B. "9600 7N1"
+        public string Configuration { get { return string.Format("{0} {1}", BaudRate, FrameFormat); } }
 
         public uint ReadDoubleWord(long offset)
         {
@@ -147,12 +171,24 @@ namespace Antmicro.Renode.Peripherals.UART
                 case Dr: WriteData((byte)value); break;
                 case Rsr: rsr = 0; break;     // ECR: Schreiben löscht die Fehler
                 case Ilpr: ilpr = value & 0xFF; break;
-                case Ibrd: ibrd = value & 0xFFFF; break;
-                case Fbrd: fbrd = value & 0x3F; break;
+                case Ibrd:
+                    WarnIfEnabled("UARTIBRD");
+                    ibrd = value & 0xFFFF;
+                    baudPending = true;
+                    break;
+                case Fbrd:
+                    WarnIfEnabled("UARTFBRD");
+                    fbrd = value & 0x3F;
+                    baudPending = true;
+                    break;
                 case Lcrh:
                 {
+                    WarnIfEnabled("UARTLCRH");
                     bool oldBrk = (lcrh & LcrhBrk) != 0;
                     lcrh = value & 0xFF;
+                    latchedIbrd = ibrd;          // Datenblatt: Schreiben von LCRH übernimmt IBRD/FBRD
+                    latchedFbrd = fbrd;
+                    baudPending = false;
                     bool newBrk = (lcrh & LcrhBrk) != 0;
                     if(oldBrk != newBrk) SetBreak(newBrk);
                     formatWarned = false;
@@ -160,12 +196,19 @@ namespace Antmicro.Renode.Peripherals.UART
                 }
                 case Ctl:
                     ctl = value;
+                    if((value & CtlUarten) != 0 && (value & (CtlSiren | CtlSmart)) != 0)
+                    {
+                        Warn("ctlBits", "UARTCTL: IrDA (SIREN) und Smartcard (SMART) sind im Simulator nicht modelliert.");
+                    }
                     break;
                 case Ifls: ifls = value & 0x3F; break;
                 case Im: im = value & ImMask; break;
                 case Icr: ris &= ~value; break;
                 case Dmactl: dmactl = value & 0x7; break;
-                case Cc: cc = value & 0xF; break;
+                case Cc:
+                    cc = value & 0xF;
+                    if(cc != 0 && cc != CcPiosc) Warn("cc", string.Format("UARTCC = 0x{0:X} ist reserviert (0x0 = Systemtakt, 0x5 = PIOSC/ALTCLK).", cc));
+                    break;
                 case Fr: case Ris: case Mis: break; // nur lesbar
                 default: other[offset] = value; break;
             }
@@ -179,6 +222,10 @@ namespace Antmicro.Renode.Peripherals.UART
             ctl = 0x300;   // TXE, RXE
             ifls = 0x12;   // RX und TX: 1/2 voll
             clockWarned = formatWarned = txPinWarned = rxPinWarned = false;
+            latchedIbrd = latchedFbrd = 0;
+            baudPending = false;
+            warned = new HashSet<string>();
+            lastConfigWarning = null;
             other = new Dictionary<long, uint>();
             rxFifo.Clear();
             txWaiting.Clear();
@@ -236,6 +283,8 @@ namespace Antmicro.Renode.Peripherals.UART
         public void LineEdges(IList<SignalEdge> edges)
         {
             rxRecorder.Add(edges);
+            ToPad(rxPin, edges);
+            ConfigMatches("Empfangen");
             if(!RxPinOk())
             {
                 if(!rxPinWarned)
@@ -289,11 +338,17 @@ namespace Antmicro.Renode.Peripherals.UART
                 if(!formatWarned)
                 {
                     this.Log(LogLevel.Warning,
-                        "UART{0}: Zeichen 0x{1:X2} verworfen – keine Baudrate eingestellt (UARTIBRD/UARTFBRD).", clockBit, c);
+                        "UART{0}: Zeichen 0x{1:X2} verworfen – Baudrate nicht eingestellt: UARTIBRD = 0 bzw. " +
+                        "IBRD/FBRD nicht mit einem Schreiben von UARTLCRH übernommen (Datenblatt 19.3.2).", clockBit, c);
                     formatWarned = true;
                 }
                 return;
             }
+            if(baudPending)
+            {
+                Warn("lcrhMissing", "UARTIBRD/UARTFBRD geschrieben, aber danach UARTLCRH nicht: Datenblatt 19.3.2 – die neue Baudrate gilt erst nach dem Schreiben von UARTLCRH.");
+            }
+            ConfigMatches("Senden");
 
             if(breakActive)
             {
@@ -348,6 +403,7 @@ namespace Antmicro.Renode.Peripherals.UART
             }
             txPinWarned = false;
             txRecorder.Add(edges);
+            ToPad(txPin, edges);
             if(line != null) line.LineEdges(edges);
         }
 
@@ -533,6 +589,57 @@ namespace Antmicro.Renode.Peripherals.UART
             return f != null && f.Valid ? f.Baud.ToString("0.###", CultureInfo.InvariantCulture) : "0";
         }
 
+        // Flanken (ns) auch als Pinpegel ausgeben (Tastkopf des Oszilloskops)
+        private void ToPad(int pin, IList<SignalEdge> edges)
+        {
+            if(pinPort == null || pin < 0) return;
+            foreach(var e in edges)
+            {
+                pinPort.AlternateOutput(pin, (int)pinFunction, e.Ns / 1000.0, e.Level);
+            }
+        }
+
+        // Passt die Einstellung zur Gegenstelle? Meldet einen Unterschied einmal je Konfiguration.
+        private void ConfigMatches(string what)
+        {
+            var partner = line != null ? line.TransmitFormat : null;
+            if(partner == null || !partner.Valid || TivaSysCtl.Peeking) return;
+            var own = CurrentFormat();
+            double error = own.Valid ? Math.Abs(own.Baud - partner.Baud) / partner.Baud : 1;
+            bool ok = own.Valid && error <= BaudTolerance && own.Name == partner.Name;
+            string config = BaudRate + " " + own.Name;
+            if(!ok && lastConfigWarning != config)
+            {
+                lastConfigWarning = config;
+                this.Log(LogLevel.Warning,
+                    "UART{0}: Firmware ist auf {1} Baud {2} eingestellt (IBRD = {3}, FBRD = {4}, LCRH = 0x{5:X2}), das Terminal erwartet {6} Baud {7}" +
+                    " (Abweichung {8:F1} %, erlaubt {9:F1} %). Beim {10} kommt nur Zeichensalat an.",
+                    clockBit, BaudRate, own.Name, latchedIbrd, latchedFbrd, lcrh, BaudText(partner), partner.Name,
+                    error * 100, BaudTolerance * 100, what);
+            }
+            if(ok && lastConfigWarning != null && lastConfigWarning != "ok")
+            {
+                lastConfigWarning = "ok";
+                this.Log(LogLevel.Warning, "UART{0}: Konfiguration jetzt korrekt ({1} Baud {2}).", clockBit, BaudRate, own.Name);
+            }
+        }
+
+        private void WarnIfEnabled(string reg)
+        {
+            if((ctl & CtlUarten) != 0)
+            {
+                Warn("en" + reg, reg + " geändert, während der UART eingeschaltet ist (UARTEN = 1). Datenblatt 19.4: UART zuerst ausschalten.");
+            }
+        }
+
+        private void Warn(string key, string message)
+        {
+            if(!TivaSysCtl.Peeking && warned.Add(key))
+            {
+                this.Log(LogLevel.Warning, "UART{0}: {1}", clockBit, message);
+            }
+        }
+
         private bool TxPinOk()
         {
             return pinPort == null || txPin < 0 || pinPort.IsPinFunction(txPin, pinFunction);
@@ -635,7 +742,8 @@ namespace Antmicro.Renode.Peripherals.UART
         private const uint FrBusy = 1u << 3, FrRxfe = 1u << 4, FrTxff = 1u << 5, FrRxff = 1u << 6, FrTxfe = 1u << 7;
         private const uint LcrhBrk = 1u << 0, LcrhPen = 1u << 1, LcrhEps = 1u << 2, LcrhStp2 = 1u << 3,
                            LcrhFen = 1u << 4, LcrhSps = 1u << 7;
-        private const uint CtlUarten = 1u << 0, CtlEot = 1u << 4, CtlHse = 1u << 5, CtlLbe = 1u << 7,
+        private const uint CtlUarten = 1u << 0, CtlSiren = 1u << 1, CtlSmart = 1u << 3, CtlEot = 1u << 4,
+                           CtlHse = 1u << 5, CtlLbe = 1u << 7,
                            CtlTxe = 1u << 8, CtlRxe = 1u << 9;
         private const uint IntRx = 1u << 4, IntTx = 1u << 5, IntRt = 1u << 6, IntFe = 1u << 7, IntPe = 1u << 8,
                            IntBe = 1u << 9, IntOe = 1u << 10;
@@ -667,5 +775,9 @@ namespace Antmicro.Renode.Peripherals.UART
         private uint rsr, ilpr, ibrd, fbrd, lcrh, ctl, ifls, im, ris, dmactl, cc;
         private bool clockWarned, formatWarned, txPinWarned, rxPinWarned;
         private Dictionary<long, uint> other;
+        private uint latchedIbrd, latchedFbrd;
+        private bool baudPending;
+        private HashSet<string> warned;
+        private string lastConfigWarning;
     }
 }

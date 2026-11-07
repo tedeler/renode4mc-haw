@@ -1,0 +1,189 @@
+{
+  "title": "Lab 3 – NVIC: LED-Pendel und HC-SR04 mit Interrupts",
+  "machine": "tm4c1294",
+  "uart": {
+    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1",
+    "host": "sysbus.uart0.host",
+    "baud": 115200,
+    "format": "8N1"
+  },
+  "reset": {
+    "path": "sysbus.sysctl"
+  },
+  "status": {
+    "path": "sysbus.sysctl"
+  },
+  "debug": {
+    "cpu": "sysbus.cpu"
+  },
+  "signals": [
+    {
+      "name": "uart0.tx",
+      "label": "U0TX (PA1)",
+      "path": "sysbus.uart0"
+    },
+    {
+      "name": "uart0.rx",
+      "label": "U0RX (PA0)",
+      "path": "sysbus.uart0"
+    }
+  ],
+  "ledBridge": "ws://127.0.0.1:9000",
+  "leds": [
+    {
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "bridge": 0
+    },
+    {
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "bridge": 1
+    },
+    {
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "bridge": 2
+    },
+    {
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "bridge": 3
+    }
+  ],
+  "buttons": [
+    {
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "port": "sysbus.gpioJ",
+      "pin": 0,
+      "activeLow": true
+    },
+    {
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "port": "sysbus.gpioJ",
+      "pin": 1,
+      "activeLow": true
+    }
+  ],
+  "cio": {
+    "path": "sysbus.cio",
+    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+  },
+  "sensor": {
+    "path": "sysbus.gpioD.hcsr04",
+    "min": 0,
+    "max": 350,
+    "unit": "cm",
+    "initial": 65,
+    "title": "Ultraschall HC-SR04",
+    "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo"
+  },
+  "pendulum": {
+    "path": "sysbus.gpioM.pendel",
+    "label": "8 LEDs an PM0–PM7 (PM7 = LED 7 oben), Signal R/L an PL0: steigende Flanke = linker, fallende = rechter Umkehrpunkt · Start mit 8,3 Hz wie das echte Pendel und 1 s Nachleuchten",
+    "frequency": 8.3,
+    "minFrequency": 2,
+    "maxFrequency": 15,
+    "afterglowMs": 1000
+  },
+  "solution": {
+    "example": "lab03_nvic_pendel",
+    "label": "Musterlösung (examples/lab03_nvic_pendel)"
+  },
+  "scope": {
+    "signals": [
+      {
+        "pin": "PD0",
+        "label": "HC-SR04 Trigger"
+      },
+      {
+        "pin": "PD1",
+        "label": "HC-SR04 Echo"
+      },
+      {
+        "pin": "PL0",
+        "label": "Pendel R/L"
+      },
+      {
+        "pin": "PM7",
+        "label": "Pendel-LED 7 (oben)"
+      },
+      {
+        "pin": "PM6",
+        "label": "Pendel-LED 6"
+      },
+      {
+        "pin": "PM5",
+        "label": "Pendel-LED 5"
+      },
+      {
+        "pin": "PM4",
+        "label": "Pendel-LED 4"
+      },
+      {
+        "pin": "PM3",
+        "label": "Pendel-LED 3"
+      },
+      {
+        "pin": "PM2",
+        "label": "Pendel-LED 2"
+      },
+      {
+        "pin": "PM1",
+        "label": "Pendel-LED 1"
+      },
+      {
+        "pin": "PM0",
+        "label": "Pendel-LED 0"
+      },
+      {
+        "pin": "PN1",
+        "label": "LED D1"
+      },
+      {
+        "pin": "PN0",
+        "label": "LED D2"
+      },
+      {
+        "pin": "PF4",
+        "label": "LED D3"
+      },
+      {
+        "pin": "PF0",
+        "label": "LED D4"
+      },
+      {
+        "pin": "PJ0",
+        "label": "USR_SW1"
+      },
+      {
+        "pin": "PJ1",
+        "label": "USR_SW2"
+      },
+      {
+        "pin": "PA0",
+        "label": "U0RX (vom Terminal)"
+      },
+      {
+        "pin": "PA1",
+        "label": "U0TX (zum Terminal)"
+      }
+    ],
+    "channels": [
+      "PL0",
+      "PM7",
+      "PD0",
+      "PD1"
+    ],
+    "trigger": {
+      "source": "PL0",
+      "edge": "rising"
+    }
+  }
+}

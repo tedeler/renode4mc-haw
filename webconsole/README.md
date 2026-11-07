@@ -16,14 +16,14 @@ docker compose up --build
 
 Dann im Browser **http://localhost:3000** öffnen.
 
-1. **Versuch** wählen (z. B. „Versuch 1 – EK-TM4C1294XL …“).
+1. **Versuch** wählen (z. B. „Example 1 – EK-TM4C1294XL …“).
 2. **Firmware** wählen: die `.out`-Datei aus CCS (`Debug/<projekt>.out`) oder aus `make`.
 3. **Start** klicken. Nach wenigen Sekunden erscheint das Bedienfeld, und die Ausgabe von UART0
    läuft im Terminal.
 
-Zum Ausprobieren: [Lab 03 – Web-Konsole](../examples/lab03_webkonsole/README.md) nutzt alle
-Bedienelemente von Versuch 1, [Lab 04 – Pendeldisplay](../examples/lab04_pendeldisplay/README.md)
-das Pendeldisplay von Versuch 2.
+Zum Ausprobieren: [Example 03 – Web-Konsole](../examples/example03_webkonsole/README.md) nutzt alle
+Bedienelemente von Example 1, [Example 04 – Pendeldisplay](../examples/example04_pendeldisplay/README.md)
+das Pendeldisplay von Example 2.
 
 | Bedienelement | Wirkung in der Simulation |
 |---|---|
@@ -34,7 +34,7 @@ das Pendeldisplay von Versuch 2.
 | Simulation | blendet die Simulations-Anzeige ein: Firmware, CPU-Zustand, Simulationszeit und Tempo, UART-Einstellungen; Debugger (Pause, Einzelschritt, Weiter), CPU-Register mit Disassembly, Speicher (Adresse oder Symbol), Peripherie-Register mit Namen aus tm4c1294ncpdt.h, Meldungen von Renode |
 | Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier. Darunter die Einstellung des Terminals (Baud, Datenbits, Parität, Stoppbits) wie in Tera Term – passt sie nicht zur Firmware, erscheinen falsche Zeichen |
 | LEDs, OLED | zeigen den Zustand von PN1/PN0/PF4/PF0 bzw. des SSD1306 (I2C0, 0x3C) |
-| Pendeldisplay (Versuch 2) | schwingender Stab (Drehpunkt unten) mit den 8 LEDs an PM0–PM7 und ihrer abklingenden Leuchtspur; Regler für Pendelfrequenz (0,1–20 Hz) und Nachleuchtdauer (1 ms – 1 s); Auswahl: beide Schwünge, eine Richtung oder Standbild |
+| Pendeldisplay (Example 2) | schwingender Stab (Drehpunkt unten) mit den 8 LEDs an PM0–PM7 und ihrer abklingenden Leuchtspur; Regler für Pendelfrequenz (0,1–20 Hz) und Nachleuchtdauer (1 ms – 1 s); Auswahl: beide Schwünge, eine Richtung oder Standbild |
 
 ## Ordner
 
@@ -51,11 +51,13 @@ webconsole/
 │   │   ├── monitorClient.js  Telnet-Client für den Renode-Monitor (Befehlswarteschlange)
 │   │   ├── uartBridge.js     UART-TCP ⇄ WebSocket :3333
 │   │   └── controlBridge.js  Monitor/LED-Bridge ⇄ WebSocket :3334 (JSON)
-│   └── test/             e2e.js (Versuch 1, Lab 03), e2e_versuch2.js (Versuch 2, Lab 04)
+│   └── test/             e2e.js (Example 1, Example 03), e2e_example2.js (Example 2, Example 04)
 └── frontend/             React (Vite)
     └── src/
         ├── hooks/useReconnectingWebSocket.js
         ├── context/ControlSocket.jsx
+        ├── layout/          Workspace (Spalten-Layout: einklappen, verschieben, Breite),
+        │                    ScaleBox (Anzeigen passen sich der Panelgröße an)
         └── components/  SetupBar, ControlPanel, UartMonitor (xterm.js), Led, PushButton,
                          OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung),
                          PendulumDisplay (Canvas, Nachleuchtbild)
@@ -78,8 +80,8 @@ cd webconsole/frontend && npm install && npm run build
 cd ../backend && npm install
 RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 # Test (zweites Terminal):
-node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
-node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
+node test/e2e.js ../../examples/example03_webkonsole/example03_webkonsole.out
+node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pendeldisplay.out
 ```
 
 Mit `npm run dev` im Frontend läuft Vite auf Port 5173 und leitet `/upload` und `/api` an

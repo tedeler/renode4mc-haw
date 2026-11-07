@@ -20,6 +20,18 @@ const SYMBOL_RE = /^[A-Za-z_]\w{0,63}$/;
 const LOG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
 // SE:<name>:<now ns>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;...
 const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/g;
+const BCD_RE = /BCD:([0-9A-F-]{4}):([01]{2}):([0-9A-F]{2})/;
+const CIO_RE = /CIO:([A-Za-z0-9+/=]*)/;
+const SC_RE = /SC:(\d+):([A-Z0-9,]*):([0-9,]*):([\d,;]*):(\d+)/;
+// Pins des TM4C1294NCPDT (128 Pins), Datenblatt Tabelle 26-5
+const PORT_PINS = { A: 8, B: 6, C: 8, D: 8, E: 6, F: 5, G: 2, H: 4, J: 2, K: 8, L: 8, M: 8, N: 6, P: 6, Q: 5 };
+const isPin = (p) => typeof p === 'string' && /^P[A-Q][0-7]$/.test(p) && PORT_PINS[p[1]] > +p[2];
+const SCOPE_PATH = 'sysbus.scope';
+const MAX_SCOPE_SOURCES = 5; // CH1..CH4 + externer Trigger
+// Renode-Logzeile: "[12:00:00.0000] [WARNING] tm4c1294/gpioM: GPIO Port M: ..."
+const DIAG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
+const CIO_HISTORY_BYTES = 16384;
+const MAX_DIAGNOSTICS = 100;
 
 /**
  * Control-WebSocket (Port 3334) – die "Monitor-Brücke" zwischen Browser und Renode.
@@ -44,6 +56,10 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *                                              periph = Modulname aus "simmeta" (z. B. "UART0")
  *   { type: "pause" } | { type: "continue" } | { type: "step", count }
  *                                              Ausführung anhalten, fortsetzen, count Befehle ausführen
+ *   { type: "clearDiagnostics" }               Diagnose-Liste leeren
+ *   { type: "scope", sources: ["PD0", …] }     Oszilloskop: Pins, die dieser Browser sehen will (max. 5,
+ *                                              [] = Oszilloskop aus). Aufgezeichnet wird die Vereinigung
+ *                                              aller Browser (sim/models/Oscilloscope.cs).
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd, uartConfig }
  *   { type: "leds", states: { [id]: boolean } }
@@ -72,6 +88,17 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *                                                     angehalten), memory, periph
  *   { type: "simmeta", modules: [name, …] }           Module für die Peripherie-Register-Ansicht
  *   { type: "reset" }                                 Reset wurde ausgelöst
+ *   { type: "bcd", digits, enable, data }      BCD-Anzeige: digits = 4 Zeichen (0-9, A-F, "-" = dunkel),
+ *                                                     enable = "<EN links><EN rechts>", data = D7..D0 hex
+ *   { type: "cio", data }                             printf-Ausgabe (CCS-Konsole), Base64; im hello: cio = alles bisher
+ *   { type: "diag", level, message, count }           Warnung/Fehler aus Renode (Fehlkonfiguration usw.);
+ *                                                     im hello: diagnostics = [{level, message, count}]
+ *   { type: "scope", now, pins, levels, ev, dropped }
+ *                                                     Oszilloskop (nur an Browser mit Quellen): now = virtuelle
+ *                                                     Zeit in ns, pins/levels = aufgezeichnete Pins und ihr Pegel
+ *                                                     jetzt (0 LOW, 1 HIGH, 2 offen), ev = flach [i, dt ns, Pegel, …]
+ *                                                     (i = Index in pins, dt seit dem vorigen Wechsel bzw. seit
+ *                                                     Start), dropped = verlorene Wechsel (Puffer voll)
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -86,6 +113,9 @@ class ControlBridge {
     this.ledStates = {};
     this.lastFrame = null;
     this.lastPendulum = null;
+    this.lastBcd = null;
+    this.cioHistory = Buffer.alloc(0);
+    this.diagnostics = [];
     this.pollTimer = null;
     this.polling = false;
     this.ledSocket = null;
@@ -101,6 +131,7 @@ class ControlBridge {
     this.pollCount = 0;
     this.stopped = false; // angehalten (Pause oder Einzelschritt)
     this.symbols = new Map();
+    this.scopeProbes = ''; // in Renode eingestellte Pins (Komma-Liste)
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
@@ -183,11 +214,40 @@ class ControlBridge {
       fb: this.lastFrame,
       pd: this.lastPendulum,
       uartConfig: this.terminalSettings(),
+      bcd: this.lastBcd,
+      cio: this.cioHistory.toString('base64'),
+      diagnostics: this.diagnostics,
     };
+  }
+
+  /** Neue Renode-Instanz: Diagnose und printf-Ausgabe des vorigen Laufs verwerfen. */
+  resetDiagnostics() {
+    this.diagnostics = [];
+    this.cioHistory = Buffer.alloc(0);
+    this._broadcast({ type: 'diagReset' });
+  }
+
+  /** Renode-Logzeile; Warnungen und Fehler gehen an alle Browser (gleiche Meldung: Zähler). */
+  diagnostic(line) {
+    const m = DIAG_RE.exec(line);
+    if (!m) return;
+    const level = m[1] === 'ERROR' ? 'error' : 'warning';
+    const message = m[2].trim();
+    if (!message) return;
+    let d = this.diagnostics.find((x) => x.message === message);
+    if (d) d.count += 1;
+    else {
+      d = { level, message, count: 1 };
+      this.diagnostics.push(d);
+      if (this.diagnostics.length > MAX_DIAGNOSTICS) this.diagnostics.shift();
+    }
+    this._broadcast({ type: 'diag', ...d });
   }
 
   _onClient(ws) {
     ws.signals = new Set();
+    ws.scopeSources = [];
+    ws.on('close', () => this._updateScopeProbes().catch(() => {}));
     this._send(ws, this._hello());
     if (this.experiment) this._send(ws, this._signalsMessage());
     ws.on('message', async (raw) => {
@@ -198,6 +258,7 @@ class ControlBridge {
         return this._send(ws, { type: 'error', message: 'Ungültiges JSON' });
       }
       try {
+        if (msg && msg.type === 'scope') return await this._scopeSources(ws, msg.sources);
         await this._handle(msg, ws);
       } catch (e) {
         this._send(ws, { type: 'error', message: e.message });
@@ -247,6 +308,10 @@ class ControlBridge {
         this._broadcast({ type: 'uartconfig', baud, format });
         return;
       }
+      case 'clearDiagnostics':
+        this.diagnostics = [];
+        this._broadcast({ type: 'diagReset' });
+        return;
       default:
     }
     if (!this.attached || !this.experiment) throw new Error('Renode läuft nicht');
@@ -261,10 +326,12 @@ class ControlBridge {
         if (btn.path) {
           // Renode-Peripherie Miscellaneous.Button
           await run(`${btn.path} ${pressed ? 'Press' : 'Release'}`);
+        } else if (pressed) {
+          // Gedrückt: Taster verbindet den Pin mit GND (activeLow) bzw. VCC
+          await run(`${btn.port} OnGPIO ${btn.pin} ${!btn.activeLow}`);
         } else {
-          // Pegel direkt am GPIO-Eingang; activeLow: gedrückt = LOW (Taster gegen GND, Pull-up)
-          const level = btn.activeLow ? !pressed : pressed;
-          await run(`${btn.port} OnGPIO ${btn.pin} ${level}`);
+          // Losgelassen: Pin ist offen – nur der Pull-up/-down der Firmware bestimmt den Pegel
+          await run(`${btn.port} ReleaseInput ${btn.pin}`);
         }
         break;
       }
@@ -356,6 +423,27 @@ class ControlBridge {
     }, 30);
   }
 
+  /** Oszilloskop: Quellen eines Browsers setzen (gilt auch, wenn Renode gerade nicht läuft) */
+  async _scopeSources(ws, sources) {
+    if (!Array.isArray(sources)) throw new Error('Oszilloskop: sources muss eine Liste sein');
+    const pins = [...new Set(sources.filter(Boolean))];
+    if (pins.length > MAX_SCOPE_SOURCES) throw new Error(`Oszilloskop: höchstens ${MAX_SCOPE_SOURCES} Quellen`);
+    const bad = pins.find((p) => !isPin(p));
+    if (bad) throw new Error(`Oszilloskop: unbekannter Pin ${bad}`);
+    ws.scopeSources = pins;
+    await this._updateScopeProbes();
+  }
+
+  /** Vereinigung der Quellen aller Browser in Renode einstellen (Format: sim/models/Oscilloscope.cs) */
+  async _updateScopeProbes(force = false) {
+    const all = new Set();
+    for (const c of this.wss.clients) if (c.readyState === WebSocket.OPEN) (c.scopeSources || []).forEach((p) => all.add(p));
+    const list = [...all].sort().join(',');
+    if (!this.attached || (!force && list === this.scopeProbes)) return;
+    this.scopeProbes = list;
+    await this.monitor.execute(`${SCOPE_PATH} Probe "${list}"`, { priority: true });
+  }
+
   /** Verbindet mit der neu gestarteten Renode-Instanz und startet Polling/LED-Bridge. */
   async attach(experiment, timeoutMs, isAlive) {
     this.detach();
@@ -370,6 +458,7 @@ class ControlBridge {
     this.simPrev = null;
     this.stopped = false;
     this.symbols = new Map();
+    this.lastBcd = null;
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -392,11 +481,13 @@ class ControlBridge {
     this._connectLedBridge();
     this._broadcast(this._hello());
     this._broadcast(this._signalsMessage());
+    await this._updateScopeProbes(true).catch((e) => console.error(`[control] Oszilloskop: ${e.message}`));
     this._startPolling();
   }
 
   detach() {
     this._stopPolling();
+    this.scopeProbes = '';
     this._disconnectLedBridge();
     if (this.monitor) {
       this.monitor.removeAllListeners();
@@ -491,6 +582,26 @@ class ControlBridge {
         }
       }
 
+      if (exp.bcd) {
+        const m = BCD_RE.exec(await mon.execute(`${exp.bcd.path} GetState`));
+        if (m && (!this.lastBcd || this.lastBcd.digits !== m[1] || this.lastBcd.enable !== m[2] || this.lastBcd.data !== m[3])) {
+          this.lastBcd = { type: 'bcd', digits: m[1], enable: m[2], data: m[3] };
+          this._broadcast(this.lastBcd);
+        }
+      }
+
+      if (exp.cio) {
+        const m = CIO_RE.exec(await mon.execute(`${exp.cio.path} GetOutput`));
+        if (m && m[1]) {
+          const bytes = Buffer.from(m[1], 'base64');
+          this.cioHistory = Buffer.concat([this.cioHistory, bytes]);
+          if (this.cioHistory.length > CIO_HISTORY_BYTES) {
+            this.cioHistory = this.cioHistory.subarray(this.cioHistory.length - CIO_HISTORY_BYTES);
+          }
+          this._broadcast({ type: 'cio', data: m[1] });
+        }
+      }
+
       if (exp.pendulum) {
         // Immer abfragen: Phase und LED-Zustand ändern sich laufend (Animation des Pendelstabs)
         const out = await mon.execute(`${exp.pendulum.path} GetFrame`);
@@ -510,6 +621,23 @@ class ControlBridge {
         }
       }
 
+      if (this.scopeProbes) {
+        const m = SC_RE.exec(await mon.execute(`${SCOPE_PATH} GetEvents`));
+        if (m) {
+          const ev = m[4] ? m[4].split(/[;,]/).filter(Boolean).map(Number) : [];
+          const msg = JSON.stringify({
+            type: 'scope',
+            now: +m[1],
+            pins: m[2] ? m[2].split(',') : [],
+            levels: m[3] ? m[3].split(',').map(Number) : [],
+            ev,
+            dropped: +m[5],
+          });
+          for (const ws of this.wss.clients) {
+            if (ws.readyState === WebSocket.OPEN && ws.scopeSources && ws.scopeSources.length) ws.send(msg);
+          }
+        }
+      }
       await this._pollSignals(mon);
       if (this.pollCount++ % 5 === 0 && this._watchers().length) await this._pollSim(mon);
     } catch (e) {

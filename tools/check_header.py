@@ -6,10 +6,12 @@ check_header.py - prüft Simulator-Hardware und Beispiele gegen common/tm4c1294n
 
 Geprüft wird:
   1. sim/platforms/tm4c1294ncpdt.repl: Basisadresse, Clock-Gating-Bit (RCGC...) und NVIC-Nummer
-     jedes Peripheriemoduls; NVIC-Basis (EN0 muss bei +0x100 liegen)
+     jedes Peripheriemoduls; NVIC-Basis (EN0 muss bei +0x100 liegen); sim/experiments/*.repl legen
+     keine Chip-Peripherie neu an und belegen keine Adresse der Basisplattform doppelt
   2. sim/models/*.cs: Register-Offsets und Bitkonstanten der Modelle (benannte Konstanten)
   3. common/startup_tm4c1294.c: jeder INT_-Eintrag der Headerdatei hat seinen Handler am richtigen Platz
-  4. examples/*/main.c und common/startup_tm4c1294.c: keine selbst definierten Adressen
+  4. alle .c/.h in examples/ und common/ (außer tm4c1294ncpdt.h): keine selbst definierten Adressen
+     und keine Register-/Bitkonstanten, die der Header schon hat
 Ausgabe: FEHLER (Abweichung), HINWEIS (nicht modelliert/nicht angeschlossen), Rückgabewert 1 bei Fehlern.
 """
 import os
@@ -45,6 +47,7 @@ for m in re.finditer(r'^#define\s+(\w+)\s+(0x[0-9A-Fa-f]+|\d+)\s*(?://\s*(.*))?$
     KONST[m.group(1)] = int(m.group(2), 0)
     KOMMENTAR[m.group(1)] = (m.group(3) or '').strip()
 INT = {n[4:]: v for n, v in KONST.items() if n.startswith('INT_')}
+ALLE_NAMEN = set(re.findall(r'^#define\s+(\w+)', header, re.M))   # jeder im Header definierte Name
 
 
 def reg(name):
@@ -165,6 +168,23 @@ for e in repl:
         pruefe(reg('NVIC_ST_CTRL_R') - adr == 0x010,
                f'repl {name}: Basis 0x{adr:08X}, NVIC_ST_CTRL_R (SysTick) liegt nicht bei Basis + 0x10')
 
+# Versuchs-Plattformen (sim/experiments/*.repl) erweitern die Basisplattform: Sie dürfen keine
+# Peripherie an einer Adresse anlegen, die die Basis schon belegt, und keine Tiva-Peripherie neu
+# anlegen (Adressen, Takt und IRQs der Chip-Peripherie stehen nur in tm4c1294ncpdt.repl).
+basis_adressen = {e['adresse']: e['name'] for e in repl if e['bus'] == 'sysbus' and e['adresse'] is not None}
+for pfad in sorted(os.listdir(os.path.join(ROOT, 'sim', 'experiments'))):
+    if not pfad.endswith('.repl'):
+        continue
+    for e in lies_repl(os.path.join(ROOT, 'sim', 'experiments', pfad)):
+        if e['bus'] != 'sysbus' or e['adresse'] is None:
+            continue
+        pruefe(e['adresse'] not in basis_adressen,
+               f'experiments/{pfad}: {e["name"]} @ 0x{e["adresse"]:08X} belegt dieselbe Adresse wie '
+               f'{basis_adressen.get(e["adresse"])} der Basisplattform')
+        pruefe(not e['typ'].split('.')[-1].startswith('Tiva'),
+               f'experiments/{pfad}: {e["name"]} ({e["typ"]}) ist Chip-Peripherie – gehört in '
+               f'platforms/tm4c1294ncpdt.repl')
+
 # Module des Headers, die im Simulator fehlen
 for art, muster in (('GPIO', r'GPIO_PORT([A-Z])(?:_AHB)?_DATA_BITS_R'), ('TIMER', r'TIMER(\d)_CFG_R'),
                     ('UART', r'UART(\d)_DR_R'), ('I2C', r'I2C(\d)_MSA_R')):
@@ -229,13 +249,19 @@ pruefe_modell('TivaGPIOPort.cs', 'GPIO_PORTA_AHB_DATA_BITS_R',
                'Pp': 'PP'},
               {}, sysctl={'RcgcGpio': 'SYSCTL_RCGCGPIO_R'}, praefix='GPIO_PORTA_AHB_')
 pruefe_modell('TivaTimer.cs', 'TIMER0_CFG_R',
-              {'Cfg': 'CFG', 'Tamr': 'TAMR', 'Tbmr': 'TBMR', 'Ctl': 'CTL', 'Imr': 'IMR', 'Ris': 'RIS', 'Mis': 'MIS',
-               'Icr': 'ICR', 'Tailr': 'TAILR', 'Tbilr': 'TBILR', 'Tapr': 'TAPR', 'Tbpr': 'TBPR', 'Tar': 'TAR',
-               'Tbr': 'TBR', 'Tav': 'TAV', 'Tbv': 'TBV'},
+              {'Cfg': 'CFG', 'TamR': 'TAMR', 'TbmR': 'TBMR', 'Ctl': 'CTL', 'Sync': 'SYNC', 'Imr': 'IMR',
+               'Ris': 'RIS', 'Mis': 'MIS', 'Icr': 'ICR', 'TailR': 'TAILR', 'TbilR': 'TBILR',
+               'TamatchR': 'TAMATCHR', 'TbmatchR': 'TBMATCHR', 'TapR': 'TAPR', 'TbpR': 'TBPR', 'TapmR': 'TAPMR',
+               'TbpmR': 'TBPMR', 'TaR': 'TAR', 'TbR': 'TBR', 'TaV': 'TAV', 'TbV': 'TBV', 'Pp': 'PP', 'Cc': 'CC'},
               {'CfgMask': 'TIMER_CFG_M', 'TnmrMask': 'TIMER_TAMR_TAMR_M', 'TnmrOneShot': 'TIMER_TAMR_TAMR_1_SHOT',
-               'CtlTaen': 'TIMER_CTL_TAEN', 'CtlTben': 'TIMER_CTL_TBEN', 'RisTatoris': 'TIMER_RIS_TATORIS',
-               'RisTbtoris': 'TIMER_RIS_TBTORIS'},
-              masken={'ImrMask': 'TIMER_IMR_'}, sysctl={'RcgcTimer': 'SYSCTL_RCGCTIMER_R'})
+               'TnmrPeriodic': 'TIMER_TAMR_TAMR_PERIOD', 'MrAms': 'TIMER_TAMR_TAAMS', 'MrCdir': 'TIMER_TAMR_TACDIR',
+               'MrMie': 'TIMER_TAMR_TAMIE', 'MrWot': 'TIMER_TAMR_TAWOT', 'MrSnaps': 'TIMER_TAMR_TASNAPS',
+               'MrIld': 'TIMER_TAMR_TAILD', 'MrPwmie': 'TIMER_TAMR_TAPWMIE', 'MrMrsu': 'TIMER_TAMR_TAMRSU',
+               'MrPlo': 'TIMER_TAMR_TAPLO', 'MrCintd': 'TIMER_TAMR_TACINTD',
+               'CtlTaen': 'TIMER_CTL_TAEN', 'CtlTastall': 'TIMER_CTL_TASTALL', 'CtlTben': 'TIMER_CTL_TBEN',
+               'CtlTbstall': 'TIMER_CTL_TBSTALL', 'RisTatoris': 'TIMER_RIS_TATORIS',
+               'RisTbtoris': 'TIMER_RIS_TBTORIS', 'ImTatoim': 'TIMER_IMR_TATOIM', 'ImTbtoim': 'TIMER_IMR_TBTOIM'},
+              masken={'ImrMask': 'TIMER_IMR_', 'MrMask': 'TIMER_TAMR_'}, sysctl={'RcgcTimer': 'SYSCTL_RCGCTIMER_R'})
 pruefe_modell('TivaUART.cs', 'UART0_DR_R',
               {'Dr': 'DR', 'Rsr': 'RSR', 'Fr': 'FR', 'Ilpr': 'ILPR', 'Ibrd': 'IBRD', 'Fbrd': 'FBRD', 'Lcrh': 'LCRH',
                'Ctl': 'CTL', 'Ifls': 'IFLS', 'Im': 'IM', 'Ris': 'RIS', 'Mis': 'MIS', 'Icr': 'ICR', 'Dmactl': 'DMACTL',
@@ -243,7 +269,7 @@ pruefe_modell('TivaUART.cs', 'UART0_DR_R',
               {'FrBusy': 'UART_FR_BUSY', 'FrRxfe': 'UART_FR_RXFE', 'FrTxff': 'UART_FR_TXFF',
                'FrRxff': 'UART_FR_RXFF', 'FrTxfe': 'UART_FR_TXFE', 'LcrhBrk': 'UART_LCRH_BRK',
                'LcrhPen': 'UART_LCRH_PEN', 'LcrhEps': 'UART_LCRH_EPS', 'LcrhStp2': 'UART_LCRH_STP2',
-               'LcrhFen': 'UART_LCRH_FEN', 'LcrhSps': 'UART_LCRH_SPS', 'CtlUarten': 'UART_CTL_UARTEN',
+               'LcrhFen': 'UART_LCRH_FEN', 'LcrhSps': 'UART_LCRH_SPS', 'CtlUarten': 'UART_CTL_UARTEN', 'CtlSiren': 'UART_CTL_SIREN', 'CtlSmart': 'UART_CTL_SMART',
                'CtlEot': 'UART_CTL_EOT', 'CtlHse': 'UART_CTL_HSE', 'CtlLbe': 'UART_CTL_LBE',
                'CtlTxe': 'UART_CTL_TXE', 'CtlRxe': 'UART_CTL_RXE',
                'IntRx': 'UART_RIS_RXRIS', 'IntTx': 'UART_RIS_TXRIS', 'IntRt': 'UART_RIS_RTRIS',
@@ -296,19 +322,40 @@ for name in tabelle:
 # ------------------------------------------------------------------------------------------------
 # 4. Keine Adressen im Code
 # ------------------------------------------------------------------------------------------------
-dateien = [os.path.join(ROOT, 'common', 'startup_tm4c1294.c')]
-beispiele = os.path.join(ROOT, 'examples')
-for d in sorted(os.listdir(beispiele)):
-    p = os.path.join(beispiele, d, 'main.c')
-    if os.path.exists(p):
-        dateien.append(p)
+# alle C-Quellen und eigenen Header in common/ und examples/ (auch Projekte mit mehreren Dateien);
+# ausgenommen ist nur der TI-Header selbst
+dateien = []
+for wurzel in (os.path.join(ROOT, 'common'), os.path.join(ROOT, 'examples')):
+    for verz, _, namen in sorted(os.walk(wurzel)):
+        for name in sorted(namen):
+            if name.endswith(('.c', '.h')) and name != 'tm4c1294ncpdt.h':
+                dateien.append(os.path.join(verz, name))
+# Präfixe der Peripheriemodule im Header: eigene Namen tragen sie nicht (Pins z. B. PINS_UART0),
+# damit man im Code sofort sieht, was von TI kommt. Erlaubt ist so ein Name nur, wenn er aus
+# Header-Namen zusammengesetzt ist.
+MODUL_PRAEFIX = re.compile(r'^(?:SYSCTL|GPIO|TIMER|WTIMER|UART|I2C|SSI|NVIC|ADC|PWM|QEI|USB|EMAC|EPHY|EEPROM|'
+                           r'FLASH|HIB|WATCHDOG|WDT|CAN|COMP|UDMA|DMA|EPI|CRC|SHA|AES|DES|LCD|ONEWIRE|SYSEXC|'
+                           r'PECI|FAN|INT|NVIC|SYSTICK|FPU|MPU|CPAC|DEBUG|SCB|PORT)_')
 for p in dateien:
+    rel = os.path.relpath(p, ROOT)
     with open(p, encoding='utf-8') as f:
-        for nr, zeile in enumerate(f, 1):
-            code = re.sub(r'/\*.*?\*/|//.*', '', zeile)
-            treffer = re.search(r'0x(?:4[0-9A-Fa-f]{7}|E000[0-9A-Fa-f]{4}|2[02][0-9A-Fa-f]{6})|\bREG\s*\(|'
-                                r'volatile\s+uint32_t\s*\*\s*\)', code)
-            pruefe(treffer is None, f'{os.path.relpath(p, ROOT)}:{nr}: Adresse im Code: {zeile.strip()}')
+        text = f.read()
+    # Kommentare entfernen (Zeilennummern bleiben erhalten), Fortsetzungszeilen zusammenfassen
+    ohne = re.sub(r'/\*.*?\*/', lambda m: '\n' * m.group(0).count('\n'), text, flags=re.S)
+    ohne = re.sub(r'//[^\n]*', '', ohne)
+    for nr, zeile in enumerate(ohne.split('\n'), 1):
+        treffer = re.search(r'0x(?:4[0-9A-Fa-f]{7}|E000[0-9A-Fa-f]{4}|2[02][0-9A-Fa-f]{6})|\bREG\s*\(|'
+                            r'volatile\s+uint32_t\s*\*\s*\)', zeile)
+        pruefe(treffer is None, f'{rel}:{nr}: Adresse im Code: {zeile.strip()}')
+    logisch = re.sub(r'\\\n', ' ', ohne)
+    for m in re.finditer(r'^[ \t]*#[ \t]*define[ \t]+(\w+)(\([^)]*\))?([^\n]*)', logisch, re.M):
+        name, wert = m.group(1), m.group(3).strip()
+        nr = ohne[:ohne.find(m.group(0).split('\n')[0].strip())].count('\n') + 1
+        pruefe(name not in ALLE_NAMEN,
+               f'{rel}:{nr}: {name} ist in tm4c1294ncpdt.h schon definiert – nicht neu definieren')
+        if name not in ALLE_NAMEN and MODUL_PRAEFIX.match(name):
+            pruefe(any(w in ALLE_NAMEN for w in re.findall(r'\b[A-Z_][A-Z0-9_]*\b', wert)),
+                   f'{rel}:{nr}: eigene Registerkonstante {name} = {wert} – Header-Konstante verwenden')
 
 # ------------------------------------------------------------------------------------------------
 for h in hinweise:
