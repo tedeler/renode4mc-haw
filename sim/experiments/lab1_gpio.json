@@ -111,8 +111,8 @@
     "label": "D0–D7 = PK0–PK7, EN rechts (Ziffern 1/0) = PL0, EN links (Ziffern 3/2) = PL1, EN aktiv HIGH"
   },
   "solution": {
-    "example": "lab05_hexkeypad_bcd",
-    "label": "Musterlösung (examples/lab05_hexkeypad_bcd)"
+    "example": "lab01_hexkeypad_bcd",
+    "label": "Musterlösung (examples/lab01_hexkeypad_bcd)"
   },
   "scope": {
     "signals": [

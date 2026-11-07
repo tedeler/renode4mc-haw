@@ -69,8 +69,8 @@
     "afterglowMs": 1000
   },
   "solution": {
-    "example": "lab07_nvic_pendel",
-    "label": "Musterlösung (examples/lab07_nvic_pendel)"
+    "example": "lab03_nvic_pendel",
+    "label": "Musterlösung (examples/lab03_nvic_pendel)"
   },
   "scope": {
     "signals": [

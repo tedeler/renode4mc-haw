@@ -20,20 +20,20 @@ Lehrmaterial für das Mikrocontroller-Praktikum an der HAW mit dem **EK-TM4C1294
 ## Loslegen
 
 1. [Installation unter Linux](docs/INSTALL_LINUX.md)
-2. [Lab 01 – Blinky](examples/lab01_blinky/README.md) (GPIO, Clock-Gating, Warteschleife)
-3. [Lab 02 – Timer-Blink](examples/lab02_timer_blink/README.md) (Timer, Interrupt, Vektortabelle)
-4. [Lab 03 – Web-Konsole](examples/lab03_webkonsole/README.md) (UART, I2C mit OLED und Ultraschallsensor,
+2. [Example 01 – Blinky](examples/example01_blinky/README.md) (GPIO, Clock-Gating, Warteschleife)
+3. [Example 02 – Timer-Blink](examples/example02_timer_blink/README.md) (Timer, Interrupt, Vektortabelle)
+4. [Example 03 – Web-Konsole](examples/example03_webkonsole/README.md) (UART, I2C mit OLED und Ultraschallsensor,
    Keypad-Multiplexing, Taster-Interrupts) – läuft in der [Web-Konsole](webconsole/README.md)
-5. [Lab 04 – Pendeldisplay](examples/lab04_pendeldisplay/README.md) (POV-Anzeige mit Einmal-Timer,
-   Synchronisation auf ein externes Signal, Ultraschallsensor, UART) – Web-Konsole, Versuch 2
+5. [Example 04 – Pendeldisplay](examples/example04_pendeldisplay/README.md) (POV-Anzeige mit Einmal-Timer,
+   Synchronisation auf ein externes Signal, Ultraschallsensor, UART) – Web-Konsole, Example 2
 6. **Praktikumsversuche Lab 1–4** mit eigener Simulator-Umgebung, Musterlösung und strenger Prüfung
-   der Register: [docs/LABORE.md](docs/LABORE.md) – Beispiele `lab05_hexkeypad_bcd`,
-   `lab06_led_pendel`, `lab07_nvic_pendel`, `lab08_uart_leds`
+   der Register: [docs/LABORE.md](docs/LABORE.md) – Beispiele `lab01_hexkeypad_bcd`,
+   `lab02_led_pendel`, `lab03_nvic_pendel`, `lab04_uart_leds`
 
 Kurzform, wenn alles installiert ist:
 
 ```bash
-cd examples/lab01_blinky && make && ucsim lab01_blinky.out
+cd examples/example01_blinky && make && ucsim example01_blinky.out
 ```
 
 Web-Konsole (nur Docker nötig, Renode ist im Container):
@@ -46,8 +46,8 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 
 | Pfad | Inhalt |
 |---|---|
-| `examples/lab01_blinky`, `examples/lab02_timer_blink`, `examples/lab03_webkonsole`, `examples/lab04_pendeldisplay` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
-| `examples/lab05_hexkeypad_bcd` … `examples/lab08_uart_leds` | Musterlösungen der Praktikumsversuche Lab 1–4 ([docs/LABORE.md](docs/LABORE.md)) |
+| `examples/example01_blinky`, `examples/example02_timer_blink`, `examples/example03_webkonsole`, `examples/example04_pendeldisplay` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
+| `examples/lab01_hexkeypad_bcd` … `examples/lab04_uart_leds` | Musterlösungen der Praktikumsversuche Lab 1–4 ([docs/LABORE.md](docs/LABORE.md)) |
 | `tools/build-solutions.sh`, `tools/gcc/` | Musterlösungen mit gcc für die Web-Konsole bauen (`sim/solutions/`) |
 | `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294) – **identisch für Board und Simulator** |
 | `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, UART, I2C, WebSocket-Brücke, OLED, Ultraschall, Keypad, Pendeldisplay), LED-Anzeige `visualizer/ek-tm4c1294xl.html`, Versuche für die Web-Konsole `experiments/` |
@@ -67,9 +67,9 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, auf-/abwärts, Prescaler, TnR/TnV, Interrupt, Warnungen | ✔ (Timer 4–7 mit NVIC und Timer 6/7 an 0x400E0000/0x400E1000 nur in den Lab-Umgebungen; kein Capture/PWM/RTC) |
 | UART 0–7: Senden/Empfangen, 16-Byte-Empfangs-FIFO, Interrupts; in den Lab-Umgebungen Pin- und Baudratenprüfung, Empfang im Leitungstakt | ✔ (kein µDMA) |
 | Hex-Keypad 4×4, BCD-Anzeige, HC-SR04, LED-Pendel (HAW), printf → CCS-Konsole | ✔ (Lab-Umgebungen, [docs/LABORE.md](docs/LABORE.md)) |
-| I2C 0–9 als Master; Geräte SSD1306-OLED, MaxBotix MB1242 | ✔ (Versuch 1 der Web-Konsole) |
+| I2C 0–9 als Master; Geräte SSD1306-OLED, MaxBotix MB1242 | ✔ (Example 1 der Web-Konsole) |
 | Keypad 4×3 mit Matrix-Elektrik, Taster-Eingabe im Browser | ✔ (Web-Konsole) |
-| Pendeldisplay (8 LEDs, 10 Hz, Sync-Signal), Nachleuchtbild im Browser | ✔ (Versuch 2 der Web-Konsole) |
+| Pendeldisplay (8 LEDs, 10 Hz, Sync-Signal), Nachleuchtbild im Browser | ✔ (Example 2 der Web-Konsole) |
 | ADC, SysTick-Test | geplant (`docs/ROADMAP.md`) |
 
 ## Getestet / nicht getestet
@@ -77,10 +77,10 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 - ✔ Beide Beispiele bauen mit `make` (tiarmclang) **und** headless in CCS 20.4
   (`tools/ccs-import.sh`); beide laufen im Simulator (LED-Takt gemessen); GDB-Haltepunkt in der
   Timer-ISR im Simulator funktioniert.
-- ✔ Web-Konsole ohne Docker mit Renode 1.17.0: Lab 03 (mit `arm-none-eabi-gcc` und einer
+- ✔ Web-Konsole ohne Docker mit Renode 1.17.0: Example 03 (mit `arm-none-eabi-gcc` und einer
   GCC-Startdatei gebaut) besteht `webconsole/backend/test/e2e.js` (Upload, UART, LEDs, Taster,
   Keypad, Sensor, OLED) und läuft im Browser (Chromium), auch nach Neustart bei laufender Seite.
-- ✔ Lab 04 (ebenso mit GCC gebaut) besteht `webconsole/backend/test/e2e_versuch2.js`: Pendelbild
+- ✔ Example 04 (ebenso mit GCC gebaut) besteht `webconsole/backend/test/e2e_example2.js`: Pendelbild
   in beiden Schwungrichtungen spaltengenau, Periodenmessung, Sensor, UART.
 - ✘ Noch **nicht** getestet: Flashen/Debuggen auf dem echten Board, die Klickfolgen in der
-  CCS-Oberfläche, CCS-Debugger gegen den Simulator; Lab 03 und Lab 04 mit tiarmclang; Bau des Docker-Images.
+  CCS-Oberfläche, CCS-Debugger gegen den Simulator; Example 03 und Example 04 mit tiarmclang; Bau des Docker-Images.

@@ -1,0 +1,50 @@
+{
+  "title": "Example 1 – EK-TM4C1294XL: GPIO, UART, OLED, Ultraschall, Keypad",
+  "machine": "tm4c1294",
+  "uart": { "label": "UART0 (PA0 RX / PA1 TX) – 115200 8N1" },
+  "ledBridge": "ws://127.0.0.1:9000",
+  "leds": [
+    { "id": "D1", "label": "D1 (PN1)", "color": "#22c55e", "bridge": 0 },
+    { "id": "D2", "label": "D2 (PN0)", "color": "#22c55e", "bridge": 1 },
+    { "id": "D3", "label": "D3 (PF4)", "color": "#22c55e", "bridge": 2 },
+    { "id": "D4", "label": "D4 (PF0)", "color": "#22c55e", "bridge": 3 }
+  ],
+  "buttons": [
+    { "id": "SW1", "label": "USR_SW1 (PJ0)", "port": "sysbus.gpioJ", "pin": 0, "activeLow": true },
+    { "id": "SW2", "label": "USR_SW2 (PJ1)", "port": "sysbus.gpioJ", "pin": 1, "activeLow": true }
+  ],
+  "oled": { "path": "sysbus.i2c0.oled", "width": 128, "height": 64, "label": "SSD1306 an I2C0 (PB2/PB3), 0x3C" },
+  "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "MB1242 an I2C0, 0x70" },
+  "keypad": {
+    "path": "sysbus.gpioK.keypad",
+    "rowPins": ["PK0", "PK1", "PK2", "PK3"],
+    "colPins": ["PK4", "PK5", "PK6"],
+    "layout": [
+      ["1", "2", "3"],
+      ["4", "5", "6"],
+      ["7", "8", "9"],
+      ["*", "0", "#"]
+    ]
+  },
+  "scope": {
+    "signals": [
+      { "pin": "PK0", "label": "Keypad Zeile 0" },
+      { "pin": "PK1", "label": "Keypad Zeile 1" },
+      { "pin": "PK2", "label": "Keypad Zeile 2" },
+      { "pin": "PK3", "label": "Keypad Zeile 3" },
+      { "pin": "PK4", "label": "Keypad Spalte 0" },
+      { "pin": "PK5", "label": "Keypad Spalte 1" },
+      { "pin": "PK6", "label": "Keypad Spalte 2" },
+      { "pin": "PN1", "label": "LED D1" },
+      { "pin": "PN0", "label": "LED D2" },
+      { "pin": "PF4", "label": "LED D3" },
+      { "pin": "PF0", "label": "LED D4" },
+      { "pin": "PJ0", "label": "USR_SW1" },
+      { "pin": "PJ1", "label": "USR_SW2" },
+      { "pin": "PA0", "label": "U0RX (vom Terminal)" },
+      { "pin": "PA1", "label": "U0TX (zum Terminal)" }
+    ],
+    "channels": ["PN1", "PN0", "PJ0", "PA1"],
+    "trigger": { "source": "PJ0", "edge": "falling" }
+  }
+}

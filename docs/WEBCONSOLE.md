@@ -15,8 +15,8 @@ Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit C
 ```
 
 Kurzanleitung zum Starten: [`webconsole/README.md`](../webconsole/README.md).
-Beispielprogramme: [Lab 03](../examples/lab03_webkonsole/README.md) nutzt alle Bedienelemente von
-Versuch 1, [Lab 04](../examples/lab04_pendeldisplay/README.md) das Pendeldisplay von Versuch 2.
+Beispielprogramme: [Example 03](../examples/example03_webkonsole/README.md) nutzt alle Bedienelemente von
+Example 1, [Example 04](../examples/example04_pendeldisplay/README.md) das Pendeldisplay von Example 2.
 
 ---
 
@@ -106,10 +106,10 @@ eingereiht.
 
 ---
 
-## 2. Simulierte Hardware von Versuch 1
+## 2. Simulierte Hardware von Example 1
 
 Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, GPIO A–Q, Timer,
-**UART 0–7, I2C 0–9**). Darauf setzt `sim/experiments/versuch1.repl` auf.
+**UART 0–7, I2C 0–9**). Darauf setzt `sim/experiments/example1.repl` auf.
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
@@ -129,7 +129,7 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 | `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
-| `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar (0,05–100 Hz), Nachleuchtbild je Schwungrichtung. `GetFrame` liefert `PD:<Spalten>:<Periode in µs>:<Phase>:<LEDs>:<Base64>`. |
+| `PendulumDisplay.cs` | Pendeldisplay (Example 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar (0,05–100 Hz), Nachleuchtbild je Schwungrichtung. `GetFrame` liefert `PD:<Spalten>:<Periode in µs>:<Phase>:<LEDs>:<Base64>`. |
 | `Oscilloscope.cs` | Oszilloskop der Web-Konsole (in der Basisplattform als `sysbus.scope`): zeichnet die Pegelwechsel ausgewählter Pins mit virtueller Zeit auf (Auflösung 1 µs). `Probe "PD0,PD1"` wählt die Pins, `GetEvents` liefert `SC:<jetzt ns>:<Pins>:<Pegel>:<i,dt ns,Pegel;…>:<verworfen>`. Gemessen wird der Pinpegel wie mit einem Tastkopf (`TivaGPIOPort.PadLevel`): getriebener Ausgang, von außen getriebener Eingang, Pull-up/-down oder offen. UART-Pins (`ConnectPins`) liefern den Bitstrom mit Baudrate und Format der Firmware (TX) bzw. des Terminals (RX). |
 | `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
 
@@ -140,10 +140,10 @@ erst HIGH, wenn die Firmware die Zeile HIGH treibt. Die Firmware muss die Taste 
 echter Hardware per Zeilen-Scan ermitteln. Ein Programm, das die Spalten liest, ohne die Zeilen
 zu treiben, sieht keinen Tastendruck. Das ist didaktisch gewollt.
 
-### Versuch 2: Pendeldisplay
+### Example 2: Pendeldisplay
 
-`sim/experiments/versuch2.repl` ergänzt die Basisplattform um ein Pendeldisplay und den
-Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Versuch 1.
+`sim/experiments/example2.repl` ergänzt die Basisplattform um ein Pendeldisplay und den
+Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Example 1.
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
@@ -157,7 +157,7 @@ also steigende Flanke beim Durchgang nach rechts, fallende beim Durchgang nach l
 sind **virtuelle** Simulationszeit.
 
 **Frequenz einstellen:** Im Browser gibt es dafür einen Schieberegler (Bereich aus
-`minFrequency`/`maxFrequency` der Versuchs-JSON, in Versuch 2: 0,1–20 Hz). Das Backend setzt die
+`minFrequency`/`maxFrequency` der Versuchs-JSON, in Example 2: 0,1–20 Hz). Das Backend setzt die
 Property `PeriodUs` des Modells (0,05–100 Hz). Die neue Periode gilt ab dem nächsten Durchgang durch
 die Mitte. Dort ist die Auslenkung bei jeder Frequenz null, das Pendel läuft also ohne Sprung
 weiter. Intern rechnet das Modell deshalb in Phasen (Anzahl halber Schwingungen), nicht in Zeit.
@@ -168,13 +168,13 @@ Winkelstücke, die das Pendel seitdem überstrichen hat. Der Schwenkbereich ist 
 Schwungrichtung, jeweils vom letzten Schwung. Das Frontend zeigt beide überlagert (wie das Auge)
 oder einzeln. So sieht man sofort, ob Hin- und Rückschwung übereinanderpassen.
 
-Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt `versuch2.resc` die Zeitscheibe von
+Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt `example2.resc` die Zeitscheibe von
 Renode auf 10 µs (`emulation SetGlobalQuantum "0.00001"`, Standard 100 µs).
 
 ### Monitor-Befehle (zum Ausprobieren ohne Browser)
 
 Renode lässt sich auch direkt starten: `cd sim`, dann
-`renode --console -e "\$elf=@../examples/lab03_webkonsole/lab03_webkonsole.out; s @experiments/versuch1.resc"`.
+`renode --console -e "\$elf=@../examples/example03_webkonsole/example03_webkonsole.out; s @experiments/example1.resc"`.
 Danach `nc localhost 3335` für den UART. Im Monitor:
 
 ```
@@ -185,7 +185,7 @@ sysbus.gpioK.keypad SetKey 1 1 false
 sysbus.i2c0.sensor Distance 42         # Abstand 42 cm
 sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
 
-# Versuch 2 (s @experiments/versuch2.resc):
+# Example 2 (s @experiments/example2.resc):
 sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
 sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
 sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
@@ -346,7 +346,7 @@ der Auswahlliste.
 
 `<id>`: Buchstaben, Ziffern, `_`, `-` (max. 64 Zeichen).
 
-**Minimales `.resc`** (Vorlage: `versuch1.resc`):
+**Minimales `.resc`** (Vorlage: `example1.resc`):
 
 ```
 $elf?=@/tmp/app.elf
@@ -460,14 +460,14 @@ mappen Sie die Web-Konsole auf andere Host-Ports.
 ## 6. Test
 
 `webconsole/backend/test/e2e.js` prüft die ganze Kette mit echter Renode-Instanz und der
-Lab-03-Firmware: Upload, UART-Ausgabe und -Echo, Sensor → UART und LED D1, Keypad „5“ per Matrix,
+Example-03-Firmware: Upload, UART-Ausgabe und -Echo, Sensor → UART und LED D1, Keypad „5“ per Matrix,
 USR_SW1 → LED D3, OLED-Frame.
 
 ```bash
 cd webconsole/backend
 npm start &                                                       # oder Container
-node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
-node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
+node test/e2e.js ../../examples/example03_webkonsole/example03_webkonsole.out
+node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pendeldisplay.out
 ```
 
 `test/e2e_scope.js` prüft das Oszilloskop mit den Musterlösungen (`sim/solutions`): Pendel-Signal
@@ -477,7 +477,7 @@ offener Pin, Vereinigung der Quellen zweier Browser, UART-Rahmen `'#'` 9600 7N1 
 `test/e2e_labs.js` prüft die vier Lab-Umgebungen mit ihren Musterlösungen, die Diagnose und
 `POST /api/solution` (siehe [LABORE.md](LABORE.md)).
 
-`test/e2e_versuch2.js` prüft Versuch 2 mit der Lab-04-Firmware: Startmeldung, gemessene
+`test/e2e_example2.js` prüft Example 2 mit der Example-04-Firmware: Startmeldung, gemessene
 Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
 40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
 Danach wird die Pendelfrequenz auf 15, 4, 25 und 10 Hz gestellt: Das Modell muss sie übernehmen,
@@ -503,7 +503,7 @@ die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau
 - **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät
   gelesen.
 - Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js`,
-  `test/e2e_versuch2.js` und die
+  `test/e2e_example2.js` und die
   Bedienung im Browser, auch mit dem Verzeichnis-Layout des Images (`/opt/renode`,
   `SIM_DIR=/opt/renode4mc/sim`, Benutzer ohne Root-Rechte). Das Docker-Image selbst konnte in der
   Entwicklungsumgebung **nicht gebaut** werden (kein Zugriff auf Docker Hub) – beim ersten

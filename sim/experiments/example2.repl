@@ -1,0 +1,26 @@
+// Example 2 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
+//
+//   Pendeldisplay (POV)      stehendes Pendel, Drehpunkt unten; 8 LEDs an PM0..PM7 (Ausgänge),
+//                            LED 0 oben an der Spitze, LED 7 unten (nahe dem Drehpunkt)
+//                            Sync-Signal an PL0 (Eingang): HIGH = Pendel rechts, LOW = links
+//                            10 Schwingungen pro Sekunde (Periode 100 ms); zur Laufzeit einstellbar
+//                            mit  sysbus.gpioM.pendel PeriodUs <us>  (Web-Konsole: Schieberegler)
+//   Ultraschall MB1242       I2C0 (PB2 SCL, PB3 SDA), Adresse 0x70
+//   (LEDs D1..D4, Taster USR_SW1/2 und UART0 stammen aus der Basisplattform.)
+
+sensor: Sensors.MaxBotixI2C @ i2c0 0x70
+
+pendel: Miscellaneous.PendulumDisplay @ gpioM
+    periodUs: 100000
+    columns: 120
+    Sync -> gpioL@0
+
+gpioM:
+    0 -> pendel@0
+    1 -> pendel@1
+    2 -> pendel@2
+    3 -> pendel@3
+    4 -> pendel@4
+    5 -> pendel@5
+    6 -> pendel@6
+    7 -> pendel@7

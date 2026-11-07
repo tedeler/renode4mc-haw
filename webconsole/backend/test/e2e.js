@@ -2,10 +2,10 @@
 'use strict';
 /**
  * Ende-zu-Ende-Test der Web-Konsole mit echter Renode-Instanz und der Firmware aus
- * examples/lab03_webkonsole. Prüft Upload, UART, LEDs, Taster, Keypad, Sensor und OLED über
+ * examples/example03_webkonsole. Prüft Upload, UART, LEDs, Taster, Keypad, Sensor und OLED über
  * dieselben Schnittstellen, die auch das Frontend benutzt (HTTP + beide WebSockets).
  *
- *   node test/e2e.js <lab03_webkonsole.out> [http://localhost:3000]
+ *   node test/e2e.js <example03_webkonsole.out> [http://localhost:3000]
  *
  * Voraussetzung: Backend läuft (npm start bzw. Docker-Container).
  */
@@ -17,7 +17,7 @@ const elf = process.argv[2];
 const base = (process.argv[3] || 'http://localhost:3000').replace(/\/$/, '');
 const host = new URL(base).hostname;
 if (!elf || !fs.existsSync(elf)) {
-  console.error('Aufruf: node test/e2e.js <lab03_webkonsole.out> [http://localhost:3000]');
+  console.error('Aufruf: node test/e2e.js <example03_webkonsole.out> [http://localhost:3000]');
   process.exit(2);
 }
 
@@ -40,7 +40,7 @@ async function waitFor(fn, timeoutMs = 5000) {
 (async () => {
   // 1. Upload
   const fd = new FormData();
-  fd.append('experiment_id', 'versuch1');
+  fd.append('experiment_id', 'example1');
   fd.append('file', new Blob([fs.readFileSync(elf)]), path.basename(elf));
   const t0 = Date.now();
   const res = await fetch(`${base}/upload`, { method: 'POST', body: fd });
@@ -65,7 +65,7 @@ async function waitFor(fn, timeoutMs = 5000) {
   await Promise.all([u, c].map((ws) => new Promise((r) => ws.once('open', r))));
   const send = (m) => c.send(JSON.stringify(m));
 
-  check('UART: Startmeldung', await waitFor(() => /Lab 03 Web-Konsole/.test(uart)));
+  check('UART: Startmeldung', await waitFor(() => /Example 03 Web-Konsole/.test(uart)));
 
   send({ type: 'sensor', value: 42 });
   check('Sensor 42 cm -> UART', await waitFor(() => /Abstand:\s+42 cm/.test(uart)));
