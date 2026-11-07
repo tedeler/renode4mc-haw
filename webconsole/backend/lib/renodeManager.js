@@ -1,6 +1,12 @@
 'use strict';
 
 const { spawn, spawnSync } = require('child_process');
+const { isValidUartSettings } = require('./experiments');
+
+function uartVars(uart) {
+  if (!uart || !isValidUartSettings(uart.baud, uart.format)) return '';
+  return `$uartBaud=${uart.baud}; $uartFormat="${uart.format}"; `;
+}
 const { EventEmitter } = require('events');
 const net = require('net');
 const readline = require('readline');
@@ -41,8 +47,10 @@ class RenodeManager extends EventEmitter {
   /**
    * Startet Renode headless:  renode --disable-gui --port <n> -e "$elf=@<elf>; s @<rescPath>"
    * Arbeitsverzeichnis ist sim/, damit die relativen Pfade in den .resc-Dateien stimmen.
+   * uart = { baud, format }: Einstellung des PC-Terminals ($uartBaud, $uartFormat im .resc),
+   * schon vor dem Start der Emulation gesetzt, damit die ersten Zeichen richtig ankommen.
    */
-  async start(experimentId, rescPath, elfPath) {
+  async start(experimentId, rescPath, elfPath, uart = null) {
     await this.stop();
     this.logTail = [];
 
@@ -51,7 +59,7 @@ class RenodeManager extends EventEmitter {
       '--port',
       String(this.monitorPort),
       '-e',
-      `$elf=@${elfPath}; s @${rescPath}`,
+      `$elf=@${elfPath}; ${uartVars(uart)}s @${rescPath}`,
     ];
     console.log(`[renode] spawn: ${this.bin} ${args.map((a) => JSON.stringify(a)).join(' ')}`);
 

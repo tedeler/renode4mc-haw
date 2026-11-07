@@ -1,10 +1,83 @@
 import { useEffect, useRef } from 'react';
+import { useControlSocket } from '../context/ControlSocket.jsx';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { UART_WS_URL } from '../config.js';
 import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket.js';
 import Widget from './Widget.jsx';
+
+const BAUD_RATES = [300, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+const PARITIES = [
+  ['N', 'keine'],
+  ['E', 'gerade'],
+  ['O', 'ungerade'],
+  ['M', 'Mark (1)'],
+  ['S', 'Space (0)'],
+];
+
+/**
+ * Einstellung des PC-Terminals (wie in Tera Term: Baudrate, Datenbits, Parität, Stoppbits).
+ * Das Terminal dekodiert die Leitung mit DIESER Einstellung – passt sie nicht zur Firmware,
+ * erscheinen falsche Zeichen wie an der echten Hardware.
+ */
+function TerminalSettings() {
+  const { send, uartConfig, status } = useControlSocket();
+  if (!uartConfig) return null;
+  const { baud, format } = uartConfig;
+  const set = (patch) => {
+    const next = { baud, format, ...patch };
+    send({ type: 'uartconfig', baud: Number(next.baud), format: next.format });
+  };
+  const setFmt = (i, ch) => set({ format: format.slice(0, i) + ch + format.slice(i + 1) });
+  const disabled = status !== 'open';
+  return (
+    <div className="uart-settings" title="Einstellung des Terminalprogramms am PC">
+      <label>
+        Baud
+        <select value={baud} disabled={disabled} onChange={(e) => set({ baud: e.target.value })}>
+          {!BAUD_RATES.includes(baud) && <option value={baud}>{baud}</option>}
+          {BAUD_RATES.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Daten
+        <select value={format[0]} disabled={disabled} onChange={(e) => setFmt(0, e.target.value)}>
+          {['5', '6', '7', '8'].map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Parität
+        <select value={format[1]} disabled={disabled} onChange={(e) => setFmt(1, e.target.value)}>
+          {PARITIES.map(([v, t]) => (
+            <option key={v} value={v}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Stopp
+        <select value={format[2]} disabled={disabled} onChange={(e) => setFmt(2, e.target.value)}>
+          {['1', '2'].map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="uart-format">{`${baud} ${format}`}</span>
+    </div>
+  );
+}
 
 /** UART-Monitor: xterm.js direkt am UART-WebSocket (Binärframes, bidirektional). */
 export default function UartMonitor({ label }) {
@@ -72,6 +145,7 @@ export default function UartMonitor({ label }) {
     <Widget title="UART-Monitor" subtitle={label} status={status} className="uart">
       <div className="terminal" ref={containerRef} />
       <div className="row-actions">
+        <TerminalSettings />
         <button className="btn small" onClick={() => termRef.current?.clear()}>
           Leeren
         </button>

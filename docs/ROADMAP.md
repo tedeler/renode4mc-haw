@@ -2,7 +2,8 @@
 
 > **Stand:** M0 (Gerüst, Bit-Banding), M1 (Clock-Gating), M3 (GPIO) und M4 (Timer) sind umgesetzt
 > (siehe `sim/`, Beispiele `examples/`). M5 (UART) ist im Kern umgesetzt (`sim/models/TivaUART.cs`:
-> Register, RX-FIFO, Interrupts; offen: Baudraten-Timing, µDMA, Break/Fehler-Injektion). Zusätzlich –
+> Register, FIFOs, Interrupts, Leitung als Flanken mit Baudraten-Timing, Framing-/Paritätsfehler,
+> Break; Systemtakt aus PLL-Registern; offen: µDMA, RX-Timeout-Zeit, IrDA/9-Bit). Zusätzlich –
 > abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
 > und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Lab 03).
 > Offen: M2 (SysTick-Test), M6 (ADC), M7 (weitere Labs).

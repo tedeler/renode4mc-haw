@@ -1,7 +1,11 @@
 {
   "title": "Versuch 1 – EK-TM4C1294XL: GPIO, UART, OLED, Ultraschall, Keypad",
   "machine": "tm4c1294",
-  "uart": { "label": "UART0 (PA0 RX / PA1 TX) – 115200 8N1" },
+  "uart": { "label": "UART0 (PA0 RX / PA1 TX) – virtueller COM-Port", "host": "sysbus.uart0.host", "baud": 115200, "format": "8N1" },
+  "signals": [
+    { "name": "uart0.tx", "label": "U0TX (PA1)", "path": "sysbus.uart0" },
+    { "name": "uart0.rx", "label": "U0RX (PA0)", "path": "sysbus.uart0" }
+  ],
   "ledBridge": "ws://127.0.0.1:9000",
   "leds": [
     { "id": "D1", "label": "D1 (PN1)", "color": "#22c55e", "bridge": 0 },

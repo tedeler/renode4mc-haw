@@ -76,7 +76,11 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .ws-status.connecting, .ws-status.reconnecting { color: var(--warn); }
 .ws-status.idle { color: var(--muted); }
 .meta { color: var(--muted); font-size: 12px; }
-.row-actions { display: flex; justify-content: flex-end; }
+.row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.uart-settings { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-right: auto; font-size: 12px; color: var(--muted); }
+.uart-settings label { display: flex; align-items: center; gap: 4px; }
+.uart-settings select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+.uart-format { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); }
 
 /* UART */
 .widget.uart { grid-column: span 2; }

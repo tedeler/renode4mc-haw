@@ -60,7 +60,7 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | SYSCTL: Clock-Gating (`RCGC*`/`PR*`), Warnung bei fehlendem Takt | ✔ (PLL/Takt-Umschaltung nicht; Takt fest 16 MHz) |
 | GPIO A–Q: Ausgänge, Eingänge, Pull-up/-down, Interrupts | ✔ |
 | Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, Interrupt | ✔ (Timer 4–7 ohne NVIC-Verdrahtung) |
-| UART 0–7: Senden/Empfangen, 16-Byte-Empfangs-FIFO, Interrupts | ✔ (ohne Baudraten-Timing, kein µDMA) |
+| UART 0–7: Senden/Empfangen als Flanken mit Baudraten-Timing, FIFOs, Fehlerbits, Interrupts | ✔ (kein µDMA; UART0 mit Pin-Prüfung und PC-Terminal) |
 | I2C 0–9 als Master; Geräte SSD1306-OLED, MaxBotix MB1242 | ✔ (Versuch 1 der Web-Konsole) |
 | Keypad 4×3 mit Matrix-Elektrik, Taster-Eingabe im Browser | ✔ (Web-Konsole) |
 | Pendeldisplay (8 LEDs, 10 Hz, Sync-Signal), Nachleuchtbild im Browser | ✔ (Versuch 2 der Web-Konsole) |

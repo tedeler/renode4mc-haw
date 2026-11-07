@@ -15,6 +15,13 @@ const path = require('path');
 const ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 const PATH_RE = /^sysbus(\.[A-Za-z_][A-Za-z0-9_]*)+$/;
 const WS_RE = /^ws:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+const SIGNAL_RE = /^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/;
+const UART_FORMAT_RE = /^[5-8][NOEMS][12]$/;
+
+/** Einstellung des PC-Terminals: Baudrate 50..4 000 000, Format wie "8N1" */
+function isValidUartSettings(baud, format) {
+  return Number.isInteger(baud) && baud >= 50 && baud <= 4000000 && typeof format === 'string' && UART_FORMAT_RE.test(format);
+}
 
 function isValidId(id) {
   return typeof id === 'string' && ID_RE.test(id);
@@ -59,6 +66,16 @@ function validate(cfg, file) {
       pd.minFrequency <= pd.frequency && pd.frequency <= pd.maxFrequency,
     `${file} pendulum: 0.05 <= minFrequency <= frequency <= maxFrequency <= 100 (Hz)`);
   }
+  if (cfg.uart && cfg.uart.host !== undefined) {
+    assertPath(cfg.uart.host, `${file} uart.host`);
+    cfg.uart.baud = cfg.uart.baud ?? 115200;
+    cfg.uart.format = cfg.uart.format ?? '8N1';
+    assert(isValidUartSettings(cfg.uart.baud, cfg.uart.format), `${file} uart: baud 50..4000000, format wie "8N1"`);
+  }
+  (cfg.signals || []).forEach((sig, i) => {
+    assert(typeof sig.name === 'string' && SIGNAL_RE.test(sig.name), `${file} signals[${i}].name wie "uart0.tx"`);
+    assertPath(sig.path, `${file} signals[${i}].path`);
+  });
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
     const layout = cfg.keypad.layout;
@@ -120,7 +137,9 @@ function publicView(cfg) {
     oled: rest.oled && { ...rest.oled, path: undefined },
     sensor: rest.sensor && { ...rest.sensor, path: undefined },
     pendulum: rest.pendulum && { ...rest.pendulum, path: undefined },
+    uart: rest.uart && { ...rest.uart, host: undefined },
+    signals: (rest.signals || []).map(({ path: _p, ...sig }) => sig),
   };
 }
 
-module.exports = { isValidId, load, list, publicView };
+module.exports = { isValidId, isValidUartSettings, load, list, publicView };
