@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
+import ScaleBox from '../layout/ScaleBox.jsx';
 
 const ON_RGB = [125, 211, 252];
 const OFF_RGB = [4, 8, 16];
@@ -81,9 +82,11 @@ export default function OledDisplay({ width = 128, height = 64, scale = 4, label
 
   return (
     <Widget title="OLED-Display" subtitle={label} className="oled">
-      <div className="oled-bezel">
-        <canvas ref={canvasRef} width={width * scale} height={height * scale} className="oled-canvas" />
-      </div>
+      <ScaleBox maxScale={1.5} minH={90} flowMaxH={300}>
+        <div className="oled-bezel">
+          <canvas ref={canvasRef} width={width * scale} height={height * scale} className="oled-canvas" />
+        </div>
+      </ScaleBox>
       <div className="meta">
         {width}×{height} · Display {info.on ? 'ON' : 'OFF'} · {info.frames} Frames
       </div>

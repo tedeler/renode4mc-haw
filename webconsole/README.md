@@ -54,6 +54,8 @@ webconsole/
     └── src/
         ├── hooks/useReconnectingWebSocket.js
         ├── context/ControlSocket.jsx
+        ├── layout/          Workspace (Spalten-Layout: einklappen, verschieben, Breite),
+        │                    ScaleBox (Anzeigen passen sich der Panelgröße an)
         └── components/  SetupBar, ControlPanel, UartMonitor (xterm.js), Led, PushButton,
                          OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung),
                          PendulumDisplay (Canvas, Nachleuchtbild)

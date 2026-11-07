@@ -1,10 +1,25 @@
 import { useControlSocket } from '../context/ControlSocket.jsx';
 import Widget from './Widget.jsx';
+import ScaleBox from '../layout/ScaleBox.jsx';
 
 // Segmente a..g je Hex-Ziffer (Bit 0 = a ... Bit 6 = g), wie ein üblicher Hex-Decoder (A b C d E F)
 const SEGMENTS = {
-  0: 0x3f, 1: 0x06, 2: 0x5b, 3: 0x4f, 4: 0x66, 5: 0x6d, 6: 0x7d, 7: 0x07,
-  8: 0x7f, 9: 0x6f, A: 0x77, B: 0x7c, C: 0x39, D: 0x5e, E: 0x79, F: 0x71,
+  0: 0x3f,
+  1: 0x06,
+  2: 0x5b,
+  3: 0x4f,
+  4: 0x66,
+  5: 0x6d,
+  6: 0x7d,
+  7: 0x07,
+  8: 0x7f,
+  9: 0x6f,
+  A: 0x77,
+  B: 0x7c,
+  C: 0x39,
+  D: 0x5e,
+  E: 0x79,
+  F: 0x71,
 };
 
 // Lage der Segmente in einer 60 x 100 großen Ziffer: [x, y, Breite, Höhe]
@@ -19,7 +34,7 @@ const GEOMETRY = [
 ];
 
 function Digit({ ch }) {
-  const mask = ch === '-' ? 0 : SEGMENTS[ch] ?? 0;
+  const mask = ch === '-' ? 0 : (SEGMENTS[ch] ?? 0);
   return (
     <svg className="bcd-digit" viewBox="0 0 60 100" aria-label={ch === '-' ? 'dunkel' : ch}>
       {GEOMETRY.map(([x, y, w, h], i) => (
@@ -39,17 +54,19 @@ export default function BcdDisplay({ label }) {
   const en = bcd?.enable ?? '00';
   return (
     <Widget title="7-Segment-Anzeige (BCD)" subtitle={label} className="bcd">
-      <div className="bcd-row">
-        {[0, 1].map((m) => (
-          <div key={m} className="bcd-module">
-            <div className={`bcd-en ${en[m] === '1' ? 'on' : ''}`}>EN {m === 0 ? 'links' : 'rechts'}</div>
-            <div className="bcd-digits">
-              <Digit ch={digits[2 * m]} />
-              <Digit ch={digits[2 * m + 1]} />
+      <ScaleBox maxScale={2.4} minH={90} flowMaxH={220}>
+        <div className="bcd-row">
+          {[0, 1].map((m) => (
+            <div key={m} className="bcd-module">
+              <div className={`bcd-en ${en[m] === '1' ? 'on' : ''}`}>EN {m === 0 ? 'links' : 'rechts'}</div>
+              <div className="bcd-digits">
+                <Digit ch={digits[2 * m]} />
+                <Digit ch={digits[2 * m + 1]} />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </ScaleBox>
       <div className="meta">
         Datenleitungen D7..D0 = 0x{bcd?.data ?? '00'} · Ziffern {digits}
       </div>

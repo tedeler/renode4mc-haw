@@ -82,6 +82,27 @@ Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar an
 Befehle aus dem Browser haben Vorrang vor dem Polling: Die Monitor-Warteschlange wird vorne
 eingereiht.
 
+### Bedienoberfläche (Layout)
+
+- **Desktop** (Fenster ab 760 × 520 px): alles passt auf eine Seite, die Seite scrollt nie. Die Panels
+  stehen in Spalten (Standard: Anzeigen | UART/printf | Board, Sensor, Diagnose; unter 1280 px Breite
+  zwei Spalten) und teilen sich die Höhe. Pendel, OLED, Keypad und 7-Segment-Anzeige skalieren mit.
+  - Kopfzeile eines Panels anklicken (oder ▾): ein-/ausklappen – die übrigen Panels bekommen den Platz.
+    Eingeklappte Panels laufen weiter (Terminal, Anzeigen, WebSockets).
+  - Kopfzeile ziehen: Panel verschieben; an den linken/rechten Rand ziehen = neue Spalte (höchstens 4).
+  - Trennlinie zwischen Spalten ziehen: Breite ändern, Doppelklick: beide gleich breit.
+  - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, ↺ Layout zurücksetzen
+    (Standard, alles sichtbar).
+- **Handy / kleines Fenster**: eine Spalte in Layout-Reihenfolge, die Seite scrollt. Die Leiste unter der
+  Kopfzeile springt zu jedem Panel (eingeklappte gestrichelt, Diagnose farbig bei Meldungen); Setup
+  (Versuch, Firmware, Start/Stop) ist einklappbar und nach dem Start eingeklappt; Reihenfolge über den
+  Griff ⠿ ändern.
+- Das Layout wird je Versuch im Browser gespeichert (`localStorage`, Schlüssel
+  `renode4mc.layout.v1.<Versuch>`). Kommt eine neue Diagnose-Meldung, klappt das Diagnose-Panel auf.
+- Code: `webconsole/frontend/src/layout/Workspace.jsx` (Panels werden per Portal in stabile DOM-Knoten
+  gerendert und beim Verschieben nur umgehängt), Panel-Liste mit Standardspalte/Höhenanteil in
+  `components/ControlPanel.jsx`.
+
 ---
 
 ## 2. Simulierte Hardware von Versuch 1
@@ -257,8 +278,9 @@ entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattd
 
 ### Oszilloskop
 
-Über die Schaltfläche **„Oszilloskop einblenden“** in der Statuszeile kommt ein Oszilloskop dazu
-(wieder ausblendbar; der Zustand und alle Einstellungen bleiben im Browser gespeichert, die
+Über die Schaltfläche **„〰 Oszi“** oben rechts in der Kopfzeile (mobil: in der Sprungleiste) kommt
+ein Oszilloskop als Panel dazu – oben in die Spalte der Anzeigen, ohne Anzeigen als eigene Spalte; wie
+jedes Panel verschieb- und einklappbar (wieder ausblendbar; der Zustand und alle Einstellungen bleiben im Browser gespeichert, die
 Einstellungen je Versuch). Es zeigt die Digitalsignale an den Pins als 3,3-V-Logik mit dem
 gewohnten Gitter (10 × 8 Teilungen, Mittelachsen mit Feinteilung):
 
