@@ -443,10 +443,6 @@ namespace Antmicro.Renode.Peripherals.UART
         private void OnTxFrameStart(ulong t)
         {
             DropStarted(t);
-            if((ctl & CtlEot) == 0 && txWaiting.Count <= TxThreshold)
-            {
-                ris |= IntTx;
-            }
             UpdateInterrupts();
         }
 
@@ -457,18 +453,29 @@ namespace Antmicro.Renode.Peripherals.UART
             if((ctl & CtlEot) != 0 && txWaiting.Count == 0 && t >= (ulong)Math.Floor(txLineFreeNs))
             {
                 ris |= IntTx;
-                UpdateInterrupts();
             }
+            UpdateInterrupts();
             if(line == null && (ctl & CtlLbe) == 0 && TxPinOk())
             {
                 TransmitCharacter(data);   // ohne Gegenstelle: Byte an ein Renode-Terminal
             }
         }
 
-        // Zeichen, deren Frame bis now begonnen hat, sind aus dem FIFO ins Schieberegister gewandert
+        // Zeichen, deren Frame bis now begonnen hat, sind aus dem FIFO ins Schieberegister gewandert.
+        // Datenblatt 16.3.9: Der TX-Interrupt (ohne EOT) reagiert auf den ÜBERGANG durch die Schwelle:
+        // TXRIS wird gesetzt, wenn der Sende-FIFO von "mehr als IFLS" auf "höchstens IFLS" leerläuft
+        // (ohne FIFO: wenn das Halteregister leer wird). Wer den FIFO nie über die Schwelle füllt,
+        // bekommt keinen TX-Interrupt. Alle Entnahmen aus dem FIFO laufen hier durch, damit jeder
+        // Übergang genau einmal erkannt wird.
         private void DropStarted(ulong now)
         {
+            int before = txWaiting.Count;
             while(txWaiting.Count > 0 && txWaiting.Peek() <= now) txWaiting.Dequeue();
+            int threshold = TxThreshold;
+            if((ctl & CtlEot) == 0 && before > threshold && txWaiting.Count <= threshold)
+            {
+                ris |= IntTx;
+            }
         }
 
         private void UpdateTxInterruptAfterWrite()
