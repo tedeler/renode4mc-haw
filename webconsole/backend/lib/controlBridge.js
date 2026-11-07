@@ -13,6 +13,9 @@ const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 // Zustand der Simulation (TivaSysCtl.GetStatus, GetCpuRegisters, ReadMemory, PeekRegisters)
 const ST_RE = /ST:(\d+):(\d+):(\d+):(\d+):(\w+|-):([01]):(\d+):([0-9A-F]+):(\S*)/;
 const CR_RE = /CR:(\S*)/;
+// Einzelschritt (TivaSysCtl.StepCpu): SS:<erledigt>:<ok|more|wfi|err>:<PC>
+const SS_RE = /SS:(\d+):(\w+):([0-9A-F]+)/;
+const MAX_STEPS = 10000;
 const MEM_RE = /MEM:([0-9A-F]{8}):([0-9A-F]*)|MEM:ERR:(.*)/;
 const PR_RE = /PR:(\S*)/;
 const DIS_RE = /^0x([0-9a-fA-F]+):\s+([0-9a-fA-F]+)\s+(.*)$/;
@@ -55,7 +58,9 @@ const MAX_DIAGNOSTICS = 100;
  *                                              memory.addr = Zahl oder Symbolname aus der ELF-Datei,
  *                                              periph = Modulname aus "simmeta" (z. B. "UART0")
  *   { type: "pause" } | { type: "continue" } | { type: "step", count }
- *                                              Ausführung anhalten, fortsetzen, count Befehle ausführen
+ *                                              Ausführung anhalten, fortsetzen, count Befehle ausführen.
+ *                                              Schläft die CPU (WFI), läuft ein Schritt bis zum nächsten
+ *                                              Interrupt (wie am Board); alle Peripherie läuft mit.
  *   { type: "clearDiagnostics" }               Diagnose-Liste leeren
  *   { type: "scope", sources: ["PD0", …] }     Oszilloskop: Pins, die dieser Browser sehen will (max. 5,
  *                                              [] = Oszilloskop aus). Aufgezeichnet wird die Vereinigung
@@ -69,10 +74,12 @@ const MAX_DIAGNOSTICS = 100;
  *                                                     (0..19999), leds = LED-Zustand jetzt,
  *                                                     data = Base64, erst alle Spalten
  *                                                     links->rechts, dann rechts->links (Bit n = LED n)
- *   { type: "pdev", now: [t, phi, leds, periodUs], ev: [[t, phi, leds, periodUs], …] }
+ *   { type: "pdev", now: [t, phi, leds, periodUs], ev: [[t, phi, leds, periodUs], …], frozen }
  *                                                     Pendel-Ereignisse seit dem letzten Abruf (LED-Wechsel
  *                                                     mit virtueller Zeit t in us und Phase phi in 1/10000
- *                                                     halber Schwingung) für die Wiedergabe im Browser
+ *                                                     halber Schwingung) für die Wiedergabe im Browser;
+ *                                                     frozen = virtuelle Zeit steht (Pause/Einzelschritt):
+ *                                                     Anzeige zeigt genau den Zeitpunkt t der CPU
  *   { type: "uartconfig", baud, format }      aktuelle Terminal-Einstellung (an alle)
  *   { type: "signals", signals: [{ name, label, idle, protocol? }] }
  *                                                     Leitungen des Versuchs; protocol = { kind: "uart",
@@ -132,7 +139,10 @@ class ControlBridge {
     this.startedAt = null;
     this.lastSim = null;
     this.pollCount = 0;
-    this.stopped = false; // angehalten (Pause oder Einzelschritt)
+    this.stopped = false; // angehalten (Pause oder Einzelschritt, auch: Schritt wartet auf Interrupt)
+    this.frozen = false; // virtuelle Zeit steht (Pause oder Einzelschritt)
+    this.wakePending = false; // Schritt über WFI: Simulation läuft bis zum Aufwachen, hält dann selbst
+    this.stepGen = 0; // erhöht bei Pause/Weiter/Reset: bricht eine laufende Schrittfolge ab
     this.symbols = new Map();
     this.scopeProbes = ''; // in Renode eingestellte Pins (Komma-Liste)
 
@@ -369,6 +379,7 @@ class ControlBridge {
       }
       case 'reset': {
         if (!exp.reset) throw new Error('Kein Reset in diesem Versuch');
+        this.stepGen++;
         await run(`${exp.reset.path} ResetMcu`);
         // Der Reset geschieht beim nächsten Zeitschritt: angehaltene Simulation dafür fortsetzen
         if (this.stopped) await this._continue(run);
@@ -378,22 +389,27 @@ class ControlBridge {
       }
       case 'pause': {
         if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        this.stepGen++;
         await run('pause');
         this.stopped = true;
+        this.frozen = true;
         this._pollSimSoon();
         break;
       }
       case 'continue': {
         if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        this.stepGen++;
         await this._continue(run);
         this._pollSimSoon();
         break;
       }
       case 'step': {
         if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
-        const n = Math.max(1, Math.min(10000, Math.round(Number(msg.count) || 1)));
+        const n = Math.max(1, Math.min(MAX_STEPS, Math.round(Number(msg.count) || 1)));
         this.stopped = true;
-        await run(`${exp.debug.cpu} Step ${n}`);
+        this.frozen = true;
+        if (exp.status) await this._step(run, exp.status.path, n);
+        else await run(`${exp.debug.cpu} Step ${n}`);
         this._pollSimSoon();
         break;
       }
@@ -413,10 +429,45 @@ class ControlBridge {
     }
   }
 
+  /**
+   * n Befehle ausführen (TivaSysCtl.StepCpu). StepCpu hält sich an ein Zeitbudget der Wanduhr
+   * (Monitor-Timeout): Rest ("more") in weiteren Aufrufen, dazwischen kommen Polling und andere
+   * Befehle an die Reihe. "wfi": CPU schläft noch, die Simulation läuft bis zum Aufwachen weiter
+   * und hält dann von selbst an (wird in _poll erkannt).
+   */
+  async _step(run, path, n) {
+    const gen = ++this.stepGen;
+    this.wakePending = false;
+    let left = n;
+    while (left > 0 && gen === this.stepGen) {
+      const out = await run(`${path} StepCpu ${left}`);
+      const m = SS_RE.exec(out);
+      if (!m) throw new Error(`Einzelschritt fehlgeschlagen: ${out.trim().split('\n').pop()}`);
+      left -= Number(m[1]);
+      if (m[2] === 'wfi') {
+        this.wakePending = true;
+        this.frozen = false;
+        return;
+      }
+      if (m[2] !== 'more') return;
+    }
+  }
+
   async _continue(run) {
-    await run(`${this.experiment.debug ? this.experiment.debug.cpu : 'sysbus.cpu'} ExecutionMode Continuous`);
+    const exp = this.experiment;
+    if (exp.status) await run(`${exp.status.path} CancelStep`);
+    this.wakePending = false;
+    await run(`${exp.debug ? exp.debug.cpu : 'sysbus.cpu'} ExecutionMode Continuous`);
     await run('start');
     this.stopped = false;
+    this.frozen = false;
+  }
+
+  /** Zustand aus GetStatus übernehmen (Paused/Step = Zeit steht, Wake = Schritt wartet auf Interrupt) */
+  _applyCpuState(state) {
+    this.frozen = state === 'Paused' || state === 'Step';
+    this.stopped = this.frozen || state === 'Wake';
+    this.wakePending = state === 'Wake';
   }
 
   /** Simulations-Anzeige sofort aktualisieren (nach Pause, Schritt, Reset, neuem watch) */
@@ -472,6 +523,9 @@ class ControlBridge {
     this.lastSim = null;
     this.simPrev = null;
     this.stopped = false;
+    this.frozen = false;
+    this.wakePending = false;
+    this.stepGen++;
     this.symbols = new Map();
     this.lastBcd = null;
 
@@ -617,6 +671,15 @@ class ControlBridge {
         }
       }
 
+      if (this.wakePending && exp.status) {
+        // Schritt über WFI: Hat die CPU inzwischen angehalten?
+        const st = ST_RE.exec(await mon.execute(`${exp.status.path} GetStatus`));
+        if (st) {
+          this._applyCpuState(st[5]);
+          if (!this.wakePending) this._pollSimSoon();
+        }
+      }
+
       if (exp.pendulum) {
         // Immer abfragen: Phase und LED-Zustand ändern sich laufend (Animation des Pendelstabs)
         const out = await mon.execute(`${exp.pendulum.path} GetFrame`);
@@ -632,7 +695,7 @@ class ControlBridge {
             .split(';')
             .filter(Boolean)
             .map((x) => x.split(',').map(Number));
-          this._broadcast({ type: 'pdev', now: [+e[1], +e[2], +e[3], +e[4]], ev });
+          this._broadcast({ type: 'pdev', now: [+e[1], +e[2], +e[3], +e[4]], ev, frozen: this.frozen });
         }
       }
 
@@ -685,8 +748,9 @@ class ControlBridge {
         sim.time = { virtualNs, wallMs: now - this.startedAt, speed };
         sim.cpu = { state: m[5], halted: m[6] === '1', pc: `0x${m[8]}`, symbol: m[9] || null, sysclk: Number(m[4]) };
         sim.resets = { count: Number(m[2]), lastNs: Number(m[3]) };
-        this.stopped = m[5] === 'Paused' || m[5] === 'Step';
+        this._applyCpuState(m[5]);
         sim.stopped = this.stopped;
+        sim.frozen = this.frozen;
       }
       const cr = CR_RE.exec(await mon.execute(`${exp.status.path} GetCpuRegisters`));
       if (cr) {

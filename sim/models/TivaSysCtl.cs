@@ -31,6 +31,14 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             this.machine = machine;
             this.moscFrequency = moscFrequency;
             Reset();
+            // WFI-Hook möglichst vor dem ersten Befehl setzen: Der Hook meldet nur Wechsel – wer ihn
+            // erst setzt, während die CPU schon schläft, hält sie bis zum Aufwachen für wach
+            machine.PeripheralsChanged += (m, e) =>
+            {
+                if(wfiHooked) return;
+                var cpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault();
+                if(cpu != null) HookWfi(cpu);
+            };
         }
 
         // Reset-Taster des Boards (RESET, SW5): setzt CPU und alle Peripherie AUF DEM CHIP zurück,
@@ -131,7 +139,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
 
         // "ST:<Zeit ns>:<Reset-Anzahl>:<letzter Reset ns>:<Systemtakt Hz>:<CPU-Zustand>:<halted 0/1>:
         //  <Befehle>:<PC hex>:<Funktion am PC>"
-        // CPU-Zustand: Running, Paused, InReset, Aborted, ...; halted = wartet (z. B. WFI);
+        // CPU-Zustand: Running, Paused, Step (Einzelschritt), Wake (Schritt über WFI, läuft bis zum
+        // nächsten Interrupt), InReset, Aborted, ...; halted = wartet (z. B. WFI);
         // Funktion = Symbol aus der ELF-Datei (leer, wenn unbekannt)
         public string GetStatus()
         {
@@ -144,8 +153,10 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 HookWfi(cpu);
                 state = cpu.ExecutionMode == ExecutionMode.SingleStep ? "Step"
-                      : machine.IsPaused ? "Paused" : cpu.EmulationState.ToString();
-                halted = cpu.IsHalted || inWfi;
+                      : machine.IsPaused ? "Paused"
+                      : haltOnWake ? "Wake"     // Schritt über WFI: läuft bis zum Aufwachen (StepCpu)
+                      : cpu.EmulationState.ToString();
+                halted = cpu.IsHalted || inWfi || enteringWfi;
                 instr = cpu.ExecutedInstructions;
                 pc = cpu.PC.RawValue;
                 string name;
@@ -270,6 +281,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             dcgc = new uint[RegisterCount];
             other = new Dictionary<long, uint>();
             rsclkcfg = pllfreq0 = pllfreq1 = 0;
+            // Nach dem Reset läuft die CPU ab dem Reset-Handler (kein WFI mehr); der Hook meldet das
+            // nicht von selbst
+            inWfi = false;
+            enteringWfi = false;
+            haltOnWake = false;
         }
 
         // Offsets und Feldwerte wie in tm4c1294ncpdt.h (SYSCTL_..._R, SYSCTL_DID0_..., SYSCTL_DID1_...);
@@ -300,15 +316,157 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private Dictionary<long, uint> other;
         private uint rsclkcfg, pllfreq0, pllfreq1;
         private readonly uint moscFrequency;
+        // ---- Einzelschritt wie am Debugger ------------------------------------------------------
+
+        // "sysbus.sysctl StepCpu <n> [<budgetMs>]" -> "SS:<erledigt>:<Zustand>:<PC hex>"
+        //   erledigt = abgearbeitete Schritte (<= n), Zustand:
+        //     ok   alle n Schritte erledigt, CPU hält an
+        //     more Zeitbudget (Wanduhr) aufgebraucht, CPU hält an – Rest mit neuem Aufruf
+        //     wfi  CPU schläft und ist bis zum Budgetende nicht aufgewacht: sie LÄUFT weiter (mit
+        //          aller Peripherie) und hält beim Aufwachen von selbst an (CancelStep bricht ab)
+        // Renodes "cpu Step" rechnet bei schlafender CPU (WFI) je Schritt nur eine Befehlszeit
+        // (1/PerformanceInMips, z. B. 91 ns) weiter – bis zum nächsten Timer-Interrupt wären
+        // Tausende bis Millionen Schritte nötig. Am echten Board endet der WFI-Befehl erst mit dem
+        // Interrupt. Deshalb hier: Schläft die CPU, läuft die ganze Simulation (Timer, UART, Pendel
+        // …) bis zum Aufwachen weiter; das Aufwachen zählt als ein Schritt, danach steht die CPU vor
+        // dem ersten Befehl der Interrupt-Routine.
+        public string StepCpu(int count, int budgetMs = 1500)
+        {
+            var tcpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault() as TranslationCPU;
+            if(tcpu == null) return "SS:0:err:00000000";
+            HookWfi(tcpu);
+            count = Math.Max(1, Math.Min(count, 100000));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            int done = 0;
+            string state = "ok";
+            while(done < count)
+            {
+                if(inWfi || enteringWfi)
+                {
+                    if(!RunUntilWake(tcpu, Math.Max(1, budgetMs - (int)watch.ElapsedMilliseconds)))
+                    {
+                        state = "wfi";
+                        break;
+                    }
+                    done++;
+                    continue;
+                }
+                if(watch.ElapsedMilliseconds >= budgetMs)
+                {
+                    state = "more";
+                    break;
+                }
+                // In Stücken, damit das Budget eingehalten wird und WFI bald erkannt wird. Gerät die
+                // CPU mitten im Stück in den WFI, verstreichen die restlichen Schritte als Schlafzeit
+                // (je eine Befehlszeit) – ein Interrupt in dieser Zeit weckt sie wie gewohnt. Gezählt
+                // werden nur wirklich ausgeführte Befehle.
+                int chunk = Math.Min(count - done, StepChunk);
+                ulong before = tcpu.ExecutedInstructions;
+                tcpu.Step(chunk);
+                int executed = (int)Math.Min((ulong)chunk, tcpu.ExecutedInstructions - before);
+                done += (inWfi || enteringWfi) ? executed : chunk;
+            }
+            return string.Format("SS:{0}:{1}:{2:X8}", done, state, tcpu.PC.RawValue);
+        }
+
+        // Wartendes "bis zum Aufwachen" (StepCpu mit Zustand wfi) aufheben, z. B. vor "Weiter"
+        public void CancelStep()
+        {
+            haltOnWake = false;
+        }
+
+        // Nach einem WFI meldet Renode das Einschlafen erst, wenn die CPU weiterrechnen will – im
+        // Einzelschritt also erst beim nächsten Schritt. Der WFI-Befehl selbst wird deshalb über einen
+        // Opcode-Hook erkannt (Thumb WFI = 0xBF30): "schläft gleich ein".
+        private const ulong WfiOpcode = 0xBF30;
+
+        // true = CPU ist aufgewacht und steht im Einzelschrittmodus; false = schläft noch nach
+        // waitMs Wanduhrzeit (läuft dann weiter und hält beim Aufwachen an)
+        private bool RunUntilWake(TranslationCPU tcpu, int waitMs)
+        {
+            woke.Reset();
+            haltOnWake = true;
+            if(enteringWfi)
+            {
+                // Schläft die CPU doch nicht ein (Interrupt schon anhängig), hält sie am Befehl danach
+                ArmStop(tcpu, tcpu.PC.RawValue);
+            }
+            tcpu.ExecutionMode = ExecutionMode.Continuous;
+            if(machine.IsPaused)
+            {
+                EmulationManager.Instance.CurrentEmulation.StartAll();
+            }
+            return woke.Wait(waitMs);
+        }
+
+        // Anhalten genau vor dem nächsten Befehl nach dem Aufwachen: Renode prüft den
+        // Einzelschrittmodus nur zwischen übersetzten Blöcken – die ganze Interrupt-Routine liefe
+        // sonst noch durch. Deshalb ein Adress-Hook (wie ein Haltepunkt des Debuggers) auf den
+        // Befehl hinter dem WFI und, wenn ein Interrupt angenommen wird, auf dessen Routine.
+        // Die Hooks bleiben stehen (wenige Adressen) und wirken nur, solange haltOnWake gesetzt ist:
+        // Renode übernimmt das Entfernen und erneute Setzen am selben Ort nicht zuverlässig.
+        private void ArmStop(TranslationCPU tcpu, ulong address)
+        {
+            lock(stopHooks)
+            {
+                if(stopHooks.Contains(address)) return;
+                stopHooks.Add(address);
+            }
+            tcpu.AddHook(address, stopHook);
+        }
+
+        private void OnStopHook(ICpuSupportingGdb cpu, ulong address)
+        {
+            if(!haltOnWake) return;
+            haltOnWake = false;
+            enteringWfi = false;
+            ((TranslationCPU)cpu).EnterSingleStepModeSafely(new HaltArguments(HaltReason.Step, cpu, address, null));
+            woke.Set();
+        }
+
+        private const ulong IcsrAddress = 0xE000ED04;   // NVIC_INT_CTRL_R
+
+        // Einsprungadresse der Ausnahme exception (Nummer wie INT_xxx, Vektortabelle ab VTOR)
+        private ulong HandlerAddress(TranslationCPU tcpu, ulong exception)
+        {
+            var cm = tcpu as CortexM;
+            ulong vtor = cm != null ? cm.VectorTableOffset : 0;
+            return machine.SystemBus.ReadDoubleWord(vtor + 4 * exception) & ~1UL;
+        }
+
         // WFI (CPU schläft bis zum nächsten Interrupt) meldet Renode nur über einen Hook
         private void HookWfi(ICPU cpu)
         {
             if(wfiHooked) return;
             var tcpu = cpu as TranslationCPU;
             if(tcpu == null) return;
-            tcpu.AddHookAtWfiStateChange(isInWfi => inWfi = isInWfi);
+            stopHook = OnStopHook;
+            tcpu.AddPostOpcodeExecutionHook(0xFFFF, WfiOpcode, (pc, opcode) => enteringWfi = true);
+            tcpu.EnablePostOpcodeExecutionHooks(true);
+            tcpu.AddHookAtWfiStateChange(isInWfi =>
+            {
+                inWfi = isInWfi;
+                enteringWfi = false;
+                if(!isInWfi && haltOnWake) ArmStop(tcpu, tcpu.PC.RawValue);
+            });
+            // Der Parameter ist Renodes interne Ausnahmeart (IRQ = 5), nicht die Vektornummer;
+            // welche Ausnahme angenommen wird, steht in ICSR.VECTPENDING
+            tcpu.AddHookAtInterruptBegin(kind =>
+            {
+                enteringWfi = false;
+                if(!haltOnWake) return;
+                uint vector = (machine.SystemBus.ReadDoubleWord(IcsrAddress) >> 12) & 0x1FF;
+                if(vector != 0) ArmStop(tcpu, HandlerAddress(tcpu, vector));
+            });
             wfiHooked = true;
         }
+
+        private CpuAddressHook stopHook;
+        private readonly HashSet<ulong> stopHooks = new HashSet<ulong>();
+        private const int StepChunk = 50;
+        private readonly System.Threading.ManualResetEventSlim woke = new System.Threading.ManualResetEventSlim(false);
+        private volatile bool haltOnWake;
+        private volatile bool enteringWfi;
 
         [ThreadStatic] private static bool peeking;
         [ThreadStatic] private static bool peekNoClock;

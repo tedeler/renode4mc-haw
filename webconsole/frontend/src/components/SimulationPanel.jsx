@@ -28,6 +28,7 @@ const STATES = {
   Running: ['läuft', 'sim-ok'],
   Paused: ['angehalten', 'sim-warn'],
   Step: ['angehalten (Einzelschritt)', 'sim-warn'],
+  Wake: ['Schritt: läuft bis zum nächsten Interrupt (CPU schläft)', 'sim-warn'],
   InReset: ['im Reset', 'sim-warn'],
   Aborted: ['abgebrochen', 'sim-bad'],
   Halted: ['angehalten', 'sim-warn'],
@@ -430,7 +431,11 @@ export default function SimulationPanel({ debug = false }) {
             ))}
           </select>
           {stopped && sim.cpu && sim.cpu.halted && (
-            <span className="sim-warn">CPU schläft (WFI): ein Schritt wartet auf den nächsten Interrupt</span>
+            <span className="sim-warn">
+              {sim.cpu.state === 'Wake'
+                ? 'Schritt läuft: Simulation wartet auf den nächsten Interrupt …'
+                : 'CPU schläft (WFI): ein Schritt läuft bis zum nächsten Interrupt'}
+            </span>
           )}
         </div>
       )}
