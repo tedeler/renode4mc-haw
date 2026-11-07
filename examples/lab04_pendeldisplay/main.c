@@ -26,103 +26,47 @@
  *   Eine halbe Periode nach jeder Flanke läuft das Pendel wieder durch die Mitte, diesmal in
  *   der anderen Richtung. Um diesen Zeitpunkt herum wird eine Bildzeile "geschrieben".
  *
- * Alle Adressen stammen aus dem Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
+ * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
+#include "tm4c1294ncpdt.h"
 
-#define REG(adresse)        (*(volatile uint32_t *)(adresse))
 #define SYSTEM_CLOCK_HZ     16000000u
 
 /* ---------------------------------------------------------------------------------------------
- * Register
+ * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h.
+ * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Pin-Funktionen, IRQs).
  * ------------------------------------------------------------------------------------------- */
-/* System Control */
-#define SYSCTL_RCGCTIMER    REG(0x400FE000 + 0x604)
-#define SYSCTL_RCGCGPIO     REG(0x400FE000 + 0x608)
-#define SYSCTL_RCGCUART     REG(0x400FE000 + 0x618)
-#define SYSCTL_RCGCI2C      REG(0x400FE000 + 0x620)
-#define SYSCTL_PRTIMER      REG(0x400FE000 + 0xA04)
-#define SYSCTL_PRGPIO       REG(0x400FE000 + 0xA08)
-#define SYSCTL_PRUART       REG(0x400FE000 + 0xA18)
-#define SYSCTL_PRI2C        REG(0x400FE000 + 0xA20)
+/* Bits der benutzten Module in RCGC... bzw. PR... */
+#define PORTS_TAKT          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R10 | \
+                             SYSCTL_RCGCGPIO_R11 | SYSCTL_RCGCGPIO_R12)            /* A, B, L, M, N */
+#define PORTS_BEREIT        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R10 | \
+                             SYSCTL_PRGPIO_R11 | SYSCTL_PRGPIO_R12)
+#define TIMER_TAKT          (SYSCTL_RCGCTIMER_R0 | SYSCTL_RCGCTIMER_R1 | SYSCTL_RCGCTIMER_R2)
+#define TIMER_BEREIT        (SYSCTL_PRTIMER_R0 | SYSCTL_PRTIMER_R1 | SYSCTL_PRTIMER_R2)
 
-/* GPIO: Register-Offsets (gleich für alle Ports) */
-#define GPIO_DATA(base)     REG((base) + 0x3FC)            /* alle 8 Bits */
-#define GPIO_DATA_M(base,m) REG((base) + ((m) << 2))       /* nur die Bits in Maske m */
-#define GPIO_DIR(base)      REG((base) + 0x400)
-#define GPIO_IS(base)       REG((base) + 0x404)
-#define GPIO_IBE(base)      REG((base) + 0x408)
-#define GPIO_IM(base)       REG((base) + 0x410)
-#define GPIO_MIS(base)      REG((base) + 0x418)
-#define GPIO_ICR(base)      REG((base) + 0x41C)
-#define GPIO_AFSEL(base)    REG((base) + 0x420)
-#define GPIO_ODR(base)      REG((base) + 0x50C)
-#define GPIO_DEN(base)      REG((base) + 0x51C)
-#define GPIO_PCTL(base)     REG((base) + 0x52C)
+/* GPIOPCTL: je 4 Bit pro Pin wählen die alternative Funktion (Datenblatt, Tabelle
+ * "GPIO Pins and Alternate Functions"). Dafür hat die Headerdatei keine Konstanten. */
+#define PCTL_MASKE(pin)     (0xFu << (4u * (pin)))
+#define PCTL_FUNKTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
+#define PCTL_UART0          1u                 /* PA0 = U0RX, PA1 = U0TX */
+#define PCTL_I2C0           2u                 /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 
-#define GPIOA_BASE          0x40058000u
-#define GPIOB_BASE          0x40059000u
-#define GPIOL_BASE          0x40062000u
-#define GPIOM_BASE          0x40063000u
-#define GPION_BASE          0x40064000u
-
-/* Bitnummern der Ports in RCGCGPIO/PRGPIO */
-#define PORT_A              (1u << 0)
-#define PORT_B              (1u << 1)
-#define PORT_L              (1u << 10)
-#define PORT_M              (1u << 11)
-#define PORT_N              (1u << 12)
-
-/* UART0 */
-#define UART0_BASE          0x4000C000u
-#define UART0_DR            REG(UART0_BASE + 0x000)
-#define UART0_FR            REG(UART0_BASE + 0x018)
-#define UART0_IBRD          REG(UART0_BASE + 0x024)
-#define UART0_FBRD          REG(UART0_BASE + 0x028)
-#define UART0_LCRH          REG(UART0_BASE + 0x02C)
-#define UART0_CTL           REG(UART0_BASE + 0x030)
-#define UART0_CC            REG(UART0_BASE + 0xFC8)
-#define UART_FR_TXFF        (1u << 5)
-
-/* I2C0 (Master) */
-#define I2C0_BASE           0x40020000u
-#define I2C0_MSA            REG(I2C0_BASE + 0x000)
-#define I2C0_MCS            REG(I2C0_BASE + 0x004)
-#define I2C0_MDR            REG(I2C0_BASE + 0x008)
-#define I2C0_MTPR           REG(I2C0_BASE + 0x00C)
-#define I2C0_MCR            REG(I2C0_BASE + 0x020)
-#define I2C_MCS_RUN         (1u << 0)
-#define I2C_MCS_START       (1u << 1)
-#define I2C_MCS_STOP        (1u << 2)
-#define I2C_MCS_ACK         (1u << 3)
-#define I2C_MCS_BUSY        (1u << 0)
-#define I2C_MCS_ERROR       (1u << 1)
-
-/* Timer: Register-Offsets (gleich für alle Timer) */
-#define TIMER_CFG(base)     REG((base) + 0x000)
-#define TIMER_TAMR(base)    REG((base) + 0x004)
-#define TIMER_CTL(base)     REG((base) + 0x00C)
-#define TIMER_IMR(base)     REG((base) + 0x018)
-#define TIMER_ICR(base)     REG((base) + 0x024)
-#define TIMER_TAILR(base)   REG((base) + 0x028)
-#define TIMER_TAV(base)     REG((base) + 0x050)            /* aktueller Zählerstand */
-
-#define TIMER0_BASE         0x40030000u
-#define TIMER1_BASE         0x40031000u
-#define TIMER2_BASE         0x40032000u
-
-/* NVIC */
-#define NVIC_ISER0          REG(0xE000E100)    /* IRQ 0..31 */
-#define NVIC_ISER1          REG(0xE000E104)    /* IRQ 32..63 */
-#define IRQ_TIMER0A         19u
-#define IRQ_TIMER1A         21u
-#define IRQ_GPIOL           53u
+/* NVIC: INT_... aus der Headerdatei ist die Nummer in der Vektortabelle; der NVIC zählt
+ * ab dem ersten Peripherie-Interrupt (Eintrag 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
+#define IRQ_TIMER0A         (INT_TIMER0A - 16u)   /* 19 */
+#define IRQ_TIMER1A         (INT_TIMER1A - 16u)   /* 21 */
+#define IRQ_GPIOL           (INT_GPIOL - 16u)     /* 53 */
 
 /* Pins */
 #define LED_D2              (1u << 0)          /* PN0 */
 #define PENDEL_SYNC         (1u << 0)          /* PL0 */
 #define PENDEL_LEDS         0xFFu              /* PM0..PM7 */
+#define UART_PINS           0x03u              /* PA0 = U0RX, PA1 = U0TX */
+#define I2C_PINS            0x0Cu              /* PB2 = I2C0SCL, PB3 = I2C0SDA */
+#define I2C_SDA             0x08u              /* PB3 */
 
 /* Geräteadresse am I2C-Bus (7 Bit) */
 #define SONAR_ADDR          0x70u
@@ -185,13 +129,13 @@ static void zeitplan_berechnen(uint32_t takte)
 static void spaltentimer_auf(uint32_t k)
 {
     uint32_t ziel = mitte - (uint32_t)spaltenTakte[k];
-    int32_t warten = (int32_t)(TIMER_TAV(TIMER2_BASE) - ziel);
+    int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);
     if (warten < 16)
     {
         warten = 16;                                       /* schon vorbei: sofort weiter */
     }
-    TIMER_TAILR(TIMER1_BASE) = (uint32_t)warten - 1u;
-    TIMER_CTL(TIMER1_BASE) |= 1u;                          /* TAEN */
+    TIMER1_TAILR_R = (uint32_t)warten - 1u;
+    TIMER1_CTL_R |= TIMER_CTL_TAEN;
 }
 
 /* Statistik für die UART-Ausgabe */
@@ -204,7 +148,7 @@ static volatile uint32_t ticks;            /* 100-ms-Zähler (Timer0A) */
 
 void TIMER0A_Handler(void)
 {
-    TIMER_ICR(TIMER0_BASE) = 1u;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
     ticks++;
 }
 
@@ -219,13 +163,13 @@ void TIMER0A_Handler(void)
 static void schwung_planen(void)
 {
     mitte = letzteKante - periode / 2u;                    /* eine halbe Periode nach der Flanke */
-    int32_t bisStart = (int32_t)(TIMER_TAV(TIMER2_BASE) - (mitte - (uint32_t)spaltenTakte[0]));
+    int32_t bisStart = (int32_t)(TIMER2_TAV_R - (mitte - (uint32_t)spaltenTakte[0]));
     if (bisStart < 100)
     {
         laeuft = false;                                    /* zu spät: auf die nächste Flanke warten */
         return;
     }
-    nachLinks = (GPIO_DATA_M(GPIOL_BASE, PENDEL_SYNC) & PENDEL_SYNC) != 0;
+    nachLinks = (GPIO_PORTL_DATA_BITS_R[PENDEL_SYNC] & PENDEL_SYNC) != 0;
     spalte = 0;
     laeuft = true;
     spaltentimer_auf(0);
@@ -237,8 +181,8 @@ void GPIOL_Handler(void)
     static bool gemessen;                                  /* schon eine Flanke gesehen */
     static bool gemeldet;                                  /* Periode schon per UART gemeldet */
 
-    uint32_t jetzt = TIMER_TAV(TIMER2_BASE);               /* Timer2 zählt abwärts */
-    GPIO_ICR(GPIOL_BASE) = PENDEL_SYNC;
+    uint32_t jetzt = TIMER2_TAV_R;               /* Timer2 zählt abwärts */
+    GPIO_PORTL_ICR_R = PENDEL_SYNC;
 
     /*
      * Periode = 2 x Abstand zweier aufeinanderfolgender Flanken (eine halbe Schwingung).
@@ -273,16 +217,16 @@ void GPIOL_Handler(void)
 /* Einmal-Timer: jetzt beginnt die nächste Spalte */
 void TIMER1A_Handler(void)
 {
-    TIMER_ICR(TIMER1_BASE) = 1u;
+    TIMER1_ICR_R = TIMER_ICR_TATOCINT;
 
     if (spalte >= SPALTEN)
     {
-        GPIO_DATA(GPIOM_BASE) = 0;                         /* Bild zu Ende: LEDs aus ... */
+        GPIO_PORTM_DATA_R = 0;                         /* Bild zu Ende: LEDs aus ... */
         schwung_planen();                                  /* ... und den nächsten Schwung planen */
         return;
     }
     uint32_t index = nachLinks ? (SPALTEN - 1u - spalte) : spalte;
-    GPIO_DATA(GPIOM_BASE) = bild[index];
+    GPIO_PORTM_DATA_R = bild[index];
     spalte++;
     spaltentimer_auf(spalte);
 }
@@ -290,26 +234,30 @@ void TIMER1A_Handler(void)
 /* ---------------------------------------------------------------------------------------------
  * UART0: 115200 Baud bei 16 MHz -> IBRD = 8, FBRD = 44 (siehe Lab 03)
  * ------------------------------------------------------------------------------------------- */
+#define UART_IBRD_WERT      8u
+#define UART_FBRD_WERT      44u
+
 static void uart_init(void)
 {
-    GPIO_AFSEL(GPIOA_BASE) |= 0x03u;
-    GPIO_PCTL(GPIOA_BASE) = (GPIO_PCTL(GPIOA_BASE) & ~0xFFu) | 0x11u;
-    GPIO_DEN(GPIOA_BASE) |= 0x03u;
+    GPIO_PORTA_AHB_AFSEL_R |= UART_PINS;
+    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASKE(0) | PCTL_MASKE(1)))
+                          | PCTL_FUNKTION(0, PCTL_UART0) | PCTL_FUNKTION(1, PCTL_UART0);
+    GPIO_PORTA_AHB_DEN_R |= UART_PINS;
 
-    UART0_CTL = 0;
-    UART0_CC = 0;
-    UART0_IBRD = 8;
-    UART0_FBRD = 44;
-    UART0_LCRH = (0x3u << 5) | (1u << 4);
-    UART0_CTL = (1u << 0) | (1u << 8) | (1u << 9);
+    UART0_CTL_R = 0;
+    UART0_CC_R = UART_CC_CS_SYSCLK;
+    UART0_IBRD_R = UART_IBRD_WERT;
+    UART0_FBRD_R = UART_FBRD_WERT;
+    UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN;
+    UART0_CTL_R = UART_CTL_UARTEN | UART_CTL_TXE | UART_CTL_RXE;
 }
 
 static void uart_putc(char c)
 {
-    while (UART0_FR & UART_FR_TXFF)
+    while (UART0_FR_R & UART_FR_TXFF)
     {
     }
-    UART0_DR = (uint8_t)c;
+    UART0_DR_R = (uint8_t)c;
 }
 
 static void uart_puts(const char *s)
@@ -345,38 +293,41 @@ static int utoa(uint32_t wert, char *ziel)
 /* ---------------------------------------------------------------------------------------------
  * I2C0 als Master, 100 kHz (siehe Lab 03)
  * ------------------------------------------------------------------------------------------- */
+#define I2C_TPR_WERT        7u
+
 static void i2c_init(void)
 {
-    GPIO_AFSEL(GPIOB_BASE) |= 0x0Cu;
-    GPIO_ODR(GPIOB_BASE) |= 0x08u;
-    GPIO_PCTL(GPIOB_BASE) = (GPIO_PCTL(GPIOB_BASE) & ~0xFF00u) | 0x2200u;
-    GPIO_DEN(GPIOB_BASE) |= 0x0Cu;
+    GPIO_PORTB_AHB_AFSEL_R |= I2C_PINS;
+    GPIO_PORTB_AHB_ODR_R |= I2C_SDA;
+    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASKE(2) | PCTL_MASKE(3)))
+                          | PCTL_FUNKTION(2, PCTL_I2C0) | PCTL_FUNKTION(3, PCTL_I2C0);
+    GPIO_PORTB_AHB_DEN_R |= I2C_PINS;
 
-    I2C0_MCR = 0x10u;
-    I2C0_MTPR = 7u;
+    I2C0_MCR_R = I2C_MCR_MFE;
+    I2C0_MTPR_R = I2C_TPR_WERT;
 }
 
 static bool i2c_wait(void)
 {
-    while (I2C0_MCS & I2C_MCS_BUSY)
+    while (I2C0_MCS_R & I2C_MCS_BUSY)
     {
     }
-    return (I2C0_MCS & I2C_MCS_ERROR) == 0;
+    return (I2C0_MCS_R & I2C_MCS_ERROR) == 0;
 }
 
 static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
 {
-    I2C0_MSA = (uint32_t)addr << 1;
+    I2C0_MSA_R = (uint32_t)addr << I2C_MSA_SA_S;
     for (uint32_t i = 0; i < n; i++)
     {
-        I2C0_MDR = daten[i];
+        I2C0_MDR_R = daten[i];
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i == n - 1) cmd |= I2C_MCS_STOP;
-        I2C0_MCS = cmd;
+        I2C0_MCS_R = cmd;
         if (!i2c_wait())
         {
-            I2C0_MCS = I2C_MCS_STOP;
+            I2C0_MCS_R = I2C_MCS_STOP;
             return false;
         }
     }
@@ -385,20 +336,20 @@ static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
 
 static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
 {
-    I2C0_MSA = ((uint32_t)addr << 1) | 1u;
+    I2C0_MSA_R = ((uint32_t)addr << I2C_MSA_SA_S) | I2C_MSA_RS;
     for (uint32_t i = 0; i < n; i++)
     {
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i < n - 1)  cmd |= I2C_MCS_ACK;
         else            cmd |= I2C_MCS_STOP;
-        I2C0_MCS = cmd;
+        I2C0_MCS_R = cmd;
         if (!i2c_wait())
         {
-            I2C0_MCS = I2C_MCS_STOP;
+            I2C0_MCS_R = I2C_MCS_STOP;
             return false;
         }
-        daten[i] = (uint8_t)I2C0_MDR;
+        daten[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
     }
     return true;
 }
@@ -480,72 +431,70 @@ static void bild_text(const char *text)
  * ------------------------------------------------------------------------------------------- */
 int main(void)
 {
-    const uint32_t ports = PORT_A | PORT_B | PORT_L | PORT_M | PORT_N;
-    const uint32_t timer = (1u << 0) | (1u << 1) | (1u << 2);
-    SYSCTL_RCGCGPIO |= ports;
-    SYSCTL_RCGCUART |= 1u << 0;
-    SYSCTL_RCGCI2C |= 1u << 0;
-    SYSCTL_RCGCTIMER |= timer;
-    while ((SYSCTL_PRGPIO & ports) != ports || (SYSCTL_PRUART & 1u) == 0 ||
-           (SYSCTL_PRI2C & 1u) == 0 || (SYSCTL_PRTIMER & timer) != timer)
+    SYSCTL_RCGCGPIO_R |= PORTS_TAKT;
+    SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
+    SYSCTL_RCGCI2C_R |= SYSCTL_RCGCI2C_R0;
+    SYSCTL_RCGCTIMER_R |= TIMER_TAKT;
+    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
+           (SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0 || (SYSCTL_PRTIMER_R & TIMER_BEREIT) != TIMER_BEREIT)
     {
     }
 
     /* LED D2 (Herzschlag) */
-    GPIO_DIR(GPION_BASE) |= LED_D2;
-    GPIO_DEN(GPION_BASE) |= LED_D2;
+    GPIO_PORTN_DIR_R |= LED_D2;
+    GPIO_PORTN_DEN_R |= LED_D2;
 
     /* Pendel-LEDs: ganzer Port M als Ausgang */
-    GPIO_DIR(GPIOM_BASE) |= PENDEL_LEDS;
-    GPIO_DEN(GPIOM_BASE) |= PENDEL_LEDS;
-    GPIO_DATA(GPIOM_BASE) = 0;
+    GPIO_PORTM_DIR_R |= PENDEL_LEDS;
+    GPIO_PORTM_DEN_R |= PENDEL_LEDS;
+    GPIO_PORTM_DATA_R = 0;
 
     /* Pendel-Signal PL0: Eingang, Interrupt bei beiden Flanken */
-    GPIO_DIR(GPIOL_BASE) &= ~PENDEL_SYNC;
-    GPIO_DEN(GPIOL_BASE) |= PENDEL_SYNC;
-    GPIO_IS(GPIOL_BASE) &= ~PENDEL_SYNC;                  /* Flanke */
-    GPIO_IBE(GPIOL_BASE) |= PENDEL_SYNC;                  /* beide Flanken */
-    GPIO_ICR(GPIOL_BASE) = PENDEL_SYNC;
-    GPIO_IM(GPIOL_BASE) |= PENDEL_SYNC;
+    GPIO_PORTL_DIR_R &= ~PENDEL_SYNC;
+    GPIO_PORTL_DEN_R |= PENDEL_SYNC;
+    GPIO_PORTL_IS_R &= ~PENDEL_SYNC;                  /* Flanke */
+    GPIO_PORTL_IBE_R |= PENDEL_SYNC;                  /* beide Flanken */
+    GPIO_PORTL_ICR_R = PENDEL_SYNC;
+    GPIO_PORTL_IM_R |= PENDEL_SYNC;
 
     uart_init();
     i2c_init();
 
     /* Timer0A: 100 ms periodisch (Sensor, Herzschlag) */
-    TIMER_CTL(TIMER0_BASE) = 0;
-    TIMER_CFG(TIMER0_BASE) = 0;
-    TIMER_TAMR(TIMER0_BASE) = 0x2u;                        /* periodisch */
-    TIMER_TAILR(TIMER0_BASE) = SYSTEM_CLOCK_HZ / 10u - 1u;
-    TIMER_ICR(TIMER0_BASE) = 1u;
-    TIMER_IMR(TIMER0_BASE) |= 1u;
+    TIMER0_CTL_R = 0;
+    TIMER0_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER0_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
+    TIMER0_TAILR_R = SYSTEM_CLOCK_HZ / 10u - 1u;
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;
+    TIMER0_IMR_R |= TIMER_IMR_TATOIM;
 
     /* Timer1A: Einmal-Timer für die Spalten (wird in den ISRs gestartet) */
-    TIMER_CTL(TIMER1_BASE) = 0;
-    TIMER_CFG(TIMER1_BASE) = 0;
-    TIMER_TAMR(TIMER1_BASE) = 0x1u;                        /* Einmal-Modus */
-    TIMER_ICR(TIMER1_BASE) = 1u;
-    TIMER_IMR(TIMER1_BASE) |= 1u;
+    TIMER1_CTL_R = 0;
+    TIMER1_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER1_TAMR_R = TIMER_TAMR_TAMR_1_SHOT;
+    TIMER1_ICR_R = TIMER_ICR_TATOCINT;
+    TIMER1_IMR_R |= TIMER_IMR_TATOIM;
 
     /* Timer2A: freilaufend (32 Bit, periodisch, ohne Interrupt) als Zeitbasis */
-    TIMER_CTL(TIMER2_BASE) = 0;
-    TIMER_CFG(TIMER2_BASE) = 0;
-    TIMER_TAMR(TIMER2_BASE) = 0x2u;
-    TIMER_TAILR(TIMER2_BASE) = 0xFFFFFFFFu;
-    TIMER_CTL(TIMER2_BASE) |= 1u;
+    TIMER2_CTL_R = 0;
+    TIMER2_CFG_R = TIMER_CFG_32_BIT_TIMER;
+    TIMER2_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
+    TIMER2_TAILR_R = TIMER_TAILR_M;               /* größter Startwert: läuft ~268 s */
+    TIMER2_CTL_R |= TIMER_CTL_TAEN;
 
     zeitplan_berechnen(periode);
     bild_text("---");
 
-    NVIC_ISER0 = (1u << IRQ_TIMER0A) | (1u << IRQ_TIMER1A);
-    NVIC_ISER1 = 1u << (IRQ_GPIOL - 32u);
+    NVIC_EN0_R = (1u << IRQ_TIMER0A) | (1u << IRQ_TIMER1A);
+    NVIC_EN1_R = 1u << (IRQ_GPIOL - 32u);
     __asm volatile("cpsie i");
-    TIMER_CTL(TIMER0_BASE) |= 1u;
+    TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
     uart_puts("\nrenode4mc-haw - Lab 04 Pendeldisplay\n");
     uart_puts("Abstand am Sensor einstellen; er erscheint auf dem Pendel und hier.\n");
 
     uint32_t letzterTick = 0;
-    uint32_t abstand = 0xFFFFFFFFu;
+    uint32_t abstand = UINT32_MAX;              /* noch kein Messwert */
     char text[16];
 
     while (1)
@@ -556,7 +505,7 @@ int main(void)
 
             if (letzterTick % 5u == 0u)
             {
-                GPIO_DATA_M(GPION_BASE, LED_D2) ^= LED_D2;            /* D2: 1 Hz */
+                GPIO_PORTN_DATA_BITS_R[LED_D2] ^= LED_D2;            /* D2: 1 Hz */
             }
 
             if (letzterTick % 2u == 0u)

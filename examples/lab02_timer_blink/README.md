@@ -31,45 +31,50 @@ währenddessen schlafen. Erst im **Simulator**, dann auf dem **echten Board**.
 
 ## 2. Das Programm verstehen (`main.c`)
 
-Alle Registeradressen stehen oben in `main.c` als `#define`. Jede Adresse ist **Basisadresse + Offset**
-aus dem Datenblatt (Kapitel „General-Purpose Timers“, Registerübersicht).
+Registernamen und Bitkonstanten kommen wie in Lab 01 aus `tm4c1294ncpdt.h` (siehe Datenblatt,
+Kapitel „General-Purpose Timers“, Registerübersicht). Im Programm steht keine Adresse.
 
-| Register | Adresse | Wirkung hier |
-|---|---|---|
-| `RCGCTIMER` | `0x400FE604` | Bit 0 = 1: Timer0 bekommt Takt |
-| `PRTIMER` | `0x400FEA04` | Bit 0 = 1: Timer0 ist bereit |
-| `GPTMCFG` | `0x40030000` | 0 = ein 32-Bit-Timer |
-| `GPTMTAMR` | `0x40030004` | Bits 1:0 = 2: periodisch (zählt abwärts) |
-| `GPTMCTL` | `0x4003000C` | Bit 0 (`TAEN`) = 1: Timer läuft |
-| `GPTMIMR` | `0x40030018` | Bit 0 (`TATOIM`) = 1: Time-out löst Interrupt aus |
-| `GPTMICR` | `0x40030024` | Bit 0 = 1 schreiben: Time-out-Flag löschen |
-| `GPTMTAILR` | `0x40030028` | Startwert |
-| `NVIC ISER0` | `0xE000E100` | Bit 19 = 1: Interrupt Nr. 19 (Timer0A) freigeben |
+| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+|---|---|---|---|
+| `RCGCTIMER` | `SYSCTL_RCGCTIMER_R` | `0x400FE604` | `SYSCTL_RCGCTIMER_R0` (Bit 0): Timer0 bekommt Takt |
+| `PRTIMER` | `SYSCTL_PRTIMER_R` | `0x400FEA04` | `SYSCTL_PRTIMER_R0` (Bit 0): Timer0 ist bereit |
+| `GPTMCFG` | `TIMER0_CFG_R` | `0x40030000` | `TIMER_CFG_32_BIT_TIMER` (0): ein 32-Bit-Timer |
+| `GPTMTAMR` | `TIMER0_TAMR_R` | `0x40030004` | `TIMER_TAMR_TAMR_PERIOD` (Bits 1:0 = 2): periodisch (zählt abwärts) |
+| `GPTMCTL` | `TIMER0_CTL_R` | `0x4003000C` | `TIMER_CTL_TAEN` (Bit 0): Timer läuft |
+| `GPTMIMR` | `TIMER0_IMR_R` | `0x40030018` | `TIMER_IMR_TATOIM` (Bit 0): Time-out löst Interrupt aus |
+| `GPTMICR` | `TIMER0_ICR_R` | `0x40030024` | `TIMER_ICR_TATOCINT` (Bit 0) schreiben: Time-out-Flag löschen |
+| `GPTMTAILR` | `TIMER0_TAILR_R` | `0x40030028` | Startwert |
+| NVIC `EN0` | `NVIC_EN0_R` | `0xE000E100` | Bit 19 = 1: Interrupt Nr. 19 (Timer0A) freigeben |
+
+**Interrupt-Nummer:** Die Headerdatei zählt die Einträge der Vektortabelle: `INT_TIMER0A` = 35.
+Die ersten 16 Einträge sind Prozessor-Ausnahmen (Reset, HardFault, SysTick …), im NVIC ist
+Timer0A deshalb der Interrupt 35 − 16 = **19** (`IRQ_TIMER0A` in `main.c`).
 
 Startwert für 0,5 s: **16 000 000 Takte/s × 0,5 s = 8 000 000** Takte. Der Timer zählt
 von `Startwert` bis 0, das sind `Startwert + 1` Takte; deshalb `8 000 000 − 1`.
 
 ```c
-SYSCTL_RCGCGPIO  |= PORT_N;                    // Takt für Port N
-SYSCTL_RCGCTIMER |= 1;                         // Takt für Timer0
-while ((SYSCTL_PRGPIO & PORT_N) == 0 || (SYSCTL_PRTIMER & 1) == 0) {}   // bereit?
-GPION_DIR |= PIN1;  GPION_DEN |= PIN1;         // PN1 = digitaler Ausgang
+SYSCTL_RCGCGPIO_R  |= PORT_N;                  // Takt für Port N
+SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R0;     // Takt für Timer0
+while ((SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R12) == 0 ||
+       (SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R0) == 0) {}                  // bereit?
+GPIO_PORTN_DIR_R |= PIN1;  GPIO_PORTN_DEN_R |= PIN1;   // PN1 = digitaler Ausgang
 
-TIMER0_CTL   = 0;                              // Timer zum Konfigurieren ausschalten
-TIMER0_CFG   = 0;                              // 32 Bit
-TIMER0_TAMR  = 2;                              // periodisch
-TIMER0_TAILR = 8000000 - 1;                    // 0,5 s
-TIMER0_IMR  |= 1;                              // Schalter 1: im Timer
-NVIC_ISER0   = 1u << 19;                       // Schalter 2: im NVIC
+TIMER0_CTL_R   = 0;                            // Timer zum Konfigurieren ausschalten
+TIMER0_CFG_R   = TIMER_CFG_32_BIT_TIMER;       // 32 Bit
+TIMER0_TAMR_R  = TIMER_TAMR_TAMR_PERIOD;       // periodisch
+TIMER0_TAILR_R = 8000000 - 1;                  // 0,5 s
+TIMER0_IMR_R  |= TIMER_IMR_TATOIM;             // Schalter 1: im Timer
+NVIC_EN0_R     = 1u << IRQ_TIMER0A;            // Schalter 2: im NVIC (Bit 19)
 __asm volatile("cpsie i");                     // Schalter 3: in der CPU
-TIMER0_CTL  |= 1;                              // los!
+TIMER0_CTL_R  |= TIMER_CTL_TAEN;               // los!
 
 while (1) { __asm volatile("wfi"); }           // CPU schläft bis zum Interrupt
 
 void TIMER0A_Handler(void)                     // die ISR
 {
-    TIMER0_ICR = 1;                            // Flag löschen
-    GPION_DATA ^= PIN1;                        // PN1 umschalten
+    TIMER0_ICR_R = TIMER_ICR_TATOCINT;         // Flag löschen
+    GPIO_PORTN_DATA_R ^= PIN1;                 // PN1 umschalten
 }
 ```
 
@@ -93,8 +98,8 @@ Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer).
 ### Selbst ausprobieren
 
 - Ändern Sie `/ 2u` in `/ 10u` (0,1 s): `make`, `ucsim` neu starten.
-- Entfernen Sie die Zeile `TIMER0_ICR = ICR_TATOCINT;` in der ISR: Sie wird dauernd neu aufgerufen (die LED flimmert). Warum?
-- Entfernen Sie `SYSCTL_RCGCTIMER |= …`: Der Simulator warnt
+- Entfernen Sie die Zeile `TIMER0_ICR_R = TIMER_ICR_TATOCINT;` in der ISR: Sie wird dauernd neu aufgerufen (die LED flimmert). Warum?
+- Entfernen Sie `SYSCTL_RCGCTIMER_R |= …`: Der Simulator warnt
   *„Timer: Zugriff ohne Takt!“*.
 
 ### Debuggen im Simulator (Haltepunkt in der ISR)
@@ -119,7 +124,7 @@ gdb-multiarch lab02_timer_blink.out       # Terminal 2
    Ohne Oberfläche: `tools/ccs-import.sh examples/lab02_timer_blink`.
 2. **Bauen:** Rechtsklick auf das Projekt → **Build Project**; am Ende **0 errors**.
 3. **Board:** USB am Port **DEBUG**; **Run → Debug**; dann **Resume**. **D1** blinkt.
-4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `GPION_DATA ^= PIN1;` in
+4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `GPIO_PORTN_DATA_R ^= PIN1;` in
    `TIMER0A_Handler`, dann Resume – CCS hält bei jedem Interrupt an.
    Im Fenster **Registers** sehen Sie die Timer0-Register (`GPTM`), z. B. `GPTMRIS`.
 5. **Alternativ ohne CCS:** `.out`-Datei im Terminal laden (nach `sudo apt install openocd`):
