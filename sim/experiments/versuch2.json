@@ -16,5 +16,28 @@
     "frequency": 10,
     "minFrequency": 0.1,
     "maxFrequency": 20
+  },
+  "scope": {
+    "signals": [
+      { "pin": "PL0", "label": "Pendel Sync (HIGH = rechts)" },
+      { "pin": "PM0", "label": "Pendel-LED 0 (Spitze)" },
+      { "pin": "PM1", "label": "Pendel-LED 1" },
+      { "pin": "PM2", "label": "Pendel-LED 2" },
+      { "pin": "PM3", "label": "Pendel-LED 3" },
+      { "pin": "PM4", "label": "Pendel-LED 4" },
+      { "pin": "PM5", "label": "Pendel-LED 5" },
+      { "pin": "PM6", "label": "Pendel-LED 6" },
+      { "pin": "PM7", "label": "Pendel-LED 7" },
+      { "pin": "PN1", "label": "LED D1" },
+      { "pin": "PN0", "label": "LED D2" },
+      { "pin": "PF4", "label": "LED D3" },
+      { "pin": "PF0", "label": "LED D4" },
+      { "pin": "PJ0", "label": "USR_SW1" },
+      { "pin": "PJ1", "label": "USR_SW2" },
+      { "pin": "PA0", "label": "U0RX (vom Terminal)" },
+      { "pin": "PA1", "label": "U0TX (zum Terminal)" }
+    ],
+    "channels": ["PL0", "PM0", "PM7", "PA1"],
+    "trigger": { "source": "PL0", "edge": "rising" }
   }
 }

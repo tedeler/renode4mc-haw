@@ -21,6 +21,10 @@
 //    eingestellt. Passt die Konfiguration der Firmware nicht (Baudrate mehr als BaudTolerance
 //    daneben oder anderes Format), kommt wie auf dem Board Zeichensalat an – in beide Richtungen.
 //
+// Oszilloskop: Mit ConnectPins übernimmt der UART die Pins (Ruhepegel HIGH) und gibt jeden Rahmen als
+// Bitstrom aus – TX mit Baudrate und Format der Firmware, RX mit der Einstellung des Terminals. Weil das
+// Modell sofort sendet, werden aufeinanderfolgende TX-Rahmen im Leitungstakt aneinandergereiht.
+//
 // Anschluss im Renode-Monitor, z. B.:
 //   emulation CreateServerSocketTerminal 3335 "term" false
 //   connector Connect sysbus.uart0 term
@@ -88,6 +92,8 @@ namespace Antmicro.Renode.Peripherals.UART
             pinPort = port;
             this.rxPin = rxPin;
             this.txPin = txPin;
+            port.RegisterAlternateOutput(rxPin, PinFunction, true);
+            port.RegisterAlternateOutput(txPin, PinFunction, true);
         }
 
         public uint ReadDoubleWord(long offset)
@@ -182,6 +188,7 @@ namespace Antmicro.Renode.Peripherals.UART
             warned = new HashSet<string>();
             lastConfigWarning = null;
             lock(lineLock) { line.Clear(); lineBusy = false; }
+            txLineFreeUs = 0;
             ifls = 0x12;   // RX und TX: 1/2 voll
             clockWarned = false;
             other = new Dictionary<long, uint>();
@@ -195,6 +202,10 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(ExpectedBaudRate == 0)
             {
+                if(pinPort != null && EffectiveBaud() > 0)
+                {
+                    EmitFrame(rxPin, value, EffectiveBaud(), DataBits, Format()[1], (lcrh & LcrhStp2) != 0 ? 2 : 1, pinPort.NowUs());
+                }
                 base.WriteChar(value);
                 return;
             }
@@ -210,12 +221,16 @@ namespace Antmicro.Renode.Peripherals.UART
                 start = !lineBusy;
                 lineBusy = true;
             }
-            if(start) machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+            if(start)
+            {
+                EmitTerminalFrame(value);
+                machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+            }
         }
 
         private void LineNext()
         {
-            byte value;
+            byte value, next = 0;
             bool more;
             lock(lineLock)
             {
@@ -226,10 +241,65 @@ namespace Antmicro.Renode.Peripherals.UART
                 }
                 value = line.Dequeue();
                 more = line.Count > 0;
+                if(more) next = line.Peek();
                 if(!more) lineBusy = false;
             }
             base.WriteChar(value);
-            if(more) machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+            if(more)
+            {
+                EmitTerminalFrame(next);
+                machine.ScheduleAction(FrameTime(), _ => LineNext(), "UART RX");
+            }
+        }
+
+        // Rahmen vom Terminal auf dem RX-Pin (beginnt jetzt, Format des Terminals)
+        private void EmitTerminalFrame(byte value)
+        {
+            if(pinPort == null) return;
+            string f = ExpectedFormat ?? "8N1";
+            int dataBits = 8, stop = 1;
+            char par = 'N';
+            if(f.Length == 3 && char.IsDigit(f[0]) && char.IsDigit(f[2]))
+            {
+                dataBits = f[0] - '0';
+                par = f[1];
+                stop = f[2] - '0';
+            }
+            EmitFrame(rxPin, value, ExpectedBaudRate, dataBits, par, stop, pinPort.NowUs());
+        }
+
+        // Ein UART-Rahmen als Pegelwechsel am Pin: Startbit (LOW), Datenbits LSB zuerst, Parität,
+        // Stoppbit(s) (HIGH). Liefert das Ende des Rahmens (us).
+        private double EmitFrame(int pin, byte value, uint baud, int dataBits, char parity, int stopBits, double startUs)
+        {
+            if(baud == 0) return startUs;
+            double bitUs = 1e6 / baud;
+            var bits = new List<bool> { false };
+            int ones = 0;
+            for(int i = 0; i < dataBits; i++)
+            {
+                bool b = ((value >> i) & 1) != 0;
+                bits.Add(b);
+                if(b) ones++;
+            }
+            switch(parity)
+            {
+                case 'E': bits.Add(ones % 2 == 1); break;
+                case 'O': bits.Add(ones % 2 == 0); break;
+                case 'S': bits.Add(false); break;
+                case 'M': bits.Add(true); break;
+            }
+            bool level = true;
+            for(int i = 0; i < bits.Count; i++)
+            {
+                if(bits[i] != level)
+                {
+                    level = bits[i];
+                    pinPort.AlternateOutput(pin, PinFunction, startUs + i * bitUs, level);
+                }
+            }
+            if(!level) pinPort.AlternateOutput(pin, PinFunction, startUs + bits.Count * bitUs, true);
+            return startUs + (bits.Count + stopBits) * bitUs;
         }
 
         // Dauer eines Zeichens auf der Leitung nach der Einstellung des Terminals
@@ -346,6 +416,13 @@ namespace Antmicro.Renode.Peripherals.UART
                 return;
             }
             c = (byte)(c & DataMask());
+            if(pinPort != null)
+            {
+                // Auf der Leitung liegt das Zeichen der Firmware (Zeichensalat entsteht erst beim Terminal)
+                char par = Format()[1];
+                double start = System.Math.Max(pinPort.NowUs(), txLineFreeUs);
+                txLineFreeUs = EmitFrame(txPin, c, EffectiveBaud(), DataBits, par, (lcrh & LcrhStp2) != 0 ? 2 : 1, start);
+            }
             TransmitCharacter(ConfigMatches("Senden") ? c : Garble(c));
         }
 
@@ -500,5 +577,7 @@ namespace Antmicro.Renode.Peripherals.UART
         private bool lineBusy;
         private const int MaxLine = 4096;
         private int rxPin, txPin;
+        private double txLineFreeUs;
+        private const int PinFunction = 1;   // GPIOPCTL-Wert für UnRx/UnTx
     }
 }

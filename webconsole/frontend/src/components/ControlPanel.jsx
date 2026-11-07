@@ -10,9 +10,33 @@ import Widget from './Widget.jsx';
 import BcdDisplay from './BcdDisplay.jsx';
 import CioConsole from './CioConsole.jsx';
 import Diagnostics from './Diagnostics.jsx';
+import Oscilloscope from './Oscilloscope.jsx';
+import { useState } from 'react';
+
+// Zusatzwerkzeuge (ein-/ausblendbar), Zustand bleibt im Browser gespeichert
+function useToolToggle(key) {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(key) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setOn((v) => {
+      try {
+        localStorage.setItem(key, v ? '0' : '1');
+      } catch {
+        /* ohne Speicher */
+      }
+      return !v;
+    });
+  return [on, toggle];
+}
 
 function Panel({ experiment, solution }) {
   const { status, renodeState, leds, lastError, clearError } = useControlSocket();
+  const [scopeOn, toggleScope] = useToolToggle('tool.oscilloscope');
 
   return (
     <main className="control-panel">
@@ -29,6 +53,12 @@ function Panel({ experiment, solution }) {
             Musterlösung läuft – so soll es aussehen
           </span>
         )}
+        <span className="tools">
+          <button className={`btn small tool-btn ${scopeOn ? 'on' : ''}`} onClick={toggleScope} aria-pressed={scopeOn}
+            title="Oszilloskop ein-/ausblenden">
+            〰 Oszilloskop {scopeOn ? 'ausblenden' : 'einblenden'}
+          </button>
+        </span>
         {lastError && (
           <span className="panel-error" onClick={clearError} title="Klicken zum Schließen">
             ⚠ {lastError}
@@ -39,6 +69,8 @@ function Panel({ experiment, solution }) {
       <Diagnostics />
 
       <div className="grid">
+        {scopeOn && <Oscilloscope experimentId={experiment.id} scope={experiment.scope} />}
+
         <UartMonitor label={experiment.uart?.label} localEcho={!!experiment.uart?.localEcho} crlf={!!experiment.uart?.crlf} />
 
         {experiment.cio && <CioConsole label={experiment.cio.label} />}

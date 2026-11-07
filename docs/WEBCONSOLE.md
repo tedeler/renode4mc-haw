@@ -108,6 +108,7 @@ Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, 
 | `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
 | `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
 | `PendulumDisplay.cs` | Pendeldisplay (Versuch 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar (0,05–100 Hz), Nachleuchtbild je Schwungrichtung. `GetFrame` liefert `PD:<Spalten>:<Periode in µs>:<Phase>:<LEDs>:<Base64>`. |
+| `Oscilloscope.cs` | Oszilloskop der Web-Konsole (in der Basisplattform als `sysbus.scope`): zeichnet die Pegelwechsel ausgewählter Pins mit virtueller Zeit auf (Auflösung 1 µs). `Probe "PD0,PD1"` wählt die Pins, `GetEvents` liefert `SC:<jetzt ns>:<Pins>:<Pegel>:<i,dt ns,Pegel;…>:<verworfen>`. Gemessen wird der Pinpegel wie mit einem Tastkopf (`TivaGPIOPort.PadLevel`): getriebener Ausgang, von außen getriebener Eingang, Pull-up/-down oder offen. UART-Pins (`ConnectPins`) liefern den Bitstrom mit Baudrate und Format der Firmware (TX) bzw. des Terminals (RX). |
 | `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
 
 **Keypad-Multiplexing.** Ein Klick auf „5“ sendet nicht „Taste 5“. Das Frontend schlägt die
@@ -202,6 +203,7 @@ Browser → Server:
 { "type": "sensor", "value": 120 }                          // cm, wird auf min..max begrenzt
 { "type": "pendulum", "frequency": 12.5 }                   // Hz, auf minFrequency..maxFrequency begrenzt
 { "type": "clearDiagnostics" }                              // Diagnose-Liste leeren
+{ "type": "scope", "sources": ["PD0", "PL0"] }               // Oszilloskop: Pins dieses Browsers (max. 5, [] = aus)
 ```
 
 Taster: gedrückt = Pin an GND (`activeLow`) bzw. VCC, **losgelassen = Pin offen**
@@ -220,6 +222,7 @@ Server → Browser:
 { "type": "cio", "data": "<Base64>" }                                  // printf-Ausgabe (CCS-Konsole)
 { "type": "diag", "level": "warning", "message": "…", "count": 1 }    // Warnung/Fehler aus Renode
 { "type": "diagReset" }
+{ "type": "scope", "now": 1234567000, "pins": ["PD0", "PL0"], "levels": [0, 1], "ev": [0, 1000, 1, …], "dropped": 0 }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -251,6 +254,40 @@ jeder Frequenz nur ein kurzes Stück Spur hinter dem Stab; ein stehendes Bild wi
 entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattdessen das Bild aus
 `pd.data` (letzter Schwung je Richtung, ohne Abklingen). Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
 (Zeit beginnt bei 0), wird die Zeitlinie verworfen.
+
+### Oszilloskop
+
+Über die Schaltfläche **„Oszilloskop einblenden“** in der Statuszeile kommt ein Oszilloskop dazu
+(wieder ausblendbar; der Zustand und alle Einstellungen bleiben im Browser gespeichert, die
+Einstellungen je Versuch). Es zeigt die Digitalsignale an den Pins als 3,3-V-Logik mit dem
+gewohnten Gitter (10 × 8 Teilungen, Mittelachsen mit Feinteilung):
+
+- **4 Kanäle**: Quelle per Dropdown (zuerst die benannten Signale des Versuchs, dann alle Pins
+  PA0…PQ4 nach Port), V/div (0,5–5 V), Lage. Marke links = 0-V-Linie des Kanals.
+- **Zeitbasis** 1 µs/div bis 1 s/div (1-2-5), **Triggerpunkt** horizontal verschiebbar.
+- **Trigger** auf CH1–CH4 oder einen **externen Eingang** (beliebiger Pin, wird nicht gezeichnet),
+  **Pegel** 0–3,3 V, **steigende/fallende Flanke**, Modus Auto/Normal/Einzel, Run/Stop.
+- Ein offener (hochohmiger) Pin erscheint gestrichelt auf halber Höhe.
+
+Ablauf: Der Browser meldet seine Quellen (`scope`), das Backend stellt in Renode die Vereinigung
+der Quellen aller Browser ein (`sysbus.scope Probe`) und holt mit jedem Poll die Pegelwechsel ab.
+`ev` ist flach `[i, dt, Pegel, …]`: `i` = Index in `pins`, `dt` = ns seit dem vorigen Wechsel
+(beim ersten: seit Start), Pegel 0 = LOW, 1 = HIGH, 2 = offen. Triggern und Zeichnen passiert im
+Browser auf der virtuellen Zeit; Auto läuft frei, wenn 250 ms (virtuell) bzw. zwei Bildbreiten lang
+keine Flanke kommt. Je Abruf werden höchstens 10 000 Wechsel übertragen; bei mehr (z. B. eine
+Endlosschleife, die einen Pin toggelt, ca. 400 000 Wechsel/s) fehlen die ältesten, und das
+Oszilloskop meldet „Flanken verloren“. Ports ohne Tastkopf führen keine Pegel nach – ohne
+Oszilloskop kostet das Modell keine Rechenzeit (mit Tastkopf an einem 400-kHz-Signal ca. 7 %).
+
+Benannte Signale je Versuch in der Versuchs-JSON:
+
+```jsonc
+"scope": {
+  "signals": [ { "pin": "PD0", "label": "HC-SR04 Trigger" }, … ],   // Dropdown-Einträge oben
+  "channels": ["PL0", "PM7", "PD0", "PD1"],                         // Startbelegung CH1..CH4
+  "trigger": { "source": "PL0", "edge": "rising" }                  // Kanal-Pin oder externer Pin
+}
+```
 
 ### Reconnect
 
@@ -398,6 +435,10 @@ node test/e2e.js ../../examples/lab03_webkonsole/lab03_webkonsole.out
 node test/e2e_versuch2.js ../../examples/lab04_pendeldisplay/lab04_pendeldisplay.out
 ```
 
+`test/e2e_scope.js` prüft das Oszilloskop mit den Musterlösungen (`sim/solutions`): Pendel-Signal
+PL0 (Periode 120,000 ms), HC-SR04-Trigger und Echo (3790 µs bei 65 cm, 450 µs nach der Flanke),
+offener Pin, Vereinigung der Quellen zweier Browser, UART-Rahmen `'#'` 9600 7N1 nach SW1.
+
 `test/e2e_labs.js` prüft die vier Lab-Umgebungen mit ihren Musterlösungen, die Diagnose und
 `POST /api/solution` (siehe [LABORE.md](LABORE.md)).
 
@@ -420,6 +461,9 @@ die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau
 - **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode
   ändert sich nur, wenn man sie einstellt (sprunghaft am nächsten Nulldurchgang).
   LEDs leuchten ohne Nachglühen, die Anzeige zeigt je Richtung nur den letzten Schwung.
+- **Oszilloskop:** nur Digitalpegel (0 V/3,3 V bzw. offen), keine Anstiegszeiten oder analogen
+  Spannungen; Auflösung 1 µs. UART-TX-Rahmen werden im Leitungstakt aneinandergereiht, obwohl das
+  Modell sofort sendet. I2C-Pins zeigen keine Busaktivität (das I2C-Modell treibt keine Pins).
 - **Taster ohne Prellen;** Entprell-Code lässt sich im Simulator nicht prüfen.
 - **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät
   gelesen.

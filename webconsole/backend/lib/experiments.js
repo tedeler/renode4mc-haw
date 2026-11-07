@@ -64,6 +64,16 @@ function validate(cfg, file) {
       pd.minFrequency <= pd.frequency && pd.frequency <= pd.maxFrequency,
     `${file} pendulum: 0.05 <= minFrequency <= frequency <= maxFrequency <= 100 (Hz)`);
   }
+  if (cfg.scope) {
+    // Oszilloskop: benannte Signale für die Auswahl, Startbelegung CH1..CH4, Trigger
+    const sc = cfg.scope;
+    const pin = (p) => typeof p === 'string' && /^P[A-HJ-NPQ][0-7]$/.test(p);
+    (sc.signals || []).forEach((g, i) => assert(pin(g.pin) && typeof g.label === 'string', `${file} scope.signals[${i}]: { pin: "PD0", label }`));
+    assert(!sc.channels || (Array.isArray(sc.channels) && sc.channels.length <= 4 && sc.channels.every((p) => !p || pin(p))),
+      `${file} scope.channels: bis zu 4 Pins`);
+    assert(!sc.trigger || ((!sc.trigger.source || pin(sc.trigger.source)) && (!sc.trigger.edge || ['rising', 'falling'].includes(sc.trigger.edge))),
+      `${file} scope.trigger: { source: "PL0", edge: "rising" | "falling" }`);
+  }
   if (cfg.solution) {
     assert(isValidId(cfg.solution.example), `${file} solution.example: Name eines Beispiels (examples/<name>)`);
   }
