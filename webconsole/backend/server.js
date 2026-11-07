@@ -37,8 +37,12 @@ const control = new ControlBridge({
 });
 
 let activeExperiment = null;
+let activeIsSolution = false; // läuft gerade die Musterlösung?
 
-renode.on('log', (_stream, line) => control.onRenodeLog(line));
+// Warnungen/Fehler der Modelle (z. B. Fehlkonfiguration von Registern) an den Browser
+renode.on('log', (line) => control.diagnostic(line));
+
+renode.on('log', (line) => control.onRenodeLog(line));
 
 renode.on('exit', () => {
   activeExperiment = null;
@@ -61,6 +65,7 @@ async function startExperiment(exp) {
 
   await renode.stop();
   renode.logTail = []; // kein Log des vorherigen Laufs in der Fehlermeldung
+  control.resetDiagnostics();
   const ports = [
     { port: cfg.renodeMonitorPort, name: 'Renode-Monitor' },
     { port: cfg.renodeUartPort, name: 'UART-Terminal' },
@@ -115,6 +120,7 @@ app.get('/api/status', (_req, res) => {
   res.json({
     running: renode.running && !!activeExperiment,
     experiment: activeExperiment ? experiments.publicView(activeExperiment) : null,
+    solution: !!activeExperiment && activeIsSolution,
   });
 });
 
@@ -161,6 +167,7 @@ app.post('/upload', (req, res) => {
         };
         fs.renameSync(tmp, cfg.elfPath);
         await startExperiment(exp);
+        activeIsSolution = false;
       });
       console.log(`[server] Versuch "${exp.id}" läuft`);
       res.status(200).json({ status: 'running', experiment: experiments.publicView(exp) });
@@ -172,6 +179,44 @@ app.post('/upload', (req, res) => {
       res.status(500).json({ error: e.message, log });
     }
   });
+});
+
+/**
+ * POST /api/solution  { experiment_id }  – Musterlösung des Versuchs starten (sim/solutions/*.elf),
+ * damit Studierende das erwartete Verhalten mit ihrem eigenen Programm vergleichen können.
+ */
+app.post('/api/solution', express.json({ limit: '1kb' }), async (req, res) => {
+  const id = req.body && req.body.experiment_id;
+  let exp;
+  try {
+    exp = experiments.load(cfg.simDir, cfg.experimentsSubdir, id);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+  if (!exp) return res.status(400).json({ error: `Unbekannter Versuch: ${id}` });
+  if (!exp.solutionPath) return res.status(400).json({ error: 'Für diesen Versuch gibt es keine Musterlösung' });
+  if (!fs.existsSync(exp.solutionPath) || !isElf(exp.solutionPath)) {
+    return res.status(404).json({
+      error: `Musterlösung nicht gebaut (${path.basename(exp.solutionPath)} fehlt). Im Repository: tools/build-solutions.sh`,
+    });
+  }
+  try {
+    await exclusive(async () => {
+      uart.detach('renode-restart');
+      control.detach();
+      await renode.stop();
+      fs.copyFileSync(exp.solutionPath, cfg.elfPath);
+      await startExperiment(exp);
+      activeIsSolution = true;
+    });
+    console.log(`[server] Versuch "${exp.id}" läuft mit Musterlösung`);
+    res.status(200).json({ status: 'running', solution: true, experiment: experiments.publicView(exp) });
+  } catch (e) {
+    console.error(`[server] Start der Musterlösung fehlgeschlagen: ${e.message}`);
+    const log = renode.logTail.slice(-30);
+    await renode.stop().catch(() => {});
+    res.status(500).json({ error: e.message, log });
+  }
 });
 
 app.post('/api/stop', async (_req, res) => {

@@ -2,7 +2,7 @@
 'use strict';
 /**
  * Ende-zu-Ende-Test für die UART-Leitung als Flanken (Signalstrom fürs Oszilloskop) mit echter
- * Renode-Instanz und der Firmware aus examples/lab03_webkonsole (115200 8N1 bei 16 MHz).
+ * Renode-Instanz und der Firmware aus examples/example03_webkonsole (115200 8N1 bei 16 MHz).
  *
  * Prüft:
  *  - "signals" beschreibt uart0.tx/uart0.rx mit der eingestellten Baudrate des Senders
@@ -15,7 +15,7 @@
  *  - Debugger: Pause (Zeit steht), Schritt, Weiter, Kernregister, Disassembly, Speicher über ein
  *    Symbol, Peripherie-Register ohne Nebenwirkung, Modul ohne Takt, keine Renode-Warnungen
  *
- *   node test/e2e_signals.js <lab03_webkonsole.out> [http://localhost:3000]
+ *   node test/e2e_signals.js <example03_webkonsole.out> [http://localhost:3000]
  *
  * Voraussetzung: Backend läuft (npm start bzw. Docker-Container).
  */
@@ -27,7 +27,7 @@ const elf = process.argv[2];
 const base = (process.argv[3] || 'http://localhost:3000').replace(/\/$/, '');
 const host = new URL(base).hostname;
 if (!elf || !fs.existsSync(elf)) {
-  console.error('Aufruf: node test/e2e_signals.js <lab03_webkonsole.out> [http://localhost:3000]');
+  console.error('Aufruf: node test/e2e_signals.js <example03_webkonsole.out> [http://localhost:3000]');
   process.exit(2);
 }
 
@@ -132,7 +132,7 @@ function decodeUart(edges, baud, format) {
 
   // Upload + Start
   const fd = new FormData();
-  fd.append('experiment_id', 'versuch1');
+  fd.append('experiment_id', 'example1');
   fd.append('file', new Blob([fs.readFileSync(elf)]), path.basename(elf));
   const res = await fetch(`${base}/upload`, { method: 'POST', body: fd });
   const body = await res.json();
@@ -145,7 +145,7 @@ function decodeUart(edges, baud, format) {
   await new Promise((r) => u.once('open', r));
   const text = () => uart.toString('latin1');
 
-  check('UART: Startmeldung im Terminal', await waitFor(() => /Lab 03 Web-Konsole/.test(text()), 10000));
+  check('UART: Startmeldung im Terminal', await waitFor(() => /Example 03 Web-Konsole/.test(text()), 10000));
   check('signals: uart0.tx mit Baudrate des Senders',
     await waitFor(() => signals['uart0.tx'] && signals['uart0.tx'].protocol &&
       Math.abs(signals['uart0.tx'].protocol.baud - 16e6 / (16 * (8 + 44 / 64))) < 0.01), JSON.stringify(signals['uart0.tx']));
@@ -167,7 +167,7 @@ function decodeUart(edges, baud, format) {
   check(`Flanken: Abstände sind ganze Bitdauern (${bit.toFixed(2)} ns)`, tx.length > 100 && worst <= 1.5,
     `${tx.length} Flanken, größte Abweichung ${worst.toFixed(2)} ns`);
   const decoded = Buffer.from(decodeUart(tx, signals['uart0.tx'].protocol.baud, '8N1').map((f) => f.value)).toString('latin1');
-  check('eigener Dekoder liest aus den Flanken die Startmeldung', /Lab 03 Web-Konsole/.test(decoded));
+  check('eigener Dekoder liest aus den Flanken die Startmeldung', /Example 03 Web-Konsole/.test(decoded));
   check('eigener Dekoder: "Abstand: 42 cm"', /Abstand:\s+42 cm/.test(decoded));
 
   u.send('x');
@@ -215,7 +215,7 @@ function decodeUart(edges, baud, format) {
   check('Sensor 55 cm vor dem Reset', await waitFor(() => /Abstand:\s+55 cm/.test(text())));
   mark = uart.length;
   send({ type: 'reset' });
-  check('Reset -> Startmeldung erneut', await waitFor(() => /Lab 03 Web-Konsole/.test(uart.subarray(mark).toString('latin1')), 5000));
+  check('Reset -> Startmeldung erneut', await waitFor(() => /Example 03 Web-Konsole/.test(uart.subarray(mark).toString('latin1')), 5000));
   check('Reset an alle gemeldet', resets === 1);
   check('nach dem Reset: Sensor weiterhin 55 cm', await waitFor(() => /Abstand:\s+55 cm/.test(uart.subarray(mark).toString('latin1')), 5000));
   check('sim: Reset gezählt', await waitFor(() => sim.resets && sim.resets.count === 1, 3000), JSON.stringify(sim.resets));
@@ -250,8 +250,10 @@ function decodeUart(edges, baud, format) {
   check('Weiter: Simulationszeit läuft', await waitFor(() => sim.time.virtualNs > tc, 3000));
   send({ type: 'watch', sim: true, periph: 'UART1' });
   check('UART1 ohne Takt erkannt', await waitFor(() => sim.periph && sim.periph.module === 'UART1' && sim.periph.noClock));
-  // erwartet ist nur die Warnung des Terminals aus dem Test mit 9600 Baud weiter oben
-  const other = sim.warnings.filter((w) => !/uart0\.host: Terminal/.test(w.text));
+  // erwartet sind nur die Warnungen aus dem Test mit 9600 Baud weiter oben: Terminal (Framing-Fehler)
+  // und UART0 (Einstellung passt nicht zum Terminal, danach wieder korrekt)
+  const expected = /uart0\.host: Terminal|UART0: Firmware ist auf \d+ Baud .* das Terminal erwartet 9600 Baud|UART0: Konfiguration jetzt korrekt/;
+  const other = sim.warnings.filter((w) => !expected.test(w.text));
   check('Meldungen: Terminal-Warnung vom 9600-Test angezeigt', sim.warnings.length > other.length);
   check('keine weiteren Warnungen von Renode (Anzeige liest ohne Nebenwirkung)', other.length === 0, JSON.stringify(other));
 

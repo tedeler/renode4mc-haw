@@ -9,7 +9,10 @@ export default function App() {
 
   useEffect(() => {
     fetchStatus()
-      .then((s) => s.running && s.experiment && setSession({ experiment: s.experiment, key: Date.now() }))
+      .then(
+        (s) =>
+          s.running && s.experiment && setSession({ experiment: s.experiment, solution: !!s.solution, key: Date.now() }),
+      )
       .catch(() => {});
   }, []);
 
@@ -18,11 +21,11 @@ export default function App() {
       <SetupBar
         running={!!session}
         activeId={session?.experiment.id}
-        onStarted={(experiment) => setSession({ experiment, key: Date.now() })}
+        onStarted={(experiment, solution) => setSession({ experiment, solution: !!solution, key: Date.now() })}
         onStopped={() => setSession(null)}
       />
       {session ? (
-        <ControlPanel key={session.key} experiment={session.experiment} />
+        <ControlPanel key={session.key} experiment={session.experiment} solution={session.solution} />
       ) : (
         <div className="placeholder">
           Versuch wählen, die von CCS bzw. <code>make</code> gebaute <code>.out</code>-Datei hochladen und{' '}

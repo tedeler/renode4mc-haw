@@ -16,6 +16,14 @@ export const fetchStatus = () => fetch(`${API_BASE}/api/status`).then(json);
 
 export const stopSimulation = () => fetch(`${API_BASE}/api/stop`, { method: 'POST' }).then(json);
 
+/** POST /api/solution: Musterlösung des Versuchs starten */
+export const startSolution = (experimentId) =>
+  fetch(`${API_BASE}/api/solution`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ experiment_id: experimentId }),
+  }).then(json);
+
 /** POST /upload (multipart/form-data: experiment_id + file) */
 export function uploadElf(experimentId, file) {
   const fd = new FormData();

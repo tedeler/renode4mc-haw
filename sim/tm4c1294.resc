@@ -10,6 +10,7 @@ include @models/TivaUART.cs
 include @models/UartHostTerminal.cs
 include @models/TivaI2C.cs
 include @models/WebSocketBridge.cs
+include @models/Oscilloscope.cs
 
 mach create "tm4c1294"
 machine LoadPlatformDescription @platforms/tm4c1294ncpdt.repl
