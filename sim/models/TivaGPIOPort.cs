@@ -121,7 +121,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             base.Reset();
             dataLatch = dir = isLevel = ibe = iev = im = ris = afsel = pur = pdr = den = 0;
-            inputDriven = inputValue = 0;
+            // inputDriven/inputValue bleiben: Pegel, die von außen anliegen (Taster, Sensoren, Pendel),
+            // ändern sich durch einen Reset des Mikrocontrollers nicht
             drivenLevels = 0;
             clockWarned = false;
             other = new Dictionary<long, uint>();

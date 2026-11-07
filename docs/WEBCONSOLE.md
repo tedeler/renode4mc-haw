@@ -76,6 +76,7 @@ Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar an
 |---|---|---|
 | LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`) |
 | UART0 | `sysbus.uart0.host` (PC-Terminal) → `CreateServerSocketTerminal 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
+| Simulations-Anzeige | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode-Log | **Polling** alle 500 ms, nur solange die Anzeige offen ist |
 | Leitungen (Oszilloskop) | `sysbus.uart0 GetEdges` | **Polling** alle 100 ms, nur solange ein Browser die Leitung abonniert hat |
 | OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **Polling** alle 100 ms, nur bei Änderung übertragen |
 | LEDs mit `path` (andere Versuche) | `<path> State` | Polling alle 100 ms |
@@ -207,6 +208,8 @@ Browser → Server:
 { "type": "uartconfig", "baud": 9600, "format": "7N1" }     // PC-Terminal; gilt auch nach Neustarts
 { "type": "subscribe", "signals": ["uart0.tx", "uart0.rx"] } // Flanken abonnieren (Oszilloskop)
 { "type": "unsubscribe", "signals": ["uart0.tx"] }
+{ "type": "reset" }                                         // Reset-Taster: nur der Mikrocontroller
+{ "type": "watch", "sim": true }                            // Simulations-Anzeige an (false = aus)
 ```
 
 Server → Browser:
@@ -222,6 +225,16 @@ Server → Browser:
                                    "protocol": { "kind": "uart", "baud": 115107.914, "format": "8N1" } }, …] }
 { "type": "edges", "name": "uart0.tx", "now": 1100000, "level": 1,
   "edges": [[1000000, 0], [1008687, 1], …], "lost": 0 }        // lost nur, wenn > 0
+{ "type": "reset" }                                        // Reset wurde ausgelöst (an alle)
+{ "type": "sim",                                           // alle 500 ms an Clients mit watch
+  "experiment": { "id", "title" },
+  "firmware": { "name": "TestUartCom.out", "size": 12596, "sha256": "2ae16a99b4cc9b4c", "loadedAt": 1794075220000 },
+  "renode": { "version": "1.17.0", "startedAt": … },
+  "time": { "virtualNs": 425424000, "wallMs": 6000, "speed": 0.98 },        // speed = Simulationszeit/Echtzeit
+  "cpu": { "state": "Running", "halted": false, "pc": "0x00000272", "symbol": "main", "sysclk": 16000000 },
+  "resets": { "count": 1, "lastNs": 437400000 },
+  "uart": { "mcu": { "baud": 9599.5, "format": "7N1" }, "terminal": { "baud": 9600, "format": "7N1" } },
+  "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }] }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
@@ -279,6 +292,23 @@ Flankenformat am Renode-Monitor: `SE:<name>:<now>:<level>:<baud>:<format>:<lost>
 (erste Zeit absolut, weitere relativ). Leitungen werden in der Versuchs-JSON unter `signals`
 eingetragen.
 
+### Reset-Taster und Simulations-Anzeige
+
+Der Knopf **Reset** in der Statuszeile entspricht dem Reset-Taster des Boards:
+`sysbus.sysctl ResetMcu` setzt CPU und alle Peripherie auf dem Chip zurück (alles, was direkt am
+Systembus hängt). Die Firmware im Flash bleibt, die CPU startet über die Vektortabelle neu. Geräte
+außerhalb des Chips behalten ihren Zustand: PC-Terminal mit Einstellung, Sensorwert, OLED, Pendel,
+Keypad, Pegel an GPIO-Eingängen. Ein Zeichen, das der UART gerade sendet, bricht ab. Damit lässt
+sich auch ein Empfänger, der in einem lückenlosen Zeichenstrom falsch eingerastet ist, wieder
+synchronisieren.
+
+Der Knopf **Simulation** blendet die Simulations-Anzeige ein (standardmäßig aus): geladene
+Firmware (Name, Größe, SHA-256, Zeitpunkt), CPU-Zustand mit PC und Funktion aus der ELF-Datei
+(Hinweis, wenn die CPU in einer Endlosschleife des Startup-Codes hängt, z. B. `IntDefaultHandler`),
+Systemtakt, Anzahl der Resets, Simulationszeit, Echtzeit und Tempo (Simulationszeit pro Echtzeit),
+Renode-Version, UART0-Einstellung von Firmware und Terminal mit Abweichung, sowie die Warnungen und
+Fehler aus dem Renode-Log (z. B. Framing-Fehler, Pin nicht als UART geschaltet).
+
 ### Reconnect
 
 Alle WebSockets im Frontend nutzen `useReconnectingWebSocket`. Bricht eine Verbindung ab,
@@ -330,6 +360,8 @@ Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeich
   "machine": "tm4c1294",                       // Maschinenname aus tm4c1294.resc
   "uart":   { "label": "UART0", "host": "sysbus.uart0.host",   // PC-Terminal (UartHostTerminal)
               "baud": 115200, "format": "8N1" },              // Standard-Einstellung des Terminals
+  "reset":  { "path": "sysbus.sysctl" },                     // Reset-Taster (TivaSysCtl.ResetMcu)
+  "status": { "path": "sysbus.sysctl" },                     // Simulations-Anzeige (TivaSysCtl.GetStatus)
   "signals": [                                                // Leitungen für das Oszilloskop
     { "name": "uart0.tx", "label": "U0TX (PA1)", "path": "sysbus.uart0" },
     { "name": "uart0.rx", "label": "U0RX (PA0)", "path": "sysbus.uart0" }
@@ -456,6 +488,9 @@ die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau
 - **Timing:** Renode ist nicht zyklengenau (siehe [ROADMAP.md](ROADMAP.md)). UART0 sendet mit
   Baudraten-Timing (Flanken auf 1 ns genau), I2C ohne Busverzögerung. Die Ultraschall-Messung ist
   sofort fertig. Der RX-Timeout-Interrupt (RT) ist vereinfacht („Daten liegen an“), µDMA fehlt.
+- **Tempo bei Warteschleifen auf Register:** Jeder Registerzugriff kostet in Renode einige µs
+  Rechenzeit. Eine Firmware, die z. B. bei 9600 Baud ununterbrochen `UARTFR.TXFF` abfragt, läuft
+  deshalb langsamer als Echtzeit (Anzeige „Tempo“, etwa 0,2×). Die Simulationszeit bleibt exakt.
 - **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
   mit 10 Bildern/s aktualisiert.
 - **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode

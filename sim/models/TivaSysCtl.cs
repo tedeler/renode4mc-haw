@@ -3,15 +3,19 @@
 // Modelliert wird das, was für Lehrbeispiele nötig ist:
 //  * Clock-Gating:  RCGC*/SCGC*/DCGC* (Takt freigeben) und PR* (Peripherie bereit)
 //  * Kennung DID0/DID1
+//  * Reset-Taster des Boards: ResetMcu() (siehe dort)
+//  * Zustand für die Anzeige der Web-Konsole: GetStatus() (siehe dort)
 //  * Systemtakt aus RSCLKCFG/PLLFREQ0/PLLFREQ1 (Property SystemClockFrequency, z. B. für die
 //    Baudrate der UARTs). PLLSTAT.LOCK und RIS.PLLLRIS/MOSCPUPRIS lesen sich immer als 1, damit
 //    SysCtlClockFreqSet nicht hängen bleibt. Die CPU selbst läuft unverändert weiter (Renode
 //    rechnet Befehle, keine Takte).
 // Alle anderen Register werden gespeichert und wieder gelesen (ohne Funktion).
 using System.Collections.Generic;
+using System.Linq;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals.Bus;
+using Antmicro.Renode.Peripherals.CPU;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
@@ -20,8 +24,56 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         // moscFrequency: Quarz am Hauptoszillator (EK-TM4C1294XL: 25 MHz)
         public TivaSysCtl(IMachine machine, uint moscFrequency = 25000000)
         {
+            this.machine = machine;
             this.moscFrequency = moscFrequency;
             Reset();
+        }
+
+        // Reset-Taster des Boards (RESET, SW5): setzt CPU und alle Peripherie AUF DEM CHIP zurück,
+        // also alles, was direkt am Systembus hängt. Die Firmware im Flash bleibt erhalten, die CPU
+        // startet neu über die Vektortabelle (SP, Reset-Handler). Geräte außerhalb des Chips
+        // (PC-Terminal, Sensor, OLED, Pendel, Keypad, LED-Brücke) behalten ihren Zustand.
+        //   sysbus.sysctl ResetMcu
+        public void ResetMcu()
+        {
+            IPeripheral bus = machine.SystemBus;
+            var keep = new List<IPeripheral>();
+            foreach(var p in machine.GetPeripheralsOfType(typeof(IPeripheral)))
+            {
+                if(!machine.GetParentPeripherals(p).Any(x => ReferenceEquals(x, bus))) keep.Add(p);
+            }
+            machine.RequestResetInSafeState(() =>
+            {
+                resetCount++;
+                lastResetNs = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+                this.Log(LogLevel.Info, "Reset-Taster: Mikrocontroller neu gestartet");
+            }, keep);
+        }
+
+        // "ST:<Zeit ns>:<Reset-Anzahl>:<letzter Reset ns>:<Systemtakt Hz>:<CPU-Zustand>:<halted 0/1>:
+        //  <Befehle>:<PC hex>:<Funktion am PC>"
+        // CPU-Zustand: Running, Paused, InReset, Aborted, ...; halted = wartet (z. B. WFI);
+        // Funktion = Symbol aus der ELF-Datei (leer, wenn unbekannt)
+        public string GetStatus()
+        {
+            ulong now = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+            string state = "-", symbol = "";
+            ulong pc = 0, instr = 0;
+            bool halted = false;
+            var cpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault();
+            if(cpu != null)
+            {
+                state = machine.IsPaused ? "Paused" : cpu.EmulationState.ToString();
+                halted = cpu.IsHalted;
+                instr = cpu.ExecutedInstructions;
+                pc = cpu.PC.RawValue;
+                string name;
+                Antmicro.Renode.Core.Symbol sym;
+                if(machine.SystemBus.TryFindSymbolAt(pc, out name, out sym, cpu, true)) symbol = name ?? "";
+            }
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "ST:{0}:{1}:{2}:{3:0}:{4}:{5}:{6}:{7:X8}:{8}", now, resetCount, lastResetNs, SystemClockFrequency,
+                state, halted ? 1 : 0, instr, pc, symbol.Replace(':', '.').Replace(' ', '_'));
         }
 
         // Systemtakt in Hz laut RSCLKCFG (Reset: PIOSC 16 MHz)
@@ -167,5 +219,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private Dictionary<long, uint> other;
         private uint rsclkcfg, pllfreq0, pllfreq1;
         private readonly uint moscFrequency;
+        private readonly IMachine machine;
+        private int resetCount;
+        private ulong lastResetNs;
     }
 }

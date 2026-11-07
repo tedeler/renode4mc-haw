@@ -7,9 +7,13 @@ import DistanceSensor from './DistanceSensor.jsx';
 import Keypad from './Keypad.jsx';
 import PendulumDisplay from './PendulumDisplay.jsx';
 import Widget from './Widget.jsx';
+import SimulationPanel from './SimulationPanel.jsx';
+import { useState } from 'react';
 
 function Panel({ experiment }) {
-  const { status, renodeState, leds, lastError, clearError } = useControlSocket();
+  const { status, renodeState, leds, lastError, clearError, send } = useControlSocket();
+  const [showSim, setShowSim] = useState(false); // Simulations-Anzeige: standardmäßig aus
+  const running = status === 'open' && renodeState === 'running';
 
   return (
     <main className="control-panel">
@@ -26,9 +30,30 @@ function Panel({ experiment }) {
             ⚠ {lastError}
           </span>
         )}
+        <span className="panel-buttons">
+          {experiment.reset && (
+            <button
+              className="btn small reset-btn"
+              disabled={!running}
+              onClick={() => send({ type: 'reset' })}
+              title="Reset-Taster des Boards: nur der Mikrocontroller startet neu, die Firmware bleibt geladen"
+            >
+              ⟲ Reset
+            </button>
+          )}
+          <button
+            className={`btn small toggle ${showSim ? 'active' : ''}`}
+            onClick={() => setShowSim((v) => !v)}
+            aria-pressed={showSim}
+            title="Firmware, CPU-Zustand, Simulationszeit und Meldungen anzeigen"
+          >
+            Simulation
+          </button>
+        </span>
       </div>
 
       <div className="grid">
+        {showSim && <SimulationPanel />}
         <UartMonitor label={experiment.uart?.label} />
 
         {experiment.oled && (

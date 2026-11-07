@@ -30,6 +30,8 @@ das Pendeldisplay von Versuch 2.
 | Taster USR_SW1/USR_SW2 | gedrückt halten → PJ0/PJ1 = LOW |
 | Keypad | verbindet Zeile und Spalte der Matrix (PK0–PK3 × PK4–PK6) |
 | Schieberegler | Messwert des Ultraschallsensors (I2C0, 0x70) in cm |
+| Reset | Reset-Taster des Boards: der Mikrocontroller startet neu, Firmware und Geräte außerhalb des Chips bleiben |
+| Simulation | blendet die Simulations-Anzeige ein: Firmware, CPU-Zustand, Simulationszeit und Tempo, UART-Einstellungen, Meldungen von Renode |
 | Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier. Darunter die Einstellung des Terminals (Baud, Datenbits, Parität, Stoppbits) wie in Tera Term – passt sie nicht zur Firmware, erscheinen falsche Zeichen |
 | LEDs, OLED | zeigen den Zustand von PN1/PN0/PF4/PF0 bzw. des SSD1306 (I2C0, 0x3C) |
 | Pendeldisplay (Versuch 2) | schwingender Stab (Drehpunkt unten) mit den 8 LEDs an PM0–PM7 und ihrer abklingenden Leuchtspur; Regler für Pendelfrequenz (0,1–20 Hz) und Nachleuchtdauer (1 ms – 1 s); Auswahl: beide Schwünge, eine Richtung oder Standbild |

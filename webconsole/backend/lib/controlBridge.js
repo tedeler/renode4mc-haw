@@ -9,6 +9,9 @@ const LED_RE = /^LED(\d)=([01])$/;
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 // Flanken einer Leitung (sim/models/UartLine.cs, SignalRecorder.Format):
+// Zustand der Simulation (TivaSysCtl.GetStatus)
+const ST_RE = /ST:(\d+):(\d+):(\d+):(\d+):(\w+|-):([01]):(\d+):([0-9A-F]+):(\S*)/;
+const LOG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
 // SE:<name>:<now ns>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;...
 const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/g;
 
@@ -28,6 +31,8 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *                                              gilt auch für spätere Neustarts von Renode
  *   { type: "subscribe", signals: [name, …] }  Flanken dieser Leitungen abonnieren (Oszilloskop)
  *   { type: "unsubscribe", signals: [name, …] }
+ *   { type: "reset" }                          Reset-Taster: nur der Mikrocontroller startet neu
+ *   { type: "watch", sim: true|false }         Simulations-Anzeige an/aus (Zustand alle 500 ms)
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd, uartConfig }
  *   { type: "leds", states: { [id]: boolean } }
@@ -50,6 +55,9 @@ const SE_RE = /SE:([a-z0-9_.]+):(\d+):([01]):([\d.]+):([^:\s]+):(\d+):([\d,;]*)/
  *                                                     Flanken einer abonnierten Leitung seit dem letzten
  *                                                     Abruf; t und now in ns virtueller Zeit, level = Pegel
  *                                                     bei now; bis now ist die Leitung vollständig bekannt
+ *   { type: "sim", firmware, experiment, renode, time, cpu, resets, uart, warnings }
+ *                                                     Zustand der Simulation (nur an Clients mit watch)
+ *   { type: "reset", count }                          Reset wurde ausgelöst
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -70,6 +78,12 @@ class ControlBridge {
     this.uartSettings = null; // vom Browser gewählte Terminal-Einstellung (null = Standard des Versuchs)
     this.signalInfo = {}; // name -> { baud, format } laut Modell
     this.freshPaths = new Set(); // Pfade, deren alter Flankenpuffer beim nächsten Abruf verworfen wird
+    this.firmware = null; // { name, size, sha256, loadedAt } – setzt server.js beim Upload
+    this.renodeVersion = null;
+    this.warnings = []; // [{ level, text, count, last }] aus dem Renode-Log
+    this.startedAt = null;
+    this.lastSim = null;
+    this.pollCount = 0;
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
@@ -106,6 +120,34 @@ class ControlBridge {
         return d;
       }),
     };
+  }
+
+  /** Vor jedem Start von Renode: Meldungen des vorigen Laufs vergessen */
+  resetLog() {
+    this.warnings = [];
+    this.renodeVersion = null;
+  }
+
+  /** Zeile aus dem Renode-Log (renodeManager 'log'): Version und Warnungen merken */
+  onRenodeLog(line) {
+    const v = /Renode, version (\S+)/.exec(line);
+    if (v) this.renodeVersion = v[1];
+    const m = LOG_RE.exec(line);
+    if (!m) return;
+    // Meldungstext ohne Zeitstempel; gleiche Meldungen zählen statt wiederholen
+    const text = m[2].replace(/\s+/g, ' ').slice(0, 400);
+    const old = this.warnings.find((w) => w.text === text);
+    if (old) {
+      old.count++;
+      old.last = Date.now();
+    } else {
+      this.warnings.push({ level: m[1] === 'ERROR' ? 'error' : 'warning', text, count: 1, last: Date.now() });
+      if (this.warnings.length > 30) this.warnings.shift();
+    }
+  }
+
+  _watchers() {
+    return [...this.wss.clients].filter((ws) => ws.readyState === WebSocket.OPEN && ws.watchSim);
   }
 
   _subscribedPaths() {
@@ -160,6 +202,11 @@ class ControlBridge {
         // Neu abgefragte Pfade: Flanken aus der Zeit ohne Abonnenten verwerfen
         for (const p of this._subscribedPaths()) if (!before.has(p)) this.freshPaths.add(p);
         if (msg.type === 'subscribe' && this.experiment) this._send(ws, this._signalsMessage());
+        return;
+      }
+      case 'watch': {
+        ws.watchSim = !!msg.sim;
+        if (ws.watchSim && this.lastSim) this._send(ws, this.lastSim);
         return;
       }
       case 'uartconfig': {
@@ -219,6 +266,12 @@ class ControlBridge {
         await run(`${exp.sensor.path} Distance ${Math.min(max, Math.max(min, v))}`);
         break;
       }
+      case 'reset': {
+        if (!exp.reset) throw new Error('Kein Reset in diesem Versuch');
+        await run(`${exp.reset.path} ResetMcu`);
+        this._broadcast({ type: 'reset' });
+        break;
+      }
       case 'pendulum': {
         const pd = exp.pendulum;
         if (!pd) throw new Error('Kein Pendeldisplay in diesem Versuch');
@@ -244,6 +297,9 @@ class ControlBridge {
     this.lastPendulum = null;
     this.signalInfo = {};
     this.freshPaths.clear();
+    this.startedAt = Date.now();
+    this.lastSim = null;
+    this.simPrev = null;
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
     mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
@@ -259,6 +315,10 @@ class ControlBridge {
     if (experiment.machine) {
       await mon.execute(`mach set "${experiment.machine}"`).catch(() => {});
     }
+    // Renode-Version für die Simulations-Anzeige
+    const ver = await mon.execute('version').catch(() => '');
+    const v = /(\d+\.\d+\.\d+\S*)/.exec(ver);
+    if (v) this.renodeVersion = v[1];
     this._connectLedBridge();
     this._broadcast(this._hello());
     this._broadcast(this._signalsMessage());
@@ -381,11 +441,48 @@ class ControlBridge {
       }
 
       await this._pollSignals(mon);
+      if (this.pollCount++ % 5 === 0 && this._watchers().length) await this._pollSim(mon);
     } catch (e) {
       if (this.attached) console.error(`[control] Poll-Fehler: ${e.message}`);
     } finally {
       this.polling = false;
     }
+  }
+
+  /** Zustand der Simulation für die Anzeige (Firmware, CPU, Zeit, UART, Meldungen) */
+  async _pollSim(mon) {
+    const exp = this.experiment;
+    const sim = {
+      type: 'sim',
+      experiment: { id: exp.id, title: exp.title },
+      firmware: this.firmware,
+      renode: { version: this.renodeVersion, startedAt: this.startedAt },
+      warnings: this.warnings,
+    };
+    if (exp.status) {
+      const m = ST_RE.exec(await mon.execute(`${exp.status.path} GetStatus`));
+      if (m) {
+        const now = Date.now();
+        const virtualNs = Number(m[1]);
+        let speed = null;
+        if (this.simPrev && now > this.simPrev.wall) {
+          speed = (virtualNs - this.simPrev.virtualNs) / 1e6 / (now - this.simPrev.wall);
+        }
+        this.simPrev = { wall: now, virtualNs };
+        sim.time = { virtualNs, wallMs: now - this.startedAt, speed };
+        sim.cpu = { state: m[5], halted: m[6] === '1', pc: `0x${m[8]}`, symbol: m[9] || null, sysclk: Number(m[4]) };
+        sim.resets = { count: Number(m[2]), lastNs: Number(m[3]) };
+      }
+    }
+    if (exp.uart && exp.uart.host) {
+      const uartPath = exp.uart.host.replace(/\.[^.]+$/, '');
+      const baud = /([\d.]+)/.exec(await mon.execute(`${uartPath} LineBaudRate`));
+      const fmt = /"?([5-8][NOEMS][12])"?/.exec(await mon.execute(`${uartPath} FrameFormat`));
+      sim.uart = { mcu: { baud: baud ? Number(baud[1]) : null, format: fmt ? fmt[1] : null }, terminal: this.terminalSettings() };
+    }
+    this.lastSim = sim;
+    const data = JSON.stringify(sim);
+    for (const ws of this._watchers()) ws.send(data);
   }
 
   /** Flanken der abonnierten Leitungen abholen und an die Abonnenten verteilen */

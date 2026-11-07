@@ -101,6 +101,13 @@ namespace Antmicro.Renode.Peripherals.UART
             line = partner;
         }
 
+        // Der Mikrocontroller wurde zurückgesetzt: ein angefangenes Zeichen bricht ab
+        public void LineReset(ulong ns)
+        {
+            decoder.Truncate(ns);
+            RunDecoder();
+        }
+
         // Flanken vom TX-Pin des Mikrocontrollers
         public void LineEdges(IList<SignalEdge> edges)
         {
