@@ -115,7 +115,7 @@ namespace Antmicro.Renode.Peripherals.UART
                     ctl = value;
                     break;
                 case Ifls: ifls = value & 0x3F; break;
-                case Im: im = value & 0x17F2; break;
+                case Im: im = value & ImMask; break;
                 case Icr: ris &= ~value; break;
                 case Dmactl: dmactl = value & 0x7; break;
                 case Cc: cc = value & 0xF; break;
@@ -243,6 +243,8 @@ namespace Antmicro.Renode.Peripherals.UART
             return false;
         }
 
+        // Register-Offsets und Bits wie in tm4c1294ncpdt.h (UARTn_..._R, UART_...); geprüft mit
+        // tools/check_header.py
         private const long RcgcUart = 0x618;
         private const long Dr = 0x000, Rsr = 0x004, Fr = 0x018, Ilpr = 0x020, Ibrd = 0x024, Fbrd = 0x028,
                            Lcrh = 0x02C, Ctl = 0x030, Ifls = 0x034, Im = 0x038, Ris = 0x03C, Mis = 0x040,
@@ -254,6 +256,8 @@ namespace Antmicro.Renode.Peripherals.UART
         private const uint CtlUarten = 1u << 0, CtlHse = 1u << 5, CtlTxe = 1u << 8, CtlRxe = 1u << 9;
         private const uint IntRx = 1u << 4, IntTx = 1u << 5, IntRt = 1u << 6, IntOe = 1u << 10;
         private const uint RsrOe = 1u << 3;
+        // alle Bits von UARTIM laut tm4c1294ncpdt.h außer DMA (UART_IM_..., 0..12); nur RX/TX/RT/OE werden ausgelöst
+        private const uint ImMask = 0x1FFF;
 
         private readonly TivaSysCtl sysCtl;
         private readonly int clockBit;

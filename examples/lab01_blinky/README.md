@@ -27,28 +27,38 @@ abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echt
 
 ## 2. Das Programm verstehen (`main.c`)
 
-Es wird **keine Bibliothek** verwendet. Oben in `main.c` stehen die Registeradressen als `#define`;
-jede Adresse ist **Basisadresse + Offset** aus dem Datenblatt:
+Es wird **keine Bibliothek** verwendet, aber die Headerdatei **`tm4c1294ncpdt.h`** von TI
+(liegt in `common/`, wird mit `#include "tm4c1294ncpdt.h"` eingebunden). Sie enthält
+- für jedes Register ein Makro `<MODUL>_<REGISTER>_R`, das man wie eine Variable liest und schreibt –
+  dahinter steht die Adresse aus dem Datenblatt (**Basisadresse + Offset**), z. B.
+  `GPIO_PORTN_DIR_R` = Adresse `0x40064400`;
+- für Bits und Feldwerte Konstanten wie `SYSCTL_RCGCGPIO_R12` (= Bit 12) oder `TIMER_CTL_TAEN`.
 
-| Register | Adresse | Wirkung hier |
-|---|---|---|
-| `RCGCGPIO` | `0x400FE608` | Bit 12 = 1: Port N bekommt Takt (Bit *n* = Port *n*, A = 0 … N = 12) |
-| `PRGPIO` | `0x400FEA08` | Bit 12 = 1: Port N ist bereit |
-| `GPIODIR` (Port N) | `0x40064400` | Bit = 1: Pin ist Ausgang |
-| `GPIODEN` (Port N) | `0x4006451C` | Bit = 1: Pin digital aktiv |
-| `GPIODATA` (Port N) | `0x400643FC` | Pegel der Pins (Bit 0 = PN0, Bit 1 = PN1) |
+Im Programm steht deshalb **keine Adresse** – Tippfehler in Adressen sind so ausgeschlossen.
+
+| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+|---|---|---|---|
+| `RCGCGPIO` | `SYSCTL_RCGCGPIO_R` | `0x400FE608` | Bit 12 (`SYSCTL_RCGCGPIO_R12`) = 1: Port N bekommt Takt (Bit *n* = Port *n*, A = 0 … N = 12) |
+| `PRGPIO` | `SYSCTL_PRGPIO_R` | `0x400FEA08` | Bit 12 (`SYSCTL_PRGPIO_R12`) = 1: Port N ist bereit |
+| `GPIODIR` (Port N) | `GPIO_PORTN_DIR_R` | `0x40064400` | Bit = 1: Pin ist Ausgang |
+| `GPIODEN` (Port N) | `GPIO_PORTN_DEN_R` | `0x4006451C` | Bit = 1: Pin digital aktiv |
+| `GPIODATA` (Port N) | `GPIO_PORTN_DATA_R` | `0x400643FC` | Pegel der Pins (Bit 0 = PN0, Bit 1 = PN1) |
 
 ```c
-SYSCTL_RCGCGPIO |= PORT_N;                        // 1. Takt für Port N an (Bit 12 setzen)
-while ((SYSCTL_PRGPIO & PORT_N) == 0) {}          // 2. warten, bis Port bereit
-GPION_DIR |= PIN0 | PIN1;                         // 3. PN0, PN1 = Ausgänge
-GPION_DEN |= PIN0 | PIN1;                         //    und digital
-GPION_DATA = PIN1;                                // Start: D1 an, D2 aus
+SYSCTL_RCGCGPIO_R |= PORT_N;                      // 1. Takt für Port N an (Bit 12 setzen)
+while ((SYSCTL_PRGPIO_R & PORT_N_BEREIT) == 0) {} // 2. warten, bis Port bereit
+GPIO_PORTN_DIR_R |= PIN0 | PIN1;                  // 3. PN0, PN1 = Ausgänge
+GPIO_PORTN_DEN_R |= PIN0 | PIN1;                  //    und digital
+GPIO_PORTN_DATA_R = PIN1;                         // Start: D1 an, D2 aus
 while (1) {
     warten(HALBE_SEKUNDE);                        // 4. ca. 0,5 s warten
-    GPION_DATA ^= PIN0 | PIN1;                    // 5. beide LEDs umschalten (XOR)
+    GPIO_PORTN_DATA_R ^= PIN0 | PIN1;             // 5. beide LEDs umschalten (XOR)
 }
 ```
+
+**Achtung, Namen der Ports A–J:** Beim TM4C1294 liegen alle GPIO-Ports am schnellen AHB-Bus. Die
+Headerdatei nennt die Ports A bis J deshalb `GPIO_PORTA_AHB_..._R` … `GPIO_PORTJ_AHB_..._R`, die
+Ports K bis Q dagegen ohne Zusatz (`GPIO_PORTN_DIR_R`).
 
 Die Wartezeit ist eine leere Zählschleife (`volatile`, damit der Compiler sie nicht entfernt). Ein
 Durchlauf braucht etwa 12 Takte, bei 16 MHz sind `HALBE_SEKUNDE` ≈ 700 000 Durchläufe knapp eine halbe Sekunde.
@@ -89,7 +99,7 @@ Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 
 ### 3.3 Selbst ausprobieren
 
 - Ändern Sie `HALBE_SEKUNDE` auf `70000u` (ca. 0,05 s), `make`, `ucsim` neu starten.
-- Entfernen Sie testweise die Zeile `SYSCTL_RCGCGPIO |= PORT_N;` und simulieren Sie erneut: Im
+- Entfernen Sie testweise die Zeile `SYSCTL_RCGCGPIO_R |= PORT_N;` und simulieren Sie erneut: Im
   Terminal erscheint die Warnung *„GPIO Port N: Zugriff … ohne Takt!“*, die LEDs bleiben aus. Auf dem
   Board würde das Programm im HardFault landen – ein sehr häufiger Anfängerfehler.
 
@@ -169,6 +179,7 @@ Das Debuggen mit der CCS-Oberfläche gegen den Simulator ist in `docs/TOOLCHAIN.
 ## 7. Aufgaben
 
 1. Lassen Sie **D3 (PF4)** und **D4 (PF0)** zusätzlich blinken (Port F = Bit 5 in `RCGCGPIO`,
-   Basisadresse `0x4005D000`; Offsets von `DIR`/`DEN`/`DATA` wie bei Port N – im Datenblatt nachschlagen). Welche Zeile fehlt, wenn die LEDs dunkel bleiben?
+   also `SYSCTL_RCGCGPIO_R5`; Register `GPIO_PORTF_AHB_DIR_R`, `…_DEN_R`, `…_DATA_R` – in
+   `tm4c1294ncpdt.h` nachschlagen). Welche Zeile fehlt, wenn die LEDs dunkel bleiben?
 2. Erzeugen Sie ein **Lauflicht** über alle vier LEDs.
 3. Messen Sie mit einer Stoppuhr, wie genau 0,5 s auf dem Board sind. Warum weicht der Wert ab?
