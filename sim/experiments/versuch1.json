@@ -25,5 +25,26 @@
       ["7", "8", "9"],
       ["*", "0", "#"]
     ]
+  },
+  "scope": {
+    "signals": [
+      { "pin": "PK0", "label": "Keypad Zeile 0" },
+      { "pin": "PK1", "label": "Keypad Zeile 1" },
+      { "pin": "PK2", "label": "Keypad Zeile 2" },
+      { "pin": "PK3", "label": "Keypad Zeile 3" },
+      { "pin": "PK4", "label": "Keypad Spalte 0" },
+      { "pin": "PK5", "label": "Keypad Spalte 1" },
+      { "pin": "PK6", "label": "Keypad Spalte 2" },
+      { "pin": "PN1", "label": "LED D1" },
+      { "pin": "PN0", "label": "LED D2" },
+      { "pin": "PF4", "label": "LED D3" },
+      { "pin": "PF0", "label": "LED D4" },
+      { "pin": "PJ0", "label": "USR_SW1" },
+      { "pin": "PJ1", "label": "USR_SW2" },
+      { "pin": "PA0", "label": "U0RX (vom Terminal)" },
+      { "pin": "PA1", "label": "U0TX (zum Terminal)" }
+    ],
+    "channels": ["PN1", "PN0", "PJ0", "PA1"],
+    "trigger": { "source": "PJ0", "edge": "falling" }
   }
 }

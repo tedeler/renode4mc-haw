@@ -56,5 +56,51 @@
   "solution": {
     "example": "lab08_uart_leds",
     "label": "Musterlösung (examples/lab08_uart_leds)"
+  },
+  "scope": {
+    "signals": [
+      {
+        "pin": "PN1",
+        "label": "LED D1"
+      },
+      {
+        "pin": "PN0",
+        "label": "LED D2"
+      },
+      {
+        "pin": "PF4",
+        "label": "LED D3"
+      },
+      {
+        "pin": "PF0",
+        "label": "LED D4"
+      },
+      {
+        "pin": "PJ0",
+        "label": "USR_SW1"
+      },
+      {
+        "pin": "PJ1",
+        "label": "USR_SW2"
+      },
+      {
+        "pin": "PA0",
+        "label": "U0RX (vom Terminal)"
+      },
+      {
+        "pin": "PA1",
+        "label": "U0TX (zum Terminal)"
+      }
+    ],
+    "channels": [
+      "PA0",
+      "PA1",
+      "PJ0",
+      "PN1"
+    ],
+    "trigger": {
+      "source": "PA1",
+      "edge": "falling"
+    }
   }
 }

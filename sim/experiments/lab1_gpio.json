@@ -113,5 +113,123 @@
   "solution": {
     "example": "lab05_hexkeypad_bcd",
     "label": "Musterlösung (examples/lab05_hexkeypad_bcd)"
+  },
+  "scope": {
+    "signals": [
+      {
+        "pin": "PM0",
+        "label": "Keypad X1 (Spalte)"
+      },
+      {
+        "pin": "PM1",
+        "label": "Keypad X2 (Spalte)"
+      },
+      {
+        "pin": "PM2",
+        "label": "Keypad X3 (Spalte)"
+      },
+      {
+        "pin": "PM3",
+        "label": "Keypad X4 (Spalte)"
+      },
+      {
+        "pin": "PM4",
+        "label": "Keypad Y1 (Zeile)"
+      },
+      {
+        "pin": "PM5",
+        "label": "Keypad Y2 (Zeile)"
+      },
+      {
+        "pin": "PM6",
+        "label": "Keypad Y3 (Zeile)"
+      },
+      {
+        "pin": "PM7",
+        "label": "Keypad Y4 (Zeile)"
+      },
+      {
+        "pin": "PK0",
+        "label": "BCD D0"
+      },
+      {
+        "pin": "PK1",
+        "label": "BCD D1"
+      },
+      {
+        "pin": "PK2",
+        "label": "BCD D2"
+      },
+      {
+        "pin": "PK3",
+        "label": "BCD D3"
+      },
+      {
+        "pin": "PK4",
+        "label": "BCD D4"
+      },
+      {
+        "pin": "PK5",
+        "label": "BCD D5"
+      },
+      {
+        "pin": "PK6",
+        "label": "BCD D6"
+      },
+      {
+        "pin": "PK7",
+        "label": "BCD D7"
+      },
+      {
+        "pin": "PL0",
+        "label": "BCD EN rechts"
+      },
+      {
+        "pin": "PL1",
+        "label": "BCD EN links"
+      },
+      {
+        "pin": "PN1",
+        "label": "LED D1"
+      },
+      {
+        "pin": "PN0",
+        "label": "LED D2"
+      },
+      {
+        "pin": "PF4",
+        "label": "LED D3"
+      },
+      {
+        "pin": "PF0",
+        "label": "LED D4"
+      },
+      {
+        "pin": "PJ0",
+        "label": "USR_SW1"
+      },
+      {
+        "pin": "PJ1",
+        "label": "USR_SW2"
+      },
+      {
+        "pin": "PA0",
+        "label": "U0RX (vom Terminal)"
+      },
+      {
+        "pin": "PA1",
+        "label": "U0TX (zum Terminal)"
+      }
+    ],
+    "channels": [
+      "PM0",
+      "PM4",
+      "PL0",
+      "PL1"
+    ],
+    "trigger": {
+      "source": "PM0",
+      "edge": "falling"
+    }
   }
 }

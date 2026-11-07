@@ -58,6 +58,7 @@ export function ControlSocketProvider({ children }) {
   const [diagnostics, setDiagnostics] = useState([]);
   const cioListeners = useRef(new Set());
   const cioHistory = useRef(new Uint8Array(0));
+  const scopeListeners = useRef(new Set());
 
   const emitCio = (bytes, reset) => {
     if (reset) cioHistory.current = new Uint8Array(0);
@@ -119,6 +120,9 @@ export function ControlSocketProvider({ children }) {
       case 'pdev':
         pendulumEventListeners.current.forEach((fn) => fn(msg));
         break;
+      case 'scope':
+        scopeListeners.current.forEach((fn) => fn(msg));
+        break;
       case 'renode':
         setRenodeState(msg.state);
         if (msg.state === 'stopped') setLeds({});
@@ -153,6 +157,12 @@ export function ControlSocketProvider({ children }) {
     return () => pendulumListeners.current.delete(fn);
   }, []);
 
+  /** Oszilloskop-Daten (Pegelwechsel der angeforderten Pins), ohne Puffer */
+  const subscribeScope = useCallback((fn) => {
+    scopeListeners.current.add(fn);
+    return () => scopeListeners.current.delete(fn);
+  }, []);
+
   /** printf-Ausgabe (CCS-Konsole): fn(bytes, reset); beim Anmelden kommt die bisherige Ausgabe */
   const subscribeCio = useCallback((fn) => {
     cioListeners.current.add(fn);
@@ -172,10 +182,11 @@ export function ControlSocketProvider({ children }) {
       subscribePendulum,
       subscribePendulumEvents,
       subscribeCio,
+      subscribeScope,
       lastError,
       clearError: () => setLastError(null),
     }),
-    [status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, subscribeCio, lastError],
+    [status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents, subscribeCio, subscribeScope, lastError],
   );
 
   return <ControlSocketContext.Provider value={value}>{children}</ControlSocketContext.Provider>;

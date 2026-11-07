@@ -20,12 +20,21 @@
 //  * Interrupt freigegeben (IM), aber DEN = 0      -> es kommt nie ein Interrupt
 //  * geschützter Pin ohne GPIOLOCK/GPIOCR umkonfiguriert -> Schreiben wirkungslos
 //
+// Pinpegel für das Oszilloskop (sim/models/Oscilloscope.cs): PadLevel(pin) liefert, was ein Tastkopf am
+// Pin messen würde (0 = LOW, 1 = HIGH, 2 = offen/hochohmig), das Ereignis PadChanged meldet jeden Wechsel
+// mit virtueller Zeit. Getriebener Ausgang -> Latch; sonst von außen getrieben -> dieser Pegel; sonst
+// Pull-up/Pull-down; sonst offen. Alternative Funktion (AFSEL = 1, DEN = 1): Ein Peripheriemodell kann den
+// Pin mit RegisterAlternateOutput übernehmen (z. B. U0TX, Ruhepegel HIGH) und mit AlternateOutput einen
+// Bitstrom ausgeben (auch mit Zeitpunkten in der Zukunft).
+//
 // Monitor (bzw. Web-Konsole):  sysbus.gpioJ OnGPIO 0 false     Pin von außen auf LOW treiben
 //                              sysbus.gpioJ ReleaseInput 0     Pin nicht mehr treiben (offen)
+using System;
 using System.Collections.Generic;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals.Bus;
+using Antmicro.Renode.Peripherals.CPU;
 using Antmicro.Renode.Peripherals.Miscellaneous;
 
 namespace Antmicro.Renode.Peripherals.GPIOPort
@@ -38,6 +47,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             this.sysCtl = sysCtl;
             this.clockBit = clockBit;
             this.portName = portName;
+            this.ownMachine = machine;
+            for(int i = 0; i < 8; i++) afFunction[i] = -1;
             // Commit-geschützte Pins (Tabelle 10-11): PC[3:0] JTAG/SWD, PD7 und PE7 (NMI)
             protectedPins = portName == "C" ? 0x0Fu : (portName == "D" || portName == "E") ? 0x80u : 0u;
             IRQ = new GPIO();
@@ -49,6 +60,63 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         // Interrupt-Ausgang zum NVIC
         public GPIO IRQ { get; private set; }
 
+        public string PortName { get { return portName; } }
+
+        // Wechsel des Pinpegels: (Pin, virtuelle Zeit in us, Pegel 0/1/2 = LOW/HIGH/offen).
+        // Nur solange jemand angemeldet ist, wird der Pegel nachgeführt (sonst kostet es nichts).
+        public event Action<int, double, int> PadChanged
+        {
+            add
+            {
+                lock(padLock)
+                {
+                    padChanged += value;
+                    for(int i = 0; i < 8; i++) padLevels[i] = ComputePad(i);
+                }
+            }
+            remove { lock(padLock) { padChanged -= value; } }
+        }
+
+        // Was ein Tastkopf am Pin misst: 0 = LOW, 1 = HIGH, 2 = offen (hochohmig, kein Pull-up/-down)
+        public int PadLevel(int pin)
+        {
+            if(pin < 0 || pin > 7) return 2;
+            lock(padLock) { return ComputePad(pin); }
+        }
+
+        // Peripheriemodell übernimmt den Pin, wenn er auf die alternative Funktion "function" (GPIOPCTL)
+        // eingestellt ist (AFSEL = 1, PCTL, DEN = 1). idleHigh: Pegel ohne laufende Ausgabe.
+        public void RegisterAlternateOutput(int pin, int function, bool idleHigh)
+        {
+            if(pin < 0 || pin > 7) return;
+            afFunction[pin] = function;
+            afIdle[pin] = idleHigh;
+            UpdatePads();
+        }
+
+        // Pegel einer alternativen Funktion zur virtuellen Zeit us (darf in der Zukunft liegen, z. B. die
+        // Bits eines UART-Rahmens). Wirkt nur, wenn der Pin gerade für diese Funktion eingestellt ist.
+        public void AlternateOutput(int pin, int function, double us, bool level)
+        {
+            if(pin < 0 || pin > 7 || afFunction[pin] != function || !AlternateActive(pin)) return;
+            var handler = padChanged;
+            if(handler != null) handler(pin, us, level ? 1 : 0);
+        }
+
+        // Virtuelle Zeit in us, möglichst auf den Befehl genau (CPU-Zeit wird vorher nachgeführt)
+        public double NowUs()
+        {
+            // Im Simulationsthread (Registerzugriff der Firmware) die CPU-Zeit bis zum aktuellen Befehl
+            // nachführen, sonst wäre die Zeit nur auf ein Quantum (Lab-Skripte: 10 us) genau
+            ICPU cpu;
+            if(ownMachine.SystemBus.TryGetCurrentCPU(out cpu))
+            {
+                var tcpu = cpu as TranslationCPU;
+                if(tcpu != null) tcpu.SyncTime();
+            }
+            return ownMachine.LocalTimeSource.ElapsedVirtualTime.TotalMicroseconds;
+        }
+
         public override void OnGPIO(int number, bool value)
         {
             if(number < 0 || number > 7) return;
@@ -58,6 +126,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             if(value) inputValue |= bit; else inputValue &= ~bit;
             DetectEdges(old, ReceiverLevels());
             UpdateInterrupt();
+            UpdatePads();
         }
 
         // Pin wird von außen nicht mehr getrieben (z. B. Taster gegen GND losgelassen)
@@ -68,6 +137,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             inputDriven &= ~(1u << number);
             DetectEdges(old, ReceiverLevels());
             UpdateInterrupt();
+            UpdatePads();
         }
 
         // Prüft, ob der Pin für die alternative Funktion "function" (GPIOPCTL-Wert) eingestellt ist
@@ -133,6 +203,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 UpdatePins();
                 DetectEdges(old, ReceiverLevels());
                 UpdateInterrupt();
+                UpdatePads();
                 return;
             }
 
@@ -173,6 +244,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             UpdatePins();
             DetectEdges(old, ReceiverLevels());
             UpdateInterrupt();
+            UpdatePads();
         }
 
         public override void Reset()
@@ -193,6 +265,54 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             clockWarned = false;
             warned = new HashSet<string>();
             if(IRQ != null) IRQ.Unset();
+            UpdatePads();
+        }
+
+        // Pinpegel neu bestimmen und Wechsel melden
+        private void UpdatePads()
+        {
+            var handler = padChanged;
+            if(handler == null) return;
+            List<int> changes = null;
+            lock(padLock)
+            {
+                for(int i = 0; i < 8; i++)
+                {
+                    int level = ComputePad(i);
+                    if(level != padLevels[i])
+                    {
+                        padLevels[i] = level;
+                        if(changes == null) changes = new List<int>();
+                        changes.Add(i | (level << 8));
+                    }
+                }
+            }
+            if(changes == null) return;
+            double now = NowUs();
+            foreach(var c in changes) handler(c & 0xFF, now, c >> 8);
+        }
+
+        // Getriebener Ausgang -> Latch; alternative Funktion -> Ruhepegel des Peripheriemodells;
+        // von außen getrieben -> dieser Pegel; sonst Pull-up/Pull-down; sonst offen (2)
+        private int ComputePad(int i)
+        {
+            uint bit = 1u << i;
+            if((OutputEnabled() & bit) != 0) return (dataLatch & bit) != 0 ? 1 : 0;
+            if(AlternateActive(i)) return afIdle[i] ? 1 : 0;
+            if((inputDriven & bit) != 0) return (inputValue & bit) != 0 ? 1 : 0;
+            if((pur & bit) != 0) return 1;
+            if((pdr & bit) != 0) return 0;
+            return 2;
+        }
+
+        private bool AlternateActive(int pin)
+        {
+            if(afFunction[pin] < 0) return false;
+            uint bit = 1u << pin;
+            if((afsel & bit) == 0 || (den & bit) == 0) return false;
+            uint pctl;
+            other.TryGetValue(Pctl, out pctl);
+            return ((pctl >> (4 * pin)) & 0xF) == afFunction[pin];
         }
 
         // Pegel am Pin von außen: getrieben, sonst Pull-up/Pull-down, sonst offen (0)
@@ -371,5 +491,11 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         private bool clockWarned;
         private HashSet<string> warned;
         private Dictionary<long, uint> other;
+        private readonly IMachine ownMachine;
+        private readonly object padLock = new object();
+        private readonly int[] padLevels = { 2, 2, 2, 2, 2, 2, 2, 2 };
+        private Action<int, double, int> padChanged;
+        private readonly int[] afFunction = new int[8];
+        private readonly bool[] afIdle = new bool[8];
     }
 }

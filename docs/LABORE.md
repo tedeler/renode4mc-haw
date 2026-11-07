@@ -115,6 +115,15 @@ schickt `printf()` dabei über dasselbe CIO-Protokoll, die Ausgabe erscheint als
 CCS-Konsole. Welche Musterlösung zu welchem Versuch gehört, steht in der Versuchs-JSON:
 `"solution": { "example": "lab05_hexkeypad_bcd", "label": "…" }`.
 
+## Oszilloskop
+
+In allen Umgebungen lässt sich in der Web-Konsole ein Oszilloskop einblenden (siehe
+[WEBCONSOLE.md](WEBCONSOLE.md#oszilloskop)). Die Dropdowns bieten die Signale des Versuchs mit
+Namen an, z. B. Lab 2/3: Pendel R/L (PL0), Pendel-LEDs (PM0–PM7), HC-SR04 Trigger (PD0) und
+Echo (PD1); Lab 1: Keypad X/Y (PM0–PM7), BCD D0–D7 (PK0–PK7), EN (PL0/PL1); Lab 4: U0RX/U0TX
+(PA0/PA1) mit dem Bitstrom bei 9600 Bit/s 7N1 – eine falsch eingestellte Baudrate sieht man an
+der Bitbreite.
+
 ## Test
 
 ```bash
@@ -144,5 +153,6 @@ node test/e2e_labs.js /tmp/fw/out              # ONLY=lab1,lab4,solution für ei
   freilaufenden Timer, wie in `lab07_nvic_pendel`. Benutzt die Firmware einen dieser Modi, meldet
   die Diagnose es.
 - Zugriff ohne Takt führt im Simulator nicht zum Bus-Fault wie auf dem Board, wird aber gemeldet.
-- Zeiten sind auf ein Renode-Quantum genau (in den Lab-Umgebungen 10 µs). Busy-Wait-Programme
+- Zeiten sind auf ein Renode-Quantum genau (in den Lab-Umgebungen 10 µs); Pegelwechsel durch die
+  Firmware zeichnet das Oszilloskop auf 1 µs genau auf. Busy-Wait-Programme
   laufen in der Simulation langsamer als in Echtzeit, die virtuelle Zeit stimmt trotzdem.

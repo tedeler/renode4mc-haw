@@ -10,6 +10,12 @@ const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 const BCD_RE = /BCD:([0-9A-F-]{4}):([01]{2}):([0-9A-F]{2})/;
 const CIO_RE = /CIO:([A-Za-z0-9+/=]*)/;
+const SC_RE = /SC:(\d+):([A-Z0-9,]*):([0-9,]*):([\d,;]*):(\d+)/;
+// Pins des TM4C1294NCPDT (128 Pins), Datenblatt Tabelle 26-5
+const PORT_PINS = { A: 8, B: 6, C: 8, D: 8, E: 6, F: 5, G: 2, H: 4, J: 2, K: 8, L: 8, M: 8, N: 6, P: 6, Q: 5 };
+const isPin = (p) => typeof p === 'string' && /^P[A-Q][0-7]$/.test(p) && PORT_PINS[p[1]] > +p[2];
+const SCOPE_PATH = 'sysbus.scope';
+const MAX_SCOPE_SOURCES = 5; // CH1..CH4 + externer Trigger
 // Renode-Logzeile: "[12:00:00.0000] [WARNING] tm4c1294/gpioM: GPIO Port M: ..."
 const DIAG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
 const CIO_HISTORY_BYTES = 16384;
@@ -28,6 +34,9 @@ const MAX_DIAGNOSTICS = 100;
  *   { type: "sensor", value }                  Distanz in cm
  *   { type: "pendulum", frequency }            Pendelfrequenz in Hz (Pendeldisplay)
  *   { type: "clearDiagnostics" }               Diagnose-Liste leeren
+ *   { type: "scope", sources: ["PD0", …] }     Oszilloskop: Pins, die dieser Browser sehen will (max. 5,
+ *                                              [] = Oszilloskop aus). Aufgezeichnet wird die Vereinigung
+ *                                              aller Browser (sim/models/Oscilloscope.cs).
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd }
  *   { type: "leds", states: { [id]: boolean } }
@@ -46,6 +55,12 @@ const MAX_DIAGNOSTICS = 100;
  *   { type: "cio", data }                             printf-Ausgabe (CCS-Konsole), Base64; im hello: cio = alles bisher
  *   { type: "diag", level, message, count }           Warnung/Fehler aus Renode (Fehlkonfiguration usw.);
  *                                                     im hello: diagnostics = [{level, message, count}]
+ *   { type: "scope", now, pins, levels, ev, dropped }
+ *                                                     Oszilloskop (nur an Browser mit Quellen): now = virtuelle
+ *                                                     Zeit in ns, pins/levels = aufgezeichnete Pins und ihr Pegel
+ *                                                     jetzt (0 LOW, 1 HIGH, 2 offen), ev = flach [i, dt ns, Pegel, …]
+ *                                                     (i = Index in pins, dt seit dem vorigen Wechsel bzw. seit
+ *                                                     Start), dropped = verlorene Wechsel (Puffer voll)
  *   { type: "renode", state: "running" | "stopped" }
  *   { type: "error", message }
  */
@@ -66,6 +81,7 @@ class ControlBridge {
     this.polling = false;
     this.ledSocket = null;
     this.ledRetry = null;
+    this.scopeProbes = ''; // in Renode eingestellte Pins (Komma-Liste)
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
@@ -124,6 +140,8 @@ class ControlBridge {
   }
 
   _onClient(ws) {
+    ws.scopeSources = [];
+    ws.on('close', () => this._updateScopeProbes().catch(() => {}));
     this._send(ws, this._hello());
     ws.on('message', async (raw) => {
       let msg;
@@ -133,6 +151,7 @@ class ControlBridge {
         return this._send(ws, { type: 'error', message: 'Ungültiges JSON' });
       }
       try {
+        if (msg && msg.type === 'scope') return await this._scopeSources(ws, msg.sources);
         await this._handle(msg);
       } catch (e) {
         this._send(ws, { type: 'error', message: e.message });
@@ -207,6 +226,27 @@ class ControlBridge {
     }
   }
 
+  /** Oszilloskop: Quellen eines Browsers setzen (gilt auch, wenn Renode gerade nicht läuft) */
+  async _scopeSources(ws, sources) {
+    if (!Array.isArray(sources)) throw new Error('Oszilloskop: sources muss eine Liste sein');
+    const pins = [...new Set(sources.filter(Boolean))];
+    if (pins.length > MAX_SCOPE_SOURCES) throw new Error(`Oszilloskop: höchstens ${MAX_SCOPE_SOURCES} Quellen`);
+    const bad = pins.find((p) => !isPin(p));
+    if (bad) throw new Error(`Oszilloskop: unbekannter Pin ${bad}`);
+    ws.scopeSources = pins;
+    await this._updateScopeProbes();
+  }
+
+  /** Vereinigung der Quellen aller Browser in Renode einstellen (Format: sim/models/Oscilloscope.cs) */
+  async _updateScopeProbes(force = false) {
+    const all = new Set();
+    for (const c of this.wss.clients) if (c.readyState === WebSocket.OPEN) (c.scopeSources || []).forEach((p) => all.add(p));
+    const list = [...all].sort().join(',');
+    if (!this.attached || (!force && list === this.scopeProbes)) return;
+    this.scopeProbes = list;
+    await this.monitor.execute(`${SCOPE_PATH} Probe "${list}"`, { priority: true });
+  }
+
   /** Verbindet mit der neu gestarteten Renode-Instanz und startet Polling/LED-Bridge. */
   async attach(experiment, timeoutMs, isAlive) {
     this.detach();
@@ -232,11 +272,13 @@ class ControlBridge {
     }
     this._connectLedBridge();
     this._broadcast(this._hello());
+    await this._updateScopeProbes(true).catch((e) => console.error(`[control] Oszilloskop: ${e.message}`));
     this._startPolling();
   }
 
   detach() {
     this._stopPolling();
+    this.scopeProbes = '';
     this._disconnectLedBridge();
     if (this.monitor) {
       this.monitor.removeAllListeners();
@@ -367,6 +409,24 @@ class ControlBridge {
             .filter(Boolean)
             .map((x) => x.split(',').map(Number));
           this._broadcast({ type: 'pdev', now: [+e[1], +e[2], +e[3], +e[4]], ev });
+        }
+      }
+
+      if (this.scopeProbes) {
+        const m = SC_RE.exec(await mon.execute(`${SCOPE_PATH} GetEvents`));
+        if (m) {
+          const ev = m[4] ? m[4].split(/[;,]/).filter(Boolean).map(Number) : [];
+          const msg = JSON.stringify({
+            type: 'scope',
+            now: +m[1],
+            pins: m[2] ? m[2].split(',') : [],
+            levels: m[3] ? m[3].split(',').map(Number) : [],
+            ev,
+            dropped: +m[5],
+          });
+          for (const ws of this.wss.clients) {
+            if (ws.readyState === WebSocket.OPEN && ws.scopeSources && ws.scopeSources.length) ws.send(msg);
+          }
         }
       }
     } catch (e) {
