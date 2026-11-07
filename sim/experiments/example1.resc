@@ -1,8 +1,8 @@
-:name: Versuch 1 (EK-TM4C1294XL)
+:name: Example 1 (EK-TM4C1294XL)
 :description: TM4C1294 mit LEDs D1-D4, Tastern USR_SW1/2, UART0, OLED SSD1306, Ultraschall MB1242 und 4x3-Keypad
 
 # Startskript für die Web-Konsole (webconsole/). Wird mit Arbeitsverzeichnis sim/ gestartet:
-#   renode --disable-gui --port 1234 -e "s @experiments/versuch1.resc"
+#   renode --disable-gui --port 1234 -e "s @experiments/example1.resc"
 # Variable $elf: Pfad zur Firmware (.out/.elf), Standard /tmp/app.elf (Upload der Web-Konsole).
 
 $elf?=@/tmp/app.elf
@@ -16,7 +16,7 @@ include @models/KeypadMatrix.cs
 include @tm4c1294.resc
 
 # Versuchsspezifische Erweiterung: OLED + Sensor an I2C0, Keypad an Port K
-machine LoadPlatformDescription @experiments/versuch1.repl
+machine LoadPlatformDescription @experiments/example1.repl
 
 # UART0 (virtueller COM-Port) als TCP-Terminal auf Port 3335 – ohne Telnet-Steuerzeichen.
 # Die Web-Konsole verbindet sich damit (Backend-Brücke -> ws://<host>:3333 -> xterm.js).

@@ -44,7 +44,7 @@ RUN case "${TARGETARCH:-amd64}" in \
  && tar xf /tmp/renode.tar.gz -C /opt/renode --strip-components=1 \
  && rm /tmp/renode.tar.gz
 
-# ---------- Stage 3b: Musterlösungen (examples/lab05..lab08) mit arm-none-eabi-gcc bauen -------------
+# ---------- Stage 3b: Musterlösungen (examples/lab01..lab04) mit arm-none-eabi-gcc bauen -------------
 FROM ${NODE_IMAGE} AS solutions
 RUN apt-get update \
  && apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi \

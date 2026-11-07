@@ -2,14 +2,14 @@
 
 Für jeden Versuch des Mikrocontroller-Praktikums gibt es in der [Web-Konsole](WEBCONSOLE.md) eine
 eigene Umgebung mit der Peripherie aus den Laborunterlagen. Dazu gehört je eine Musterlösung zum
-Vergleich. Versuch 1 und 2 der Web-Konsole sowie die Beispiele `lab01`–`lab04` sind unverändert.
+Vergleich. Example 1 und 2 der Web-Konsole sowie die Beispiele `example01`–`example04` sind unverändert.
 
 | Umgebung (`sim/experiments/`) | Laborunterlage | Peripherie | Musterlösung (`examples/`) |
 |---|---|---|---|
-| `lab1_gpio` | MCL Lab Session 1 (CCS, GPIO) | Hex-Keypad 4×4, 7-Segment-/BCD-Anzeige, LEDs, Taster | `lab05_hexkeypad_bcd` |
-| `lab2_pendel` | Exercise 6 „LED pendulum with ultrasonic module“ | LED-Pendel (HAW), HC-SR04 | `lab06_led_pendel` (Abfrage/Polling) |
-| `lab3_nvic` | „Nested Vectored Interrupt Controller“ | wie Lab 2, alle Timer-Interrupts | `lab07_nvic_pendel` (nur Interrupts, mehrere Dateien) |
-| `lab4_uart` | „Controlling a microcontroller with the PC via UART“ | UART0-Terminal 9600 7N1, LEDs D1–D4, USR_SW1 | `lab08_uart_leds` |
+| `lab1_gpio` | MCL Lab Session 1 (CCS, GPIO) | Hex-Keypad 4×4, 7-Segment-/BCD-Anzeige, LEDs, Taster | `lab01_hexkeypad_bcd` |
+| `lab2_pendel` | Exercise 6 „LED pendulum with ultrasonic module“ | LED-Pendel (HAW), HC-SR04 | `lab02_led_pendel` (Abfrage/Polling) |
+| `lab3_nvic` | „Nested Vectored Interrupt Controller“ | wie Lab 2, alle Timer-Interrupts | `lab03_nvic_pendel` (nur Interrupts, mehrere Dateien) |
+| `lab4_uart` | „Controlling a microcontroller with the PC via UART“ | UART0-Terminal 9600 7N1, LEDs D1–D4, USR_SW1 | `lab04_uart_leds` |
 
 In jeder Umgebung gibt es zusätzlich:
 
@@ -55,7 +55,7 @@ verdrahtet, ändert nur die `.repl`-Datei des Versuchs.
 | Signal R/L | PL0: **steigende Flanke = linker Umkehrpunkt, fallende = rechter Umkehrpunkt** (HIGH beim Schwung links → rechts) | |
 | Ultraschall HC-SR04 | Trigger = PD0, Echo = PD1 | `HcSr04` |
 
-- **Pendel:** Es ist dasselbe Modell und Widget wie in Versuch 2 / Lab 04, nur mit dem Signal aus
+- **Pendel:** Es ist dasselbe Modell und Widget wie in Example 2 / Example 04, nur mit dem Signal aus
   dem Skript (Bild 2). Es schwingt mit ca. 8,3 Hz, also ca. 60 ms je Schwung. Im Browser lässt sich
   die Frequenz von 2 bis 15 Hz einstellen, auf dem Board ist sie fest. Frequenzwechsel gelten ab
   dem nächsten Umkehrpunkt.
@@ -96,11 +96,11 @@ Fehler werden dabei nicht stillschweigend „repariert“:
 
 Taster in der Web-Konsole: Gedrückt verbindet den Pin mit GND. Losgelassen ist der Pin **offen**,
 nur ein Pull-up der Firmware hält ihn dann auf 1. Das gilt jetzt in allen Versuchen. Die Beispiele
-lab03/lab04 setzen den Pull-up und laufen unverändert.
+example03/example04 setzen den Pull-up und laufen unverändert.
 
 ## Musterlösungen bauen
 
-Die Musterlösungen sind die Beispiele `examples/lab05`–`lab08`. Für CCS und das Board baut man sie
+Die Musterlösungen sind die Beispiele `examples/lab01`–`lab04`. Für CCS und das Board baut man sie
 wie die anderen Beispiele (`make` mit tiarmclang oder `.projectspec` importieren). Die Web-Konsole
 lädt gcc-Builds aus `sim/solutions/<Beispiel>.elf`:
 
@@ -113,7 +113,7 @@ Das Docker-Image baut sie selbst (Stufe `solutions` im `webconsole/Dockerfile`, 
 `gcc-arm-none-eabi`). Statt des TI-Laufzeitsystems nutzt der gcc-Build newlib. `tools/gcc/cio_gcc.c`
 schickt `printf()` dabei über dasselbe CIO-Protokoll, die Ausgabe erscheint also ebenfalls in der
 CCS-Konsole. Welche Musterlösung zu welchem Versuch gehört, steht in der Versuchs-JSON:
-`"solution": { "example": "lab05_hexkeypad_bcd", "label": "…" }`.
+`"solution": { "example": "lab01_hexkeypad_bcd", "label": "…" }`.
 
 ## Oszilloskop
 
@@ -150,7 +150,7 @@ node test/e2e_labs.js /tmp/fw/out              # ONLY=lab1,lab4,solution für ei
 - `scanf()` liest im Simulator nichts (CIO-read liefert Dateiende).
 - Timer: Capture (Edge-Time/-Count über CCP-Pins), PWM, RTC und der Match-Interrupt sind nicht
   modelliert. Das Echo misst man deshalb mit einem GPIO-Interrupt an beiden Flanken und einem
-  freilaufenden Timer, wie in `lab07_nvic_pendel`. Benutzt die Firmware einen dieser Modi, meldet
+  freilaufenden Timer, wie in `lab03_nvic_pendel`. Benutzt die Firmware einen dieser Modi, meldet
   die Diagnose es.
 - Zugriff ohne Takt führt im Simulator nicht zum Bus-Fault wie auf dem Board, wird aber gemeldet.
 - Zeiten sind auf ein Renode-Quantum genau (in den Lab-Umgebungen 10 µs); Pegelwechsel durch die

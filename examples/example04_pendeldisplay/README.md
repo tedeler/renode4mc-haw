@@ -1,4 +1,4 @@
-# Lab 04 – Pendeldisplay: UART, Ultraschall und POV-Anzeige
+# Example 04 – Pendeldisplay: UART, Ultraschall und POV-Anzeige
 
 **Ziel:** Ein **Pendel mit 8 LEDs** schwingt 10-mal pro Sekunde. Schaltet die Firmware die LEDs
 genau im richtigen Moment, sieht das Auge ein stehendes Bild („persistence of vision“, POV).
@@ -6,8 +6,8 @@ Auf dem Pendel erscheint der Abstand, den der **Ultraschallsensor** misst, z. B.
 Abstand wird außerdem über **UART0** ausgegeben. Erst im **Simulator** (Web-Konsole), dann auf
 dem **Board** mit Zusatz-Hardware.
 
-**Vorher:** [Lab 02](../lab02_timer_blink/README.md) (Timer, Interrupt) und
-[Lab 03](../lab03_webkonsole/README.md) (UART, I2C, Ultraschallsensor).
+**Vorher:** [Example 02](../example02_timer_blink/README.md) (Timer, Interrupt) und
+[Example 03](../example03_webkonsole/README.md) (UART, I2C, Ultraschallsensor).
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ dem **Board** mit Zusatz-Hardware.
 | Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
 | LED D2 | PN0, Herzschlag 1 Hz |
 | Timer | Timer0A 100 ms (Sensor), Timer1A Einmal-Timer (Spalten), Timer2A freilaufend (Zeitbasis) |
-| Dateien | `main.c`, `lab04_pendeldisplay.projectspec`, `Makefile` |
+| Dateien | `main.c`, `example04_pendeldisplay.projectspec`, `Makefile` |
 
 ---
 
@@ -38,7 +38,7 @@ dem **Board** mit Zusatz-Hardware.
   langsam. Gleich breite Spalten brauchen deshalb unterschiedlich lange Zeiten (Tabelle mit
   `asin`, in Ganzzahlen vorberechnet).
 - **Bild als Bytes:** Eine Bildspalte ist ein Byte auf Port M (Bit n = LED n). Der 5×7-Zeichensatz
-  aus Lab 03 passt direkt.
+  aus Example 03 passt direkt.
 
 ## 2. Das Prinzip
 
@@ -98,7 +98,7 @@ Das Bild wird also bei jedem Schwung gezeichnet, 20-mal pro Sekunde.
 | `GPTMCTL` (Timer1) | `TIMER1_CTL_R` | `0x4003100C` | `TIMER_CTL_TAEN`: Start; im Einmal-Modus schaltet der Timer sich danach ab |
 | `GPTMTAV` (Timer2) | `TIMER2_TAV_R` | `0x40032050` | aktueller Stand der freilaufenden Uhr (zählt **abwärts**) |
 
-Alle Namen kommen aus `tm4c1294ncpdt.h` (siehe Lab 01); im Programm steht keine Adresse.
+Alle Namen kommen aus `tm4c1294ncpdt.h` (siehe Example 01); im Programm steht keine Adresse.
 
 Die Uhr (Timer2) zählt abwärts. „Später“ heißt deshalb „kleinerer Zählerstand“. Mit
 vorzeichenlosen 32-Bit-Zahlen stimmt die Differenz `früher − später` auch über den Überlauf hinweg:
@@ -110,9 +110,9 @@ int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);   // Takte bis dahin
 
 ## 4. Variante A: Im Simulator (Web-Konsole)
 
-1. Bauen: in CCS (Import wie in Lab 01, `lab04_pendeldisplay.projectspec`) oder
+1. Bauen: in CCS (Import wie in Example 01, `example04_pendeldisplay.projectspec`) oder
    ```bash
-   cd ~/praktikum/renode4mc-haw/examples/lab04_pendeldisplay
+   cd ~/praktikum/renode4mc-haw/examples/example04_pendeldisplay
    make
    ```
    `make` sucht CCS unter `~/ti/ccs2040/ccs` und `~/tmp/ti/ccs2040/ccs`. Liegt es woanders,
@@ -122,11 +122,11 @@ int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);   // Takte bis dahin
    cd ~/praktikum/renode4mc-haw/webconsole
    docker compose up --build
    ```
-3. http://localhost:3000 öffnen, **Versuch 2** wählen, `lab04_pendeldisplay.out` auswählen, **Start**.
+3. http://localhost:3000 öffnen, **Example 2** wählen, `example04_pendeldisplay.out` auswählen, **Start**.
 
 Was Sie sehen sollten:
 
-- Im **Terminal**: `renode4mc-haw - Lab 04 Pendeldisplay`, `Abstand: 100 cm`,
+- Im **Terminal**: `renode4mc-haw - Example 04 Pendeldisplay`, `Abstand: 100 cm`,
   `Pendelperiode: 100,0 ms`.
 - Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten). Jede leuchtende LED
   hinterlässt eine Leuchtspur, die nach der eingestellten **Nachleuchtdauer** verschwindet
@@ -159,7 +159,7 @@ Was Sie sehen sollten:
 Zusätzlich zum EK-TM4C1294XL nötig: ein Pendel mit 8 LEDs (je mit Vorwiderstand, z. B. 330 Ω
 an 3,3 V; bei mehr Strom über Transistoren oder einen Treiber-Baustein), ein Sensor für den
 Durchgang durch die Mitte (Gabellichtschranke oder Hallsensor; Ausgang so beschalten, dass PL0
-HIGH ist, solange das Pendel rechts steht) und der MB1242-Sensor wie in Lab 03.
+HIGH ist, solange das Pendel rechts steht) und der MB1242-Sensor wie in Example 03.
 
 > **Hinweis:** Ein echtes Pendel schwingt nicht genau mit 10 Hz und verliert Amplitude. Die
 > Firmware misst die Periode deshalb laufend. Weicht die Amplitude ab, wird das Bild schmaler oder
@@ -177,7 +177,7 @@ HIGH ist, solange das Pendel rechts steht) und der MB1242-Sensor wie in Lab 03.
 
 - Das Pendelmodell (`sim/models/PendulumDisplay.cs`) rechnet in **virtueller Zeit**. Das Bild
   stimmt also auch dann, wenn der Rechner die Simulation langsamer ausführt.
-- Versuch 2 stellt Renode auf 10-µs-Zeitscheiben (`emulation SetGlobalQuantum`), damit die
+- Example 2 stellt Renode auf 10-µs-Zeitscheiben (`emulation SetGlobalQuantum`), damit die
   LED-Wechsel genau genug erfasst werden.
 - Eine neue Pendelfrequenz gilt ab dem nächsten Durchgang durch die Mitte. Ein echtes Pendel
   ändert seine Frequenz nicht sprunghaft; hier dient der Regler zum Testen der Periodenmessung.

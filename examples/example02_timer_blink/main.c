@@ -1,10 +1,10 @@
 /*
- * Lab 02 - Timer-Blink: LED D1 blinkt, gesteuert von einem Timer-Interrupt (reiner Registerzugriff)
+ * Example 02 - Timer-Blink: LED D1 blinkt, gesteuert von einem Timer-Interrupt (reiner Registerzugriff)
  * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
  *
  * LED auf dem Board:  D1 = PN1
  *
- * Idee: Die CPU wartet nicht in einer Zählschleife (wie in Lab 01), sondern Timer0 löst
+ * Idee: Die CPU wartet nicht in einer Zählschleife (wie in Example 01), sondern Timer0 löst
  * jede halbe Sekunde einen Interrupt aus. Nur die Interrupt-Routine schaltet die LED um;
  * die Hauptschleife hat nichts zu tun (hier könnten andere Aufgaben stehen).
  *
@@ -15,7 +15,7 @@
  *   4. Timer-Interrupt im Timer (GPTMIMR) und im NVIC (Interrupt-Controller, EN0) freigeben
  *   5. Interrupt-Routine TIMER0A_Handler schaltet die LED um
  *
- * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), siehe Lab 01.
+ * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), siehe Example 01.
  */
 #include <stdint.h>
 #include "tm4c1294ncpdt.h"

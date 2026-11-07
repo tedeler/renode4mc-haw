@@ -1,4 +1,4 @@
-# Lab 03 – Web-Konsole: UART, I2C, Keypad und Taster
+# Example 03 – Web-Konsole: UART, I2C, Keypad und Taster
 
 **Ziel:** Ein Programm, das alle Bedienelemente der [Web-Konsole](../../docs/WEBCONSOLE.md)
 benutzt. Es gibt Meldungen über **UART0** aus, liest einen **Ultraschallsensor** und beschreibt ein
@@ -6,8 +6,8 @@ benutzt. Es gibt Meldungen über **UART0** aus, liest einen **Ultraschallsensor*
 lösen Interrupts aus. Erst im **Simulator** (Web-Konsole), dann auf dem **Board** mit
 Zusatz-Hardware.
 
-**Vorher:** [Lab 01](../lab01_blinky/README.md) (GPIO, Clock-Gating) und
-[Lab 02](../lab02_timer_blink/README.md) (Timer, Interrupt).
+**Vorher:** [Example 01](../example01_blinky/README.md) (GPIO, Clock-Gating) und
+[Example 02](../example02_timer_blink/README.md) (Timer, Interrupt).
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ Zusatz-Hardware.
 | Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
 | Keypad 4×3 | Zeilen PK0–PK3 (Ausgang), Spalten PK4–PK6 (Eingang, Pull-down, Interrupt) |
 | Timer | Timer0A, 100 ms periodisch |
-| Dateien | `main.c`, `lab03_webkonsole.projectspec`, `Makefile` |
+| Dateien | `main.c`, `example03_webkonsole.projectspec`, `Makefile` |
 
 ---
 
@@ -39,7 +39,7 @@ Zusatz-Hardware.
 
 ## 2. Das Programm verstehen (`main.c`)
 
-Alle Register und Bits kommen aus `tm4c1294ncpdt.h` (siehe Lab 01); im Programm steht keine Adresse.
+Alle Register und Bits kommen aus `tm4c1294ncpdt.h` (siehe Example 01); im Programm steht keine Adresse.
 
 | Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
 |---|---|---|---|
@@ -80,9 +80,9 @@ GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // wieder alle Zeile
 
 ## 3. Variante A: Im Simulator (Web-Konsole)
 
-1. Bauen: in CCS (Import wie in Lab 01, `lab03_webkonsole.projectspec`) oder
+1. Bauen: in CCS (Import wie in Example 01, `example03_webkonsole.projectspec`) oder
    ```bash
-   cd ~/praktikum/renode4mc-haw/examples/lab03_webkonsole
+   cd ~/praktikum/renode4mc-haw/examples/example03_webkonsole
    make
    ```
 2. Web-Konsole starten (einmalig bauen dauert einige Minuten):
@@ -90,11 +90,11 @@ GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // wieder alle Zeile
    cd ~/praktikum/renode4mc-haw/webconsole
    docker compose up --build
    ```
-3. http://localhost:3000 öffnen, **Versuch 1** wählen, `lab03_webkonsole.out` auswählen, **Start**.
+3. http://localhost:3000 öffnen, **Example 1** wählen, `example03_webkonsole.out` auswählen, **Start**.
 
 Was Sie sehen sollten:
 
-- Im **Terminal**: `renode4mc-haw - Lab 03 Web-Konsole`, danach `Abstand: 100 cm`.
+- Im **Terminal**: `renode4mc-haw - Example 03 Web-Konsole`, danach `Abstand: 100 cm`.
 - Auf dem **OLED**: Titel, `ABSTAND: 100 CM`, `TASTE: -`, `UART: -`.
 - **D2** blinkt mit 1 Hz.
 - **Schieberegler** unter 50 cm: **D1** geht an, Terminal und OLED zeigen den neuen Abstand.
@@ -118,7 +118,7 @@ und Keypad fehlen. Der Simulator meldet einmal je Adresse *„kein Gerät unter 
 
 Zusätzlich zum EK-TM4C1294XL nötig: SSD1306-OLED-Modul (I2C, 3,3 V), MB1242-Sensor (3,3–5 V) und
 ein 4×3-Folienkeypad. Anschluss laut Tabelle oben. Pull-up-Widerstände für SCL/SDA haben die
-meisten OLED-Module bereits. Import, Bauen und Debuggen funktionieren wie in Lab 02, Abschnitt 4.
+meisten OLED-Module bereits. Import, Bauen und Debuggen funktionieren wie in Example 02, Abschnitt 4.
 Den UART sehen Sie z. B. mit `picocom -b 115200 /dev/ttyACM0`.
 
 > **Hinweis:** Auf der Hardware prellen Taster und Keypad. Das Programm entprellt nicht, weil der

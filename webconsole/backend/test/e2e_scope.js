@@ -3,12 +3,12 @@
 /**
  * Ende-zu-Ende-Test des Oszilloskops (sim/models/Oscilloscope.cs, Backend-Nachricht "scope") mit echter
  * Renode-Instanz und den Musterlösungen:
- *   Lab 2 (lab06_led_pendel): PL0 Periode 120 ms, HC-SR04-Trigger PD0 >= 10 us, Echo PD1 450 us nach
+ *   Lab 2 (lab02_led_pendel): PL0 Periode 120 ms, HC-SR04-Trigger PD0 >= 10 us, Echo PD1 450 us nach
  *         der fallenden Trigger-Flanke, Länge 58,3 us/cm; offener Pin PB0 = 2
- *   Lab 4 (lab08_uart_leds): SW1 loslassen -> UART-Rahmen auf PA1, 9600 Bit/s 7N1, Zeichen '#'
+ *   Lab 4 (lab04_uart_leds): SW1 loslassen -> UART-Rahmen auf PA1, 9600 Bit/s 7N1, Zeichen '#'
  *   Quellen zweier Browser werden vereinigt; ohne Quellen kommen keine Daten.
  *
- *   node test/e2e_scope.js <Verzeichnis mit lab06_led_pendel.elf und lab08_uart_leds.elf> [http://localhost:3000]
+ *   node test/e2e_scope.js <Verzeichnis mit lab02_led_pendel.elf und lab04_uart_leds.elf> [http://localhost:3000]
  *   (z. B. sim/solutions nach tools/build-solutions.sh)
  */
 const fs = require('fs');
@@ -19,7 +19,7 @@ const dir = process.argv[2];
 const base = (process.argv[3] || 'http://localhost:3000').replace(/\/$/, '');
 const host = new URL(base).hostname;
 if (!dir || !fs.existsSync(dir)) {
-  console.error('Aufruf: node test/e2e_scope.js <Verzeichnis mit lab06_led_pendel.elf, lab08_uart_leds.elf> [URL]');
+  console.error('Aufruf: node test/e2e_scope.js <Verzeichnis mit lab02_led_pendel.elf, lab04_uart_leds.elf> [URL]');
   process.exit(2);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -72,7 +72,7 @@ function pulses(edges) {
 
 async function lab2() {
   console.log('\n== Lab 2: Pendel und HC-SR04 ==');
-  await start('lab2_pendel', 'lab06_led_pendel.elf');
+  await start('lab2_pendel', 'lab02_led_pendel.elf');
   const a = await client();
   const b = await client();
   await sleep(1500);
@@ -111,7 +111,7 @@ async function lab2() {
 
 async function lab4() {
   console.log('\n== Lab 4: UART 9600 7N1 ==');
-  await start('lab4_uart', 'lab08_uart_leds.elf');
+  await start('lab4_uart', 'lab04_uart_leds.elf');
   const c = await client();
   await sleep(1500);
   c.sources(['PA1', 'PJ0']);

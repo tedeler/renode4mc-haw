@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Ende-zu-Ende-Test für Versuch 2 (Pendeldisplay) mit echter Renode-Instanz und der Firmware
- * aus examples/lab04_pendeldisplay. Prüft Upload, UART, Sensor und das Bild auf dem Pendel:
+ * Ende-zu-Ende-Test für Example 2 (Pendeldisplay) mit echter Renode-Instanz und der Firmware
+ * aus examples/example04_pendeldisplay. Prüft Upload, UART, Sensor und das Bild auf dem Pendel:
  * Für jede der 40 Bildspalten muss in BEIDEN Schwungrichtungen an der richtigen Stelle des
  * Schwenkbereichs das richtige Muster aus dem Zeichensatz leuchten.
  *
- *   node test/e2e_versuch2.js <lab04_pendeldisplay.out> [http://localhost:3000]
+ *   node test/e2e_example2.js <example04_pendeldisplay.out> [http://localhost:3000]
  *
  * Voraussetzung: Backend läuft (npm start bzw. Docker-Container).
  */
@@ -18,7 +18,7 @@ const elf = process.argv[2];
 const base = (process.argv[3] || 'http://localhost:3000').replace(/\/$/, '');
 const host = new URL(base).hostname;
 if (!elf || !fs.existsSync(elf)) {
-  console.error('Aufruf: node test/e2e_versuch2.js <lab04_pendeldisplay.out> [http://localhost:3000]');
+  console.error('Aufruf: node test/e2e_example2.js <example04_pendeldisplay.out> [http://localhost:3000]');
   process.exit(2);
 }
 
@@ -38,7 +38,7 @@ async function waitFor(fn, timeoutMs = 5000) {
   return false;
 }
 
-// Zeichensatz und Bildaufbau wie in examples/lab04_pendeldisplay/main.c
+// Zeichensatz und Bildaufbau wie in examples/example04_pendeldisplay/main.c
 const FONT = {
   0: [0x3e, 0x51, 0x49, 0x45, 0x3e], 1: [0x00, 0x42, 0x7f, 0x40, 0x00], 2: [0x42, 0x61, 0x51, 0x49, 0x46],
   3: [0x21, 0x41, 0x45, 0x4b, 0x31], 4: [0x18, 0x14, 0x12, 0x7f, 0x10], 5: [0x27, 0x45, 0x45, 0x45, 0x39],
@@ -77,7 +77,7 @@ function compare(pd, text) {
 (async () => {
   // 1. Upload
   const fd = new FormData();
-  fd.append('experiment_id', 'versuch2');
+  fd.append('experiment_id', 'example2');
   fd.append('file', new Blob([fs.readFileSync(elf)]), path.basename(elf));
   const t0 = Date.now();
   const res = await fetch(`${base}/upload`, { method: 'POST', body: fd });
@@ -112,7 +112,7 @@ function compare(pd, text) {
   await Promise.all([u, c].map((ws) => new Promise((r) => ws.once('open', r))));
   const send = (m) => c.send(JSON.stringify(m));
 
-  check('UART: Startmeldung', await waitFor(() => /Lab 04 Pendeldisplay/.test(uart)));
+  check('UART: Startmeldung', await waitFor(() => /Example 04 Pendeldisplay/.test(uart)));
   check('UART: Pendelperiode 100,0 ms gemessen', await waitFor(() => /Pendelperiode: 100,0 ms/.test(uart)));
 
   async function checkImage(text, what) {

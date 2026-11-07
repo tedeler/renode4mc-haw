@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectSpec>
     <project
-        name="lab04_pendeldisplay"
+        name="example02_timer_blink"
         device="Cortex M.TM4C1294NCPDT"
         connection="Stellaris_ICDI_Connection"
         toolChain="TICLANG"
@@ -10,7 +10,7 @@
         launchWizard="false"
         compilerBuildOptions="-mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mthumb -Oz -g -ffunction-sections -fdata-sections -Wall"
         linkerBuildOptions="--rom_model --stack_size=2048 --diag_suppress=10063"
-        description="lab04_pendeldisplay (HAW Mikrocontroller-Praktikum, EK-TM4C1294XL)">
+        description="example02_timer_blink (HAW Mikrocontroller-Praktikum, EK-TM4C1294XL)">
 
         <!-- eigener Quellcode des Beispiels -->
         <file path="main.c" openOnCreation="true" excludeFromBuild="false" action="copy"/>

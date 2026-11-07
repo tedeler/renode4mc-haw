@@ -1,5 +1,5 @@
 {
-  "title": "Versuch 2 – EK-TM4C1294XL: Pendeldisplay, Ultraschall, UART",
+  "title": "Example 2 – EK-TM4C1294XL: Pendeldisplay, Ultraschall, UART",
   "machine": "tm4c1294",
   "uart": { "label": "UART0 (PA0 RX / PA1 TX) – 115200 8N1" },
   "ledBridge": "ws://127.0.0.1:9000",

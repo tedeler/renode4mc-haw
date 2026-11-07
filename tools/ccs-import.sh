@@ -1,6 +1,6 @@
 #!/bin/bash
 # Importiert ein Beispielprojekt ohne GUI in einen CCS-Workspace und baut es.
-#   tools/ccs-import.sh examples/lab01_blinky
+#   tools/ccs-import.sh examples/example01_blinky
 # Variablen (Standardwerte in Klammern): CCS_ROOT (~/ti/ccs2040/ccs bzw. ~/tmp/ti/ccs2040/ccs), WORKSPACE (~/ccs_workspace)
 set -e
 # Ohne CCS_ROOT: ~/ti/ccs2040/ccs, sonst ~/tmp/ti/ccs2040/ccs

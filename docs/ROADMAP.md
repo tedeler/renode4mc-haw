@@ -4,7 +4,7 @@
 > (siehe `sim/`, Beispiele `examples/`). M5 (UART) ist im Kern umgesetzt (`sim/models/TivaUART.cs`:
 > Register, RX-FIFO, Interrupts; offen: Baudraten-Timing, µDMA, Break/Fehler-Injektion). Zusätzlich –
 > abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
-> und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Lab 03).
+> und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Example 03).
 > Praktikumsversuche Lab 1–4 mit eigenen Umgebungen, Musterlösungen und strenger Registerprüfung:
 > [LABORE.md](LABORE.md). Offen: M2 (SysTick-Test), M6 (ADC), Timer-Capture/PWM, Bus-Fault bei
 > Zugriff ohne Takt.
@@ -100,7 +100,7 @@ tatsächlich passt – sonst Eigenbau.
 - Abnahme: Poti im Browser → ADC-Wert per UART ausgegeben.
 
 ### M7 – Labs & Dokumentation
-- `lab02_systick`, `lab03_gpio_irq`, `lab04_timer`, `lab05_uart`, `lab06_adc` mit je
+- `example_systick`, `example_gpio_irq`, `example_timer`, `example_uart`, `example_adc` mit je
   `main.c`, `Makefile`, `sim.resc`, passender Visualizer-Seite.
 - Gemeinsame Startup-/Vektortabellen-Dateien in `labs/common/`.
 - Anleitung „Neues Lab anlegen“, Fehlersuche, bekannte Abweichungen zur Hardware.

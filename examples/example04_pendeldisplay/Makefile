@@ -24,7 +24,7 @@ $(NAME).out: $(SRCS) $(COMMON)/tm4c1294ncpdt.h $(COMMON)/tm4c1294.cmd
 	$(CC) $(CFLAGS) $(SRCS) $(LDFLAGS) -o $@
 
 # Simulator: Dieses Lab braucht die Web-Konsole (Pendeldisplay, Sensor, UART im Browser):
-#   cd ../../webconsole && docker compose up --build   ->  http://localhost:3000, Versuch 2, $(NAME).out hochladen
+#   cd ../../webconsole && docker compose up --build   ->  http://localhost:3000, Example 2, $(NAME).out hochladen
 # "make sim" startet nur den einfachen Simulator (nur LED D2, kein Pendel).
 sim: $(NAME).out
 	../../sim/ucsim $(NAME).out

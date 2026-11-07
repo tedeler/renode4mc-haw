@@ -2,16 +2,16 @@
 'use strict';
 /**
  * Ende-zu-Ende-Test der vier Lab-Umgebungen (lab1_gpio .. lab4_uart) mit echter Renode-Instanz
- * und den Beispielen examples/lab05..lab08. Prüft über dieselben Schnittstellen wie das Frontend
+ * und den Beispielen examples/lab01..lab04. Prüft über dieselben Schnittstellen wie das Frontend
  * (HTTP + beide WebSockets): Keypad, BCD-Anzeige, printf-Konsole, HC-SR04, LED-Pendel (Bild an der
  * richtigen Stelle im Schwung links -> rechts), UART 9600 7N1, LEDs, SW1-Interrupt und die
  * Diagnose (keine Meldung bei korrekter Firmware, Meldung bei absichtlich falscher).
  *
- *   node test/e2e_labs.js <Verzeichnis mit lab05.out, lab06.out, lab07.out, lab08.out> [http://localhost:3000]
+ *   node test/e2e_labs.js <Verzeichnis mit lab01.out, lab02.out, lab03.out, lab04.out> [http://localhost:3000]
  *
  * Optional im selben Verzeichnis (Fehlkonfiguration, Diagnose muss sie melden):
- *   lab05_ohne_den.out   PM4..PM7 ohne GPIODEN          lab05_ohne_wait.out  keypad_scan ohne wait()
- *   lab08_115200.out     UART mit 115200 8N1             lab08_ohne_pur.out   PJ0 ohne Pull-up
+ *   lab01_ohne_den.out   PM4..PM7 ohne GPIODEN          lab01_ohne_wait.out  keypad_scan ohne wait()
+ *   lab04_115200.out     UART mit 115200 8N1             lab04_ohne_pur.out   PJ0 ohne Pull-up
  *
  * Voraussetzung: Backend läuft (npm start bzw. Docker-Container).
  */
@@ -23,7 +23,7 @@ const dir = process.argv[2];
 const base = (process.argv[3] || 'http://localhost:3000').replace(/\/$/, '');
 const host = new URL(base).hostname;
 if (!dir || !fs.existsSync(dir)) {
-  console.error('Aufruf: node test/e2e_labs.js <Verzeichnis mit lab05.out ... lab08.out> [http://localhost:3000]');
+  console.error('Aufruf: node test/e2e_labs.js <Verzeichnis mit lab01.out ... lab04.out> [http://localhost:3000]');
   process.exit(2);
 }
 const file = (n) => {
@@ -86,7 +86,7 @@ async function session(experiment, elf) {
   return s;
 }
 
-// ---- Pendel: erwartetes Bild (wie examples/lab06_led_pendel und lab07_nvic_pendel) -------------
+// ---- Pendel: erwartetes Bild (wie examples/lab02_led_pendel und lab03_nvic_pendel) -------------
 const FONT = {
   0: [0x3e, 0x51, 0x49, 0x45, 0x3e], 1: [0x00, 0x42, 0x7f, 0x40, 0x00], 2: [0x42, 0x61, 0x51, 0x49, 0x46],
   3: [0x21, 0x41, 0x45, 0x4b, 0x31], 4: [0x18, 0x14, 0x12, 0x7f, 0x10], 5: [0x27, 0x45, 0x45, 0x45, 0x39],
@@ -138,8 +138,8 @@ async function checkImage(s, text, what) {
 }
 
 async function lab1() {
-  const elf = file('lab05');
-  if (!elf) return console.log('-- lab05 fehlt, Lab 1 übersprungen');
+  const elf = file('lab01');
+  if (!elf) return console.log('-- lab01 fehlt, Lab 1 übersprungen');
   const s = await session('lab1_gpio', elf);
   check('Lab 1: printf-Startmeldung in der CCS-Konsole', await waitFor(() => /Lab 1: Hex-Keypad/.test(s.cio)));
   s.send({ type: 'keypad', row: 1, col: 1, pressed: true });                  // Y2/X2 = "5"
@@ -160,13 +160,13 @@ async function lab1() {
   check('Lab 1: keine Fehler vom Backend', s.errors.length === 0, s.errors.join('; '));
   s.close();
 
-  const noDen = file('lab05_ohne_den');
+  const noDen = file('lab01_ohne_den');
   if (noDen) {
     const t = await session('lab1_gpio', noDen);
     check('Strenge: PM4 ohne DEN wird gemeldet', await waitFor(() => /PM4 wird als Eingang gelesen, aber GPIODEN = 0/.test(t.diagText())), t.diagText());
     t.close();
   }
-  const noWait = file('lab05_ohne_wait');
+  const noWait = file('lab01_ohne_wait');
   if (noWait) {
     const t = await session('lab1_gpio', noWait);
     await sleep(500);
@@ -200,8 +200,8 @@ async function pendel(experiment, name, what, outOfRange) {
 }
 
 async function lab4() {
-  const elf = file('lab08');
-  if (!elf) return console.log('-- lab08 fehlt, Lab 4 übersprungen');
+  const elf = file('lab04');
+  if (!elf) return console.log('-- lab04 fehlt, Lab 4 übersprungen');
   const s = await session('lab4_uart', elf);
   const text = () => s.uart.toString('latin1');
   check('Lab 4: Prompt ">" per UART', await waitFor(() => text().includes('>')));
@@ -220,7 +220,7 @@ async function lab4() {
   check('Lab 4: Diagnose ohne Meldung (Firmware korrekt)', s.diag.length === 0, s.diagText());
   s.close();
 
-  const wrongBaud = file('lab08_115200');
+  const wrongBaud = file('lab04_115200');
   if (wrongBaud) {
     const t = await session('lab4_uart', wrongBaud);
     await waitFor(() => t.uart.length > 0, 3000);
@@ -228,7 +228,7 @@ async function lab4() {
     check('Strenge: falsche Baudrate wird gemeldet', await waitFor(() => /11\d{4} Baud 8N1.*erwartet 9600 Baud 7N1/.test(t.diagText())), t.diagText());
     t.close();
   }
-  const noPur = file('lab08_ohne_pur');
+  const noPur = file('lab04_ohne_pur');
   if (noPur) {
     const t = await session('lab4_uart', noPur);
     await sleep(300);
@@ -278,8 +278,8 @@ const only = (process.env.ONLY || 'lab1,lab2,lab3,lab4,solution').split(',');
 
 (async () => {
   if (only.includes('lab1')) await lab1();
-  if (only.includes('lab2')) await pendel('lab2_pendel', 'lab06', 'Lab 2', /kein Echo/);
-  if (only.includes('lab3')) await pendel('lab3_nvic', 'lab07', 'Lab 3', /kein Objekt/);
+  if (only.includes('lab2')) await pendel('lab2_pendel', 'lab02', 'Lab 2', /kein Echo/);
+  if (only.includes('lab3')) await pendel('lab3_nvic', 'lab03', 'Lab 3', /kein Objekt/);
   if (only.includes('lab4')) await lab4();
   if (only.includes('solution')) await solutions();
   console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');

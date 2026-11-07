@@ -12,7 +12,7 @@ const DEFAULT_LAYOUT = [
 
 /**
  * Matrix-Zuordnung: Taste -> { row: {index, pin}, col: {index, pin} }.
- * Beispiel (Versuch 1): "5" -> Zeile 1 (PK1), Spalte 1 (PK5).
+ * Beispiel (Example 1): "5" -> Zeile 1 (PK1), Spalte 1 (PK5).
  */
 export function buildKeyMatrix(layout, rowPins = [], colPins = [], rowNames = [], colNames = []) {
   const map = new Map();

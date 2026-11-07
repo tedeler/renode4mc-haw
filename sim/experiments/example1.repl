@@ -1,4 +1,4 @@
-// Versuch 1 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
+// Example 1 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
 //
 //   OLED SSD1306 128x64      I2C0 (PB2 SCL, PB3 SDA), Adresse 0x3C
 //   Ultraschall MB1242       I2C0, Adresse 0x70

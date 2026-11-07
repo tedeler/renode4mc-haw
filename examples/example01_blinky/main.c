@@ -1,5 +1,5 @@
 /*
- * Lab 01 - Blinky: LED D1 und D2 abwechselnd blinken lassen (reiner Registerzugriff)
+ * Example 01 - Blinky: LED D1 und D2 abwechselnd blinken lassen (reiner Registerzugriff)
  * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
  *
  * LEDs auf dem Board:   D1 = PN1,  D2 = PN0

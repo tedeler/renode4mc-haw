@@ -69,8 +69,8 @@
     "afterglowMs": 1000
   },
   "solution": {
-    "example": "lab06_led_pendel",
-    "label": "Musterlösung (examples/lab06_led_pendel)"
+    "example": "lab02_led_pendel",
+    "label": "Musterlösung (examples/lab02_led_pendel)"
   },
   "scope": {
     "signals": [

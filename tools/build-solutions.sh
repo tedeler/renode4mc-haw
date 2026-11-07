@@ -1,5 +1,5 @@
 #!/bin/sh
-# Baut die Musterlösungen (examples/lab05..lab08) mit arm-none-eabi-gcc für die Web-Konsole.
+# Baut die Musterlösungen (examples/lab01..lab04) mit arm-none-eabi-gcc für die Web-Konsole.
 # Ergebnis: sim/solutions/<Beispiel>.elf – im Browser per "Musterlösung starten" ladbar.
 #
 #   tools/build-solutions.sh                     # gcc aus dem PATH
@@ -13,7 +13,7 @@ set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CC=${CC:-arm-none-eabi-gcc}
 OUT=${OUT:-$ROOT/sim/solutions}
-SOLUTIONS="lab05_hexkeypad_bcd lab06_led_pendel lab07_nvic_pendel lab08_uart_leds"
+SOLUTIONS="lab01_hexkeypad_bcd lab02_led_pendel lab03_nvic_pendel lab04_uart_leds"
 
 mkdir -p "$OUT"
 for ex in $SOLUTIONS; do

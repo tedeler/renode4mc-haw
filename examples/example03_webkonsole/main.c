@@ -1,8 +1,8 @@
 /*
- * Lab 03 - Web-Konsole: Demo für alle Bedienelemente von Versuch 1 (reiner Registerzugriff)
+ * Example 03 - Web-Konsole: Demo für alle Bedienelemente von Example 1 (reiner Registerzugriff)
  * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
  *
- * Läuft im Simulator (Web-Konsole, Versuch "versuch1") und auf dem Board mit Zusatz-Hardware.
+ * Läuft im Simulator (Web-Konsole, Versuch "example1") und auf dem Board mit Zusatz-Hardware.
  *
  *   Baustein                 Anschluss                          Verwendung im Programm
  *   ------------------------ ---------------------------------- -------------------------------------
@@ -477,7 +477,7 @@ int main(void)
     __asm volatile("cpsie i");
     TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
-    uart_puts("\nrenode4mc-haw - Lab 03 Web-Konsole\n");
+    uart_puts("\nrenode4mc-haw - Example 03 Web-Konsole\n");
     uart_puts("Taster, Keypad und Abstandssensor bedienen; Zeichen werden zurueckgesendet.\n");
 
     oled_init();

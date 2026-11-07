@@ -1,11 +1,11 @@
-# Lab 02 – Timer-Blink: LED blinkt per Timer-Interrupt
+# Example 02 – Timer-Blink: LED blinkt per Timer-Interrupt
 
 **Ziel:** Die LED **D1** blinkt im Halbsekundentakt – diesmal ohne Warteschleife. Ein **Timer**
 löst alle 0,5 s einen **Interrupt** aus, dessen Routine die LED umschaltet. Die CPU kann
 währenddessen schlafen. Erst im **Simulator**, dann auf dem **echten Board**.
 
 **Vorher:** [Installation](../../docs/INSTALL_LINUX.md) abgeschlossen und
-[Lab 01](../lab01_blinky/README.md) verstanden (Clock-Gating, GPIO-Ausgang).
+[Example 01](../example01_blinky/README.md) verstanden (Clock-Gating, GPIO-Ausgang).
 
 | | |
 |---|---|
@@ -13,7 +13,7 @@ währenddessen schlafen. Erst im **Simulator**, dann auf dem **echten Board**.
 | LED | D1 = Pin **PN1** |
 | Takt | 16 MHz (unverändert) |
 | Timer | Timer0, Hälfte A, 32 Bit, periodisch |
-| Dateien | `main.c`, `lab02_timer_blink.projectspec`, `Makefile` |
+| Dateien | `main.c`, `example02_timer_blink.projectspec`, `Makefile` |
 
 ---
 
@@ -31,7 +31,7 @@ währenddessen schlafen. Erst im **Simulator**, dann auf dem **echten Board**.
 
 ## 2. Das Programm verstehen (`main.c`)
 
-Registernamen und Bitkonstanten kommen wie in Lab 01 aus `tm4c1294ncpdt.h` (siehe Datenblatt,
+Registernamen und Bitkonstanten kommen wie in Example 01 aus `tm4c1294ncpdt.h` (siehe Datenblatt,
 Kapitel „General-Purpose Timers“, Registerübersicht). Im Programm steht keine Adresse.
 
 | Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
@@ -88,9 +88,9 @@ Tabelle zur Funktion mit genau diesem Namen. Alle Namen der Tabelle finden Sie i
 ## 3. Variante A: Im Simulator
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/lab02_timer_blink
+cd ~/praktikum/renode4mc-haw/examples/example02_timer_blink
 make
-ucsim lab02_timer_blink.out
+ucsim example02_timer_blink.out
 ```
 
 Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer). Mit `Strg+C` beenden.
@@ -105,8 +105,8 @@ Im Browser blinkt **D1** (die linke LED) im 0,5-s-Takt (also 1 s Periodendauer).
 ### Debuggen im Simulator (Haltepunkt in der ISR)
 
 ```bash
-ucsim --debug lab02_timer_blink.out       # Terminal 1
-gdb-multiarch lab02_timer_blink.out       # Terminal 2
+ucsim --debug example02_timer_blink.out       # Terminal 1
+gdb-multiarch example02_timer_blink.out       # Terminal 2
 (gdb) target remote localhost:3333
 (gdb) break TIMER0A_Handler
 (gdb) continue                              # hält nach 0,5 s in der ISR
@@ -119,9 +119,9 @@ gdb-multiarch lab02_timer_blink.out       # Terminal 2
 ## 4. Variante B: Auf dem Board mit CCS
 
 1. **Import:** In CCS **File → Import Projects…** und
-   `examples/lab02_timer_blink/lab02_timer_blink.projectspec` wählen. Es sind keine weiteren
+   `examples/example02_timer_blink/example02_timer_blink.projectspec` wählen. Es sind keine weiteren
    Einstellungen nötig (keine Bibliothek).
-   Ohne Oberfläche: `tools/ccs-import.sh examples/lab02_timer_blink`.
+   Ohne Oberfläche: `tools/ccs-import.sh examples/example02_timer_blink`.
 2. **Bauen:** Rechtsklick auf das Projekt → **Build Project**; am Ende **0 errors**.
 3. **Board:** USB am Port **DEBUG**; **Run → Debug**; dann **Resume**. **D1** blinkt.
 4. **Haltepunkt in der ISR:** Doppelklick links neben die Zeile `GPIO_PORTN_DATA_R ^= PIN1;` in
@@ -129,15 +129,15 @@ gdb-multiarch lab02_timer_blink.out       # Terminal 2
    Im Fenster **Registers** sehen Sie die Timer0-Register (`GPTM`), z. B. `GPTMRIS`.
 5. **Alternativ ohne CCS:** `.out`-Datei im Terminal laden (nach `sudo apt install openocd`):
    ```bash
-   openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab02_timer_blink.out verify reset exit"
+   openocd -f board/ti_ek-tm4c1294xl.cfg -c "program example02_timer_blink.out verify reset exit"
    ```
    Details: [Installationsanleitung, Schritt 9](../../docs/INSTALL_LINUX.md).
 
 ---
 
-## 5. Unterschied zu Lab 01
+## 5. Unterschied zu Example 01
 
-| | Lab 01 | Lab 02 |
+| | Example 01 | Example 02 |
 |---|---|---|
 | Zeitmessung | CPU zählt in der Schleife | Hardware-Timer |
 | CPU während der Wartezeit | 100 % ausgelastet | schläft (`wfi`) |
@@ -154,6 +154,6 @@ gdb-multiarch lab02_timer_blink.out       # Terminal 2
 ## 7. Hinweise zum Simulator
 
 - Zeitverhalten: Timer sind **taktgenau** in Simulationszeit; auf dem PC läuft sie in etwa
-  Echtzeit. Schleifen-Wartezeiten wie in Lab 01 sind ungenauer.
+  Echtzeit. Schleifen-Wartezeiten wie in Example 01 sind ungenauer.
 - Modelliert sind 32-/16-Bit-Betrieb A/B, periodisch und One-Shot, Time-out-Interrupt. Nicht
   modelliert: Capture, PWM, Match, Aufwärtszählen, ADC-Trigger.

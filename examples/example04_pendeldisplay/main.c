@@ -1,8 +1,8 @@
 /*
- * Lab 04 - Pendeldisplay: Abstand vom Ultraschallsensor auf einem POV-Pendel anzeigen
+ * Example 04 - Pendeldisplay: Abstand vom Ultraschallsensor auf einem POV-Pendel anzeigen
  * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
  *
- * Läuft im Simulator (Web-Konsole, Versuch "versuch2") und auf dem Board mit Zusatz-Hardware.
+ * Läuft im Simulator (Web-Konsole, Versuch "example2") und auf dem Board mit Zusatz-Hardware.
  *
  *   Baustein                 Anschluss                          Verwendung im Programm
  *   ------------------------ ---------------------------------- -------------------------------------
@@ -232,7 +232,7 @@ void TIMER1A_Handler(void)
 }
 
 /* ---------------------------------------------------------------------------------------------
- * UART0: 115200 Baud bei 16 MHz -> IBRD = 8, FBRD = 44 (siehe Lab 03)
+ * UART0: 115200 Baud bei 16 MHz -> IBRD = 8, FBRD = 44 (siehe Example 03)
  * ------------------------------------------------------------------------------------------- */
 #define BAUD_IBRD           8u
 #define BAUD_FBRD           44u
@@ -291,7 +291,7 @@ static int utoa(uint32_t wert, char *ziel)
 }
 
 /* ---------------------------------------------------------------------------------------------
- * I2C0 als Master, 100 kHz (siehe Lab 03)
+ * I2C0 als Master, 100 kHz (siehe Example 03)
  * ------------------------------------------------------------------------------------------- */
 #define TPR_100KHZ          7u
 
@@ -490,7 +490,7 @@ int main(void)
     __asm volatile("cpsie i");
     TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
-    uart_puts("\nrenode4mc-haw - Lab 04 Pendeldisplay\n");
+    uart_puts("\nrenode4mc-haw - Example 04 Pendeldisplay\n");
     uart_puts("Abstand am Sensor einstellen; er erscheint auf dem Pendel und hier.\n");
 
     uint32_t letzterTick = 0;

@@ -1,4 +1,4 @@
-// Versuch 2 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
+// Example 2 – Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen)
 //
 //   Pendeldisplay (POV)      stehendes Pendel, Drehpunkt unten; 8 LEDs an PM0..PM7 (Ausgänge),
 //                            LED 0 oben an der Spitze, LED 7 unten (nahe dem Drehpunkt)

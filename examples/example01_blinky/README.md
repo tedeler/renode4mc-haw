@@ -1,4 +1,4 @@
-# Lab 01 – Blinky: LEDs blinken lassen
+# Example 01 – Blinky: LEDs blinken lassen
 
 **Ziel:** Ihr erstes Mikrocontroller-Programm. Die LEDs **D1** und **D2** des Boards blinken
 abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echten Board**.
@@ -10,7 +10,7 @@ abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echt
 | Board | EK-TM4C1294XL (Mikrocontroller TM4C1294NCPDT, ARM Cortex-M4F) |
 | LEDs | D1 = Pin **PN1**, D2 = Pin **PN0** (Port N, Pin 1 bzw. 0) |
 | Takt | 16 MHz (der Takt direkt nach dem Einschalten; wir ändern ihn nicht) |
-| Dateien | `main.c` (Programm), `lab01_blinky.projectspec` (CCS-Projekt), `Makefile` (Terminal-Build) |
+| Dateien | `main.c` (Programm), `example01_blinky.projectspec` (CCS-Projekt), `Makefile` (Terminal-Build) |
 
 ---
 
@@ -23,7 +23,7 @@ abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echt
 - Pins müssen als **Ausgang** (`DIR`) und **digital** (`DEN`) konfiguriert werden, bevor man sie schreibt (`DATA`).
 - **Bitoperationen** (`|=`, `&= ~`, `^=`) ändern einzelne Bits, ohne die anderen anzufassen.
 - Mit einer **Warteschleife** verzögert man den Ablauf – die CPU ist dabei
-  voll beschäftigt (das verbessert Lab 02 mit einem Timer).
+  voll beschäftigt (das verbessert Example 02 mit einem Timer).
 
 ## 2. Das Programm verstehen (`main.c`)
 
@@ -62,7 +62,7 @@ Ports K bis Q dagegen ohne Zusatz (`GPIO_PORTN_DIR_R`).
 
 Die Wartezeit ist eine leere Zählschleife (`volatile`, damit der Compiler sie nicht entfernt). Ein
 Durchlauf braucht etwa 12 Takte, bei 16 MHz sind `HALBE_SEKUNDE` ≈ 700 000 Durchläufe knapp eine halbe Sekunde.
-Die genaue Zeit hängt vom Compiler und von der Optimierung ab – deshalb nimmt man in Lab 02 einen Timer.
+Die genaue Zeit hängt vom Compiler und von der Optimierung ab – deshalb nimmt man in Example 02 einen Timer.
 
 ---
 
@@ -75,11 +75,11 @@ Der Simulator führt **dieselbe `.out`-Datei** aus wie das Board.
 Im Terminal:
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/lab01_blinky
+cd ~/praktikum/renode4mc-haw/examples/example01_blinky
 make
 ```
 
-Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ → Abschnitt
+Ergebnis: Datei `example01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ → Abschnitt
 *Häufige Probleme* in der Installationsanleitung.
 
 *Alternativ* können Sie die `.out`-Datei in CCS bauen (Abschnitt 4) und diese simulieren.
@@ -87,7 +87,7 @@ Ergebnis: Datei `lab01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden�
 ### 3.2 Simulator starten
 
 ```bash
-ucsim lab01_blinky.out
+ucsim example01_blinky.out
 ```
 
 Es öffnet sich die Seite **„EK-TM4C1294XL – LEDs“** im Browser (falls nicht: Datei
@@ -112,7 +112,7 @@ Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 
 1. CCS starten (`~/ti/ccs2040/ccs/theia/ccstudio`).
 2. Menü **File → Import Projects…** (bzw. in der Ansicht „CCS Project Explorer“ → *Import*), den
    Typ **CCS Projects** wählen und die Datei
-   `~/praktikum/renode4mc-haw/examples/lab01_blinky/lab01_blinky.projectspec` auswählen.
+   `~/praktikum/renode4mc-haw/examples/example01_blinky/example01_blinky.projectspec` auswählen.
 3. Das Projekt braucht keine weiteren Einstellungen (keine Bibliothek, keine Pfadvariablen).
 
 **Wenn die Oberfläche nicht wie beschrieben reagiert**, importieren Sie im Terminal – das
@@ -120,7 +120,7 @@ funktioniert ohne Klicken und ist von uns getestet:
 
 ```bash
 cd ~/praktikum/renode4mc-haw
-tools/ccs-import.sh examples/lab01_blinky
+tools/ccs-import.sh examples/example01_blinky
 ```
 
 Das Projekt liegt danach im Workspace `~/ccs_workspace`; in CCS starten Sie mit
@@ -128,8 +128,8 @@ Das Projekt liegt danach im Workspace `~/ccs_workspace`; in CCS starten Sie mit
 
 ### 4.2 Bauen
 
-Rechtsklick auf das Projekt **lab01_blinky → Build Project** (Hammer-Symbol). In der Konsole muss
-am Ende `Finished building target: "lab01_blinky.out"` und **0 errors** stehen.
+Rechtsklick auf das Projekt **example01_blinky → Build Project** (Hammer-Symbol). In der Konsole muss
+am Ende `Finished building target: "example01_blinky.out"` und **0 errors** stehen.
 
 ### 4.3 Board anschließen und Programm laden
 
@@ -145,7 +145,7 @@ von selbst wieder.
 ### 4.4 Alternative: `.out`-Datei im Terminal auf das Board laden (ohne CCS)
 
 ```bash
-openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab01_blinky.out verify reset exit"
+openocd -f board/ti_ek-tm4c1294xl.cfg -c "program example01_blinky.out verify reset exit"
 ```
 
 (`sudo apt install openocd`, Details in [Installationsanleitung, Schritt 9](../../docs/INSTALL_LINUX.md).)
@@ -156,8 +156,8 @@ openocd -f board/ti_ek-tm4c1294xl.cfg -c "program lab01_blinky.out verify reset 
 Sie können den Ablauf Schritt für Schritt verfolgen:
 
 ```bash
-ucsim --debug lab01_blinky.out      # Terminal 1: Simulator wartet auf den Debugger
-gdb-multiarch lab01_blinky.out      # Terminal 2
+ucsim --debug example01_blinky.out      # Terminal 1: Simulator wartet auf den Debugger
+gdb-multiarch example01_blinky.out      # Terminal 2
 (gdb) target remote localhost:3333
 (gdb) break main
 (gdb) continue

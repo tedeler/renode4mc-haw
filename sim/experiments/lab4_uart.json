@@ -54,8 +54,8 @@
     "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
   },
   "solution": {
-    "example": "lab08_uart_leds",
-    "label": "Musterlösung (examples/lab08_uart_leds)"
+    "example": "lab04_uart_leds",
+    "label": "Musterlösung (examples/lab04_uart_leds)"
   },
   "scope": {
     "signals": [
