@@ -59,6 +59,7 @@ function Panel({ experiment, solution }) {
             frequency={experiment.pendulum.frequency}
             minFrequency={experiment.pendulum.minFrequency}
             maxFrequency={experiment.pendulum.maxFrequency}
+            afterglowMs={experiment.pendulum.afterglowMs}
           />
         )}
 
