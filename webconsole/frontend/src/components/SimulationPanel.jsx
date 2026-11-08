@@ -229,16 +229,18 @@ function Overview({ sim }) {
             {cpu && cpu.halted ? ' – schläft (WFI), wartet auf Interrupt' : ''}
           </dd>
           <dt>PC</dt>
-          <dd>
+          {/* Immer zwei Zeilen (Adresse, Funktion), zu lange Namen mit „…“ gekürzt: Layout springt nicht */}
+          <dd className="sim-pc">
             <code>{cpu ? cpu.pc : '–'}</code>
-            {cpu && cpu.symbol ? (
-              <>
-                {' '}
-                in <code>{cpu.symbol}()</code>
-              </>
-            ) : (
-              ''
-            )}
+            <span className="sim-pc-fn" title={cpu && cpu.symbol ? `${cpu.symbol}()` : undefined}>
+              {cpu && cpu.symbol ? (
+                <>
+                  in <code>{cpu.symbol}()</code>
+                </>
+              ) : (
+                '\u00a0'
+              )}
+            </span>
           </dd>
           {trapped && (
             <>
