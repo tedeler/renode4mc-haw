@@ -412,8 +412,9 @@ Wachzeit = Befehle × Befehlszeit, Schlaf = Rest; ISR = Befehle vom Eintritt bis
 (verschachtelt je Vektor ohne die inneren). Stapeln beim Eintritt und Flash-Wartezyklen sind nicht
 modelliert – die Werte zeigen Verhältnisse, nicht exakte Board-Zeiten. Reset der MCU oder „Statistik
 neu beginnen“ setzt sie zurück.
-Angehalten (Pause, Einzelschritt) zeigt das Pendel genau den Zeitpunkt der CPU (`pdev.frozen`), nach
-Weiter läuft die Wiedergabe aus dem Stand wieder an. Reset aus der Pause startet die Firmware neu und
+Pause hält das Pendel sofort dort an, wo es gerade angezeigt wird (die Anzeige läuft der CPU ~0,3 s
+hinterher – kein Sprung zur CPU-Zeit). Der erste Einzelschritt zeigt dann genau den Zeitpunkt der
+CPU (`pdev.frozen`), jeder weitere ebenso; nach Weiter läuft die Wiedergabe aus dem Stand wieder an. Reset aus der Pause startet die Firmware neu und
 läuft weiter.
 
 ### Oszilloskop

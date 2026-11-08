@@ -147,10 +147,19 @@ export function ControlSocketProvider({ children }) {
     }
   }, []);
 
-  const { status, send } = useReconnectingWebSocket(CONTROL_WS_URL, {
+  const { status, send: sendRaw } = useReconnectingWebSocket(CONTROL_WS_URL, {
     onMessage,
     onClose: () => setRenodeState('unknown'),
   });
+
+  // Pause: das Pendel-Widget hält sofort an (nicht erst mit der nächsten Meldung der Simulation)
+  const send = useCallback(
+    (msg) => {
+      if (msg && msg.type === 'pause') pendulumEventListeners.current.forEach((fn) => fn({ type: 'pausing' }));
+      return sendRaw(msg);
+    },
+    [sendRaw],
+  );
 
   const subscribeFrame = useCallback((fn) => {
     frameListeners.current.add(fn);
