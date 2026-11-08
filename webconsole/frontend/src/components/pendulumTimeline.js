@@ -1,6 +1,8 @@
 // Wiedergabeuhr des Pendeldisplays (ohne DOM, damit sie sich mit node testen lässt:
 // webconsole/backend/test/unit_pendulum_timeline.mjs)
 
+// Pause gedrückt, aber nach dieser Zeit noch keine angehaltene Simulation gemeldet: weiterlaufen
+const HOLD_TIMEOUT_US = 2000000;
 export const DELAY_US = 300000; // Wiedergabe so weit hinter der Simulation (Daten kommen 10-mal pro Sekunde, Renode stockt mitunter ~100 ms)
 // Wiedergabeuhr: Renode treibt die virtuelle Zeit ungleichmäßig voran (pro 100 ms Wanduhr mal 0,3 ms,
 // mal 150 ms). Die angezeigte Zeit läuft deshalb mit eigener, stetiger Geschwindigkeit: Grundrate =
@@ -26,10 +28,27 @@ export class Timeline {
     this.T = null; // angezeigte virtuelle Zeit
     this.wallPrev = null;
     this.speed = 1; // aktuelle Wiedergabegeschwindigkeit (virtuelle je Wanduhrzeit)
-    this.frozen = false; // Simulation angehalten (Pause/Einzelschritt): Anzeige = Zeitpunkt der CPU
+    this.frozen = false; // Simulation angehalten (Pause/Einzelschritt)
+    this.holdT = null; // angehalten: Anzeige bleibt auf dieser Zeit stehen (bis zum ersten Schritt)
+    this.frozenCpuT = null; // Zeit der CPU beim Anhalten
+    this.holdSince = null; // Pause gedrückt (Wanduhr), Antwort der Simulation steht noch aus
+  }
+
+  /**
+   * Pause wurde gedrückt: Anzeige sofort an der Stelle anhalten, an der sie gerade ist (nicht erst,
+   * wenn die Simulation steht, und nicht auf die ~0,3 s vorauslaufende CPU-Zeit springen).
+   */
+  hold(wall = performance.now() * 1000) {
+    if (this.frozen || this.T === null) return;
+    this.holdT = this.T;
+    this.holdSince = wall;
   }
 
   add(msg, wall = performance.now() * 1000) {
+    if (msg.type === 'pausing') {
+      this.hold(wall);
+      return;
+    }
     const [t, phiQ, leds, periodUs] = msg.now;
     const last = this.s[this.s.length - 1];
     if (last && t < last.t) {
@@ -38,9 +57,26 @@ export class Timeline {
       this.T = null;
       this.generation++;
     }
-    // Angehalten: Die Uhr der Wiedergabe steht auf der Zeit der CPU (displayTime). Die Rate der
-    // Simulation wird danach neu gemessen – die Pause darf sie nicht verfälschen.
+    // Angehalten: Die Anzeige bleibt, wo sie ist (sie läuft der CPU ~0,3 s hinterher). Ein Schritt
+    // (CPU-Zeit ändert sich) zeigt danach genau den Zustand der CPU. Die Rate der Simulation wird
+    // nach "Weiter" neu gemessen – die Pause darf sie nicht verfälschen.
     const frozen = !!msg.frozen;
+    if (frozen && !this.frozen) {
+      if (this.holdT === null) this.holdT = this.T;
+      this.frozenCpuT = t;
+    } else if (frozen && t !== this.frozenCpuT) {
+      this.holdT = null; // Schritt: ab jetzt Zeit der CPU
+    }
+    if (!frozen) {
+      this.frozenCpuT = null;
+      // Pause gedrückt, aber die Simulation hält nicht an (z. B. Fehler): nicht ewig festhalten
+      if (this.frozen || (this.holdSince !== null && wall - this.holdSince > HOLD_TIMEOUT_US)) {
+        this.holdT = null;
+        this.holdSince = null;
+      }
+    } else {
+      this.holdSince = null;
+    }
     if (frozen || this.frozen) this.hist = [];
     this.frozen = frozen;
     if (!frozen) this.hist.push({ wall, t });
@@ -133,13 +169,13 @@ export class Timeline {
   /**
    * Virtuelle Zeit, die jetzt angezeigt wird: etwa DELAY_US hinter der Simulation, nie über die Daten
    * hinaus. Einmal pro Bild aufrufen – die Uhr läuft stetig weiter (keine Sprünge bei jeder Nachricht).
-   * Angehalten (Pause, Einzelschritt): genau die Zeit der CPU, damit Pendel und LEDs zum Zustand der
-   * Firmware passen; nach "Weiter" läuft die Wiedergabe aus dem Stand wieder an.
+   * Pause: bleibt stehen, wo sie gerade ist. Einzelschritt: genau die Zeit der CPU, damit Pendel und
+   * LEDs zum Zustand der Firmware passen. Nach "Weiter" läuft die Wiedergabe aus dem Stand wieder an.
    */
   displayTime(wall = performance.now() * 1000) {
     if (!this.s.length) return null;
-    if (this.frozen) {
-      this.T = this.lastT;
+    if (this.frozen || this.holdT !== null) {
+      this.T = this.holdT !== null ? Math.min(this.holdT, this.lastT) : this.lastT;
       this.wallPrev = wall;
       this.speed = 0;
       return this.T;

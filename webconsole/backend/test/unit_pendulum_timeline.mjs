@@ -3,8 +3,9 @@
 // ohne Browser und ohne Renode:
 //   node test/unit_pendulum_timeline.mjs
 //
-// Prüft, dass die Anzeige bei angehaltener Simulation (Pause, Einzelschritt) genau den Zeitpunkt
-// der CPU zeigt und nach "Weiter" ohne Zeitlupe und ohne Sprung wieder anläuft.
+// Prüft: Pause hält die Anzeige dort an, wo sie gerade ist (kein Sprung zur ~0,3 s vorauslaufenden
+// CPU-Zeit), ein Einzelschritt zeigt genau den Zeitpunkt der CPU, nach "Weiter" läuft die Anzeige
+// ohne Zeitlupe und ohne Sprung wieder an.
 import { Timeline, DELAY_US } from '../../frontend/src/components/pendulumTimeline.js';
 
 let pass = 0;
@@ -52,26 +53,39 @@ function scenario() {
   check('Laufend: nicht angehalten', st.tl.frozen === false);
 }
 
-// --- 2. Pause: sofort genau der Zeitpunkt der CPU, bleibt stehen ---
+// --- 2. Pause: Anzeige bleibt, wo sie ist (sofort beim Drücken), bleibt stehen ---
 const st = scenario();
 for (let i = 0; i < 100; i++) st.round(POLL, false);
 const tPause = st.t;
+let tShown;
 {
-  let firstT = null;
-  st.round(0, true, (T) => {
-    if (firstT === null) firstT = T;
-  });
-  check('Pause: erstes Bild zeigt den Haltezeitpunkt der CPU', firstT === tPause, `T=${firstT} CPU=${tPause}`);
+  // Bild direkt vor dem Drücken
+  const before = st.tl.displayTime(st.wall + 6 * FRAME);
+  st.tl.add({ type: 'pausing' }, st.wall + 6 * FRAME);
+  const atPress = st.tl.displayTime(st.wall + 7 * FRAME);
+  check('Pause gedrückt: Anzeige steht sofort (nicht erst mit der Antwort der Simulation)', Math.abs(atPress - before) < 1, `${before} -> ${atPress}`);
+  // bis die Simulation steht, kommen noch Meldungen mit laufender Zeit
+  st.round(POLL, false);
+  check('Pause gedrückt: hält auch bei weiter eintreffenden Daten', st.T === atPress);
+  const cpu = st.t;
+  st.round(0, true);
+  tShown = st.T;
+  check('Pause: kein Sprung zur CPU-Zeit (Anzeige bleibt, wo sie war)', tShown === atPress && cpu - tShown > 50000, `Anzeige ${(cpu - tShown) / 1000} ms vor dem Haltezeitpunkt`);
   let moved = false;
-  for (let i = 0; i < 50; i++) st.round(0, true, (T) => (moved = moved || T !== tPause));
-  check('Pause: 5 s Wanduhr – Anzeige bewegt sich nicht', !moved && st.T === tPause);
-  const a = st.tl.at(st.T);
-  check('Pause: LED-Zustand der Anzeige = LED-Zustand der CPU', a.leds === ledsAt(tPause), `${a.leds} / ${ledsAt(tPause)}`);
-  check('Pause: Phase der Anzeige = Phase der CPU', Math.abs(a.phi - phiQ(tPause) / 10000) < 1e-6, `${a.phi} / ${phiQ(tPause) / 10000}`);
-  check('Pause: keine Echtzeit-Rate (Anzeige "angehalten")', st.tl.simRate === null && st.tl.frozen === true);
+  for (let i = 0; i < 50; i++) st.round(0, true, (T) => (moved = moved || T !== tShown));
+  check('Pause: 5 s Wanduhr – Anzeige bewegt sich nicht', !moved && st.T === tShown);
+  check('Pause: Anzeige "steht, wo sie war"', st.tl.frozen === true && st.tl.holdT === tShown);
+  check('Pause: keine Echtzeit-Rate (Anzeige "angehalten")', st.tl.simRate === null);
 }
+void tPause;
 
-// --- 3. Einzelschritte: Anzeige folgt jedem Schritt exakt ---
+// --- 3. Einzelschritte: der erste Schritt zeigt den Zeitpunkt der CPU, danach jeden Schritt exakt ---
+{
+  st.round(1, true);
+  check('Erster Schritt: Anzeige = Zeit, Phase und LEDs der CPU', st.T === st.t && st.tl.at(st.T).leds === ledsAt(st.t)
+    && Math.abs(st.tl.at(st.T).phi - phiQ(st.t) / 10000) < 1e-6, `T=${st.T} CPU=${st.t}`);
+  check('Erster Schritt: Anzeige "Zeitpunkt der CPU"', st.tl.holdT === null && st.tl.frozen);
+}
 {
   let ok = true;
   let detail = '';
@@ -114,13 +128,43 @@ const tPause = st.t;
   check('Weiter: nicht mehr angehalten', st.tl.frozen === false);
 }
 
-// --- 5. Pause während die Anzeige noch hinterherläuft: Sprung genau auf die CPU-Zeit ---
+// --- 5. Pause ohne vorherigen Hinweis (z. B. aus einem anderen Browser): bleibt ebenfalls stehen ---
 {
   const s2 = scenario();
   for (let i = 0; i < 30; i++) s2.round(POLL, false);
-  const behind = s2.t - s2.T;
+  const shown = s2.T;
   s2.round(0, true);
-  check('Pause aus dem Lauf: Anzeige springt auf die CPU-Zeit (statt 0,3 s nachzulaufen)', s2.T === s2.t && behind > 50000, `vorher ${(behind / 1000).toFixed(0)} ms dahinter`);
+  check('Pause aus dem Lauf (anderer Browser): Anzeige bleibt (höchstens ein Bild weiter)', s2.T - shown <= 2 * FRAME && s2.t - s2.T > 50000,
+    `${((s2.t - s2.T) / 1000).toFixed(0)} ms vor der CPU`);
+}
+
+// --- 5b. Pause gedrückt, Simulation hält aber nicht an: nach 2 s weiterlaufen ---
+{
+  const s3 = scenario();
+  for (let i = 0; i < 30; i++) s3.round(POLL, false);
+  s3.tl.add({ type: 'pausing' }, s3.wall);
+  const held = s3.T;
+  for (let i = 0; i < 10; i++) s3.round(POLL, false);
+  const stillHeld = s3.T === held;
+  for (let i = 0; i < 20; i++) s3.round(POLL, false);
+  check('Pause ohne Wirkung: Anzeige hält kurz, läuft nach 2 s weiter', stillHeld && s3.T > held + 500000 && s3.tl.holdT === null);
+}
+
+// --- 5c. Pause und Weiter ohne Schritt: läuft von der angehaltenen Stelle weiter, ohne Sprung ---
+{
+  const s4 = scenario();
+  for (let i = 0; i < 30; i++) s4.round(POLL, false);
+  s4.tl.add({ type: 'pausing' }, s4.wall);
+  s4.round(0, true);
+  const held = s4.T;
+  for (let i = 0; i < 10; i++) s4.round(0, true);
+  let prev = held;
+  let maxJump = 0;
+  for (let i = 0; i < 20; i++) s4.round(POLL, false, (T) => {
+    maxJump = Math.max(maxJump, T - prev);
+    prev = T;
+  });
+  check('Weiter nach Pause: läuft ab der angehaltenen Stelle, kein Sprung', maxJump <= 2 * FRAME && s4.T > held, `größter Schritt ${maxJump.toFixed(0)} us`);
 }
 
 // --- 6. Neustart von Renode (Zeit beginnt wieder bei 0) im angehaltenen Zustand ---

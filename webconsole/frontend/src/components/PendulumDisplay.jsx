@@ -242,7 +242,8 @@ export default function PendulumDisplay({
   useEffect(() => {
     const iv = setInterval(() => {
       setSimRate(timeline.current.simRate);
-      setFrozen(timeline.current.frozen);
+      const tl = timeline.current;
+      setFrozen(tl.frozen ? (tl.holdT !== null ? 'hold' : 'cpu') : false);
     }, 250);
     return () => clearInterval(iv);
   }, []);
@@ -392,7 +393,11 @@ export default function PendulumDisplay({
       <div className="pendulum-foot">
         <span className="meta">
           Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} ·{' '}
-          {frozen ? 'Simulation angehalten: Anzeige zeigt den Zeitpunkt der CPU' : 'Anzeige 0,3 s hinter der Simulation'}
+          {frozen === 'hold'
+            ? 'Simulation angehalten (Anzeige steht, wo sie war – ein Schritt zeigt den Zeitpunkt der CPU)'
+            : frozen
+              ? 'Simulation angehalten: Anzeige zeigt den Zeitpunkt der CPU'
+              : 'Anzeige 0,3 s hinter der Simulation'}
           {simRate !== null && Math.abs(simRate - 1) > 0.1 && (
             <span
               className="pendulum-slow"
