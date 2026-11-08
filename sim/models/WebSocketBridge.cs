@@ -1,7 +1,13 @@
 // Minimaler WebSocket-Server (Port 9000) für die HTML-LED-Anzeige.
 //
-// Das Modul hat 8 GPIO-Eingänge (0..7). Jede Pegeländerung wird als Text "LED<n>=<0|1>"
-// an alle verbundenen Browser gesendet; neue Clients erhalten sofort den aktuellen Zustand.
+// Das Modul hat 8 GPIO-Eingänge (0..7). Pegeländerungen werden als Text "LED<n>=<0|1>" an alle
+// verbundenen Clients gesendet; neue Clients erhalten sofort den aktuellen Zustand.
+//
+// Gesendet wird gesammelt von einem eigenen Thread alle SendIntervalMs (Wanduhr), nicht im
+// CPU-Thread: Eine Firmware, die eine LED mit 1 kHz umschaltet, hätte sonst 1000 Socket-Schreib-
+// vorgänge je Sekunde mitten in der Emulation ausgelöst (gemessen: Simulation 2–3× langsamer).
+// Ein Blinken innerhalb eines Intervalls geht nicht verloren: Hat eine LED seit dem letzten Senden
+// gewechselt, endet aber im alten Zustand, werden beide Wechsel gesendet.
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -25,26 +31,69 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             this.Log(LogLevel.Info, "WebSocket-Bridge lauscht auf ws://127.0.0.1:{0}", port);
             var t = new Thread(AcceptLoop) { IsBackground = true };
             t.Start();
+            var s = new Thread(SendLoop) { IsBackground = true, Name = "WebSocketBridge" };
+            s.Start();
         }
 
         public void OnGPIO(int number, bool value)
         {
             if(number < 0 || number > 7) return;
-            lock(clients)
+            lock(pending)
             {
+                if(state[number] == value) return;
                 state[number] = value;
-                Broadcast(Message(number));
+                changed[number] = true;
+                dirty = true;
+            }
+        }
+
+        private void SendLoop()
+        {
+            var msgs = new List<string>();
+            while(true)
+            {
+                Thread.Sleep(SendIntervalMs);
+                msgs.Clear();
+                lock(pending)
+                {
+                    if(!dirty) continue;
+                    dirty = false;
+                    for(int i = 0; i < 8; i++)
+                    {
+                        if(!changed[i]) continue;
+                        changed[i] = false;
+                        if(state[i] == sent[i])
+                        {
+                            // kurz umgeschaltet und zurück: Blinken zeigen
+                            msgs.Add(Message(i, !state[i]));
+                        }
+                        msgs.Add(Message(i, state[i]));
+                        sent[i] = state[i];
+                    }
+                }
+                lock(clients)
+                {
+                    foreach(var m in msgs) Broadcast(m);
+                }
             }
         }
 
         public void Reset()
         {
-            lock(clients) { state = new bool[8]; }
+            lock(pending)
+            {
+                for(int i = 0; i < 8; i++)
+                {
+                    changed[i] = state[i];   // LEDs, die an waren, als aus melden
+                    state[i] = false;
+                }
+                dirty = true;
+            }
         }
 
-        private string Message(int i)
+        private static string Message(int i, bool on)
         {
-            return "LED" + i + "=" + (state[i] ? "1" : "0");
+            return "LED" + i + "=" + (on ? "1" : "0");
         }
 
         private void Broadcast(string text)
@@ -100,11 +149,13 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 stream.Write(bytes, 0, bytes.Length);
                 lock(clients)
                 {
+                    bool[] now;
+                    lock(pending) { now = (bool[])sent.Clone(); }
                     clients.Add(stream);
                     keepAlive.Add(client); // sonst schließt der Garbage-Collector die Verbindung
                     for(int i = 0; i < 8; i++)
                     {
-                        var f = Frame(Message(i));
+                        var f = Frame(Message(i, now[i]));
                         stream.Write(f, 0, f.Length);
                     }
                 }
@@ -115,6 +166,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private readonly TcpListener listener;
         private readonly List<NetworkStream> clients;
         private readonly List<TcpClient> keepAlive = new List<TcpClient>();
-        private bool[] state;
+        private readonly bool[] state;            // aktueller Pegel (CPU-Thread)
+        private readonly bool[] sent = new bool[8];   // zuletzt gesendet
+        private readonly bool[] changed = new bool[8];
+        private readonly object pending = new object();
+        private bool dirty;
+        private const int SendIntervalMs = 20;
     }
 }

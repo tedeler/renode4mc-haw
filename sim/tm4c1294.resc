@@ -16,5 +16,10 @@ mach create "tm4c1294"
 machine LoadPlatformDescription @platforms/tm4c1294ncpdt.repl
 sysbus LoadELF $elf
 
+# Abfrage-Port für die Web-Konsole (Sammelabfragen ohne den langsamen Telnet-Monitor, siehe
+# TivaSysCtl.ServeQueries); ohne Web-Konsole unbenutzt
+$queryPort?=1235
+sysbus.sysctl ServeQueries $queryPort
+
 # Zugriffe auf nicht modellierte Register nicht als Warnung fluten
 logLevel 2

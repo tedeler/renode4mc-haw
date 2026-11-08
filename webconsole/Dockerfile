@@ -97,7 +97,7 @@ ENV NODE_ENV=production \
 USER node
 
 # 3000 = HTTP (SPA, POST /upload, /api), 3333 = UART-WebSocket, 3334 = Control-WebSocket.
-# Intern (nicht exponiert): 1234 Renode-Monitor, 3335 UART-TCP, 9000 LED-Bridge.
+# Intern (nicht exponiert): 1234 Renode-Monitor, 1235 Abfrage-Port, 3335 UART-TCP, 9000 LED-Bridge.
 EXPOSE 3000 3333 3334
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \

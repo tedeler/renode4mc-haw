@@ -1,7 +1,9 @@
 'use strict';
 
+const zlib = require('zlib');
 const { WebSocketServer, WebSocket } = require('ws');
 const { MonitorClient } = require('./monitorClient');
+const { QueryClient } = require('./queryClient');
 const experiments = require('./experiments');
 const registers = require('./registers');
 
@@ -33,6 +35,28 @@ const PORT_PINS = { A: 8, B: 6, C: 8, D: 8, E: 6, F: 5, G: 2, H: 4, J: 2, K: 8, 
 const isPin = (p) => typeof p === 'string' && /^P[A-Q][0-7]$/.test(p) && PORT_PINS[p[1]] > +p[2];
 const SCOPE_PATH = 'sysbus.scope';
 const MAX_SCOPE_SOURCES = 5; // CH1..CH4 + externer Trigger
+// Sammelabfrage (TivaSysCtl.Batch): Trenner der Antworten, höchstens so viele Zeichen Base64 je
+// Monitor-Zeile
+const BATCH_SEPARATOR = '<<<BATCH>>>';
+const BATCH_MAX_CHARS = 3000;
+
+/**
+ * Monitor mit vorab geholten Antworten: execute(cmd) liefert die Antwort aus der Sammelabfrage, wenn
+ * genau dieser Befehl dort enthalten war (in derselben Reihenfolge), sonst wie gewohnt einzeln.
+ * So bleibt der Poll-Code unverändert, und Renode bekommt je Runde nur einen Monitor-Befehl.
+ */
+class PrefetchedMonitor {
+  constructor(mon, cache) {
+    this.mon = mon;
+    this.cache = cache;
+  }
+
+  execute(cmd, ...rest) {
+    const list = this.cache.get(cmd);
+    if (list && list.length) return Promise.resolve(list.shift());
+    return this.mon.execute(cmd, ...rest);
+  }
+}
 // Renode-Logzeile: "[12:00:00.0000] [WARNING] tm4c1294/gpioM: GPIO Port M: ..."
 const DIAG_RE = /\[(WARNING|ERROR)\]\s*(.*)$/;
 const CIO_HISTORY_BYTES = 16384;
@@ -113,10 +137,12 @@ const MAX_DIAGNOSTICS = 100;
  *   { type: "error", message }
  */
 class ControlBridge {
-  constructor({ wsPort, renodeHost, monitorPort, pollIntervalMs, headerPath }) {
+  constructor({ wsPort, renodeHost, monitorPort, queryPort, pollIntervalMs, headerPath }) {
     this.registers = registers.load(headerPath);
     this.renodeHost = renodeHost;
     this.monitorPort = monitorPort;
+    this.queryPort = queryPort;
+    this.query = null; // Abfrage-Port (TivaSysCtl.ServeQueries), sonst Sammelabfrage über den Monitor
     this.pollIntervalMs = pollIntervalMs;
     this.monitor = null;
     this.experiment = null; // vollständige Konfiguration (mit Renode-Pfaden)
@@ -548,6 +574,18 @@ class ControlBridge {
     });
     await mon.connect(timeoutMs, isAlive);
     this.monitor = mon;
+    // Abfrage-Port: nur wenn das Experiment ein Status-Modell hat; ohne ihn Sammelabfrage über
+    // den Monitor (BatchZ) bzw. einzelne Befehle
+    this.batchUnsupported = false;
+    if (this.queryPort && experiment.status) {
+      const q = new QueryClient({ host: this.renodeHost, port: this.queryPort });
+      try {
+        await q.connect(3000);
+        this.query = q;
+      } catch (e) {
+        console.log(`[control] ${e.message} – Abfragen über den Monitor`);
+      }
+    }
 
     // Monitor-Kontext auf die Maschine setzen (Prompt "(tm4c1294)")
     if (experiment.machine) {
@@ -568,6 +606,8 @@ class ControlBridge {
     this._stopPolling();
     this.scopeProbes = '';
     this._disconnectLedBridge();
+    if (this.query) this.query.close();
+    this.query = null;
     if (this.monitor) {
       this.monitor.removeAllListeners();
       this.monitor.on('error', () => {});
@@ -625,13 +665,117 @@ class ControlBridge {
     this.pollTimer = null;
   }
 
+  /**
+   * Mehrere Monitor-Befehle in einem: "<status> BatchZ <Base64>" (TivaSysCtl). Jeder einzelne
+   * Monitor-Befehl kostet Renode ~10 ms Rechenzeit – bei 10 Abfragen je Sekunde mit 4–12 Befehlen
+   * fehlte das der Emulation. Liefert Map Befehl -> [Antworten] oder null (ohne Status-Modell).
+   */
+  async _prefetch(mon, cmds) {
+    const exp = this.experiment;
+    const cache = new Map();
+    if (!exp.status || !cmds.length || this.batchUnsupported) return cache;
+    let chunk = [];
+    let size = 0;
+    const chunks = [];
+    for (const c of cmds) {
+      const len = Buffer.byteLength(c) * 1.4 + 4;
+      if (chunk.length && size + len > (this.query && this.query.connected ? 1 << 20 : BATCH_MAX_CHARS)) {
+        chunks.push(chunk);
+        chunk = [];
+        size = 0;
+      }
+      chunk.push(c);
+      size += len;
+    }
+    if (chunk.length) chunks.push(chunk);
+    for (const list of chunks) {
+      const b64 = Buffer.from(list.join('\n'), 'utf8').toString('base64');
+      // Abfrage-Port (eine Zeile hin, eine zurück), sonst BatchZ über den Monitor: Antwort gzip+Base64,
+      // weil Renodes Monitor jedes Zeichen einzeln in den Telnet-Socket schreibt
+      let raw;
+      if (this.query && this.query.connected) {
+        const q = this.query;
+        raw = await mon.runExclusive(() => q.request(b64)).catch(() => '');
+      } else {
+        raw = await mon.execute(`${exp.status.path} BatchZ "${b64}"`);
+      }
+      if (/does not provide a field, method or property BatchZ/.test(raw)) {
+        this.batchUnsupported = true; // ältere TivaSysCtl.cs: einzeln weiter
+        return cache;
+      }
+      const z = /Z:([A-Za-z0-9+/=]+)/.exec(raw);
+      if (!z) continue;
+      let out;
+      try {
+        out = zlib.gunzipSync(Buffer.from(z[1], 'base64')).toString('utf8');
+      } catch {
+        continue;
+      }
+      const parts = out.replace(/\r/g, '').split(`\n${BATCH_SEPARATOR}\n`);
+      if (parts.length !== list.length) continue;
+      list.forEach((c, i) => {
+        if (/^ERR: /.test(parts[i])) return; // einzeln wiederholen (Monitor-Fehlermeldung wie gewohnt)
+        if (!cache.has(c)) cache.set(c, []);
+        cache.get(c).push(parts[i]);
+      });
+    }
+    return cache;
+  }
+
+  /** Befehle, die die nächste Poll-Runde sicher stellt (in derselben Form wie im Poll-Code) */
+  _pollCommands(simRound) {
+    const exp = this.experiment;
+    const cmds = [];
+    for (const led of (exp.leds || []).filter((l) => l.path)) cmds.push(`${led.path} State`);
+    if (exp.oled) cmds.push(`${exp.oled.path} GetFrameIfChanged`);
+    if (exp.bcd) cmds.push(`${exp.bcd.path} GetState`);
+    if (exp.cio) cmds.push(`${exp.cio.path} GetOutput`);
+    if (this.wakePending && exp.status) cmds.push(`${exp.status.path} GetStatus`);
+    if (exp.pendulum) cmds.push(`${exp.pendulum.path} GetFrame`, `${exp.pendulum.path} GetEvents`);
+    if (this.scopeProbes) cmds.push(`${SCOPE_PATH} GetEvents`);
+    for (const path of this._subscribedPaths()) cmds.push(`${path} GetEdges`);
+    if (simRound) cmds.push(...this._simCommands());
+    return cmds;
+  }
+
+  /** Befehle einer Runde der Simulations-Anzeige (_pollSim) */
+  _simCommands() {
+    const exp = this.experiment;
+    const cmds = [];
+    if (exp.status) {
+      cmds.push(`${exp.status.path} GetStatus`, `${exp.status.path} GetCpuRegisters`, `${exp.status.path} GetCpuStats`);
+      if (exp.uart && exp.uart.host) {
+        const uartPath = exp.uart.host.replace(/\.[^.]+$/, '');
+        cmds.push(`${uartPath} LineBaudRate`, `${uartPath} FrameFormat`);
+      }
+      for (const ws of this._watchers()) {
+        if (ws.simMemory) {
+          const a = this._memoryAddress(ws.simMemory.addr);
+          if (Number.isFinite(a)) cmds.push(`${exp.status.path} ReadMemory 0x${a.toString(16)} ${ws.simMemory.count}`);
+        }
+        if (ws.simPeriph) cmds.push(...this._peekCommands(ws.simPeriph));
+      }
+    }
+    return cmds;
+  }
+
+  /** Adresse einer Speicheranfrage, wenn ohne Monitor bekannt (hex oder Symbol schon aufgelöst) */
+  _memoryAddress(addr) {
+    if (typeof addr !== 'string') return addr;
+    const s = addr.trim();
+    if (/^(0x)?[0-9a-fA-F]{1,8}$/.test(s) && /^0x|^\d/.test(s)) return parseInt(s, 16);
+    const a = this.symbols.get(s);
+    return a === undefined || a === null ? NaN : a;
+  }
+
   async _poll() {
     // Nicht aufstauen: nur pollen, wenn die letzte Runde fertig ist und keine UI-Befehle warten
     if (this.polling || !this.attached || this.monitor.busy) return;
     this.polling = true;
-    const mon = this.monitor;
     const exp = this.experiment;
     try {
+      const simRound = this.pollCount % 5 === 0 && this._watchers().length > 0;
+      const mon = new PrefetchedMonitor(this.monitor, await this._prefetch(this.monitor, this._pollCommands(simRound)));
       let changed = false;
       for (const led of (exp.leds || []).filter((l) => l.path)) {
         const out = await mon.execute(`${led.path} State`);
@@ -738,6 +882,7 @@ class ControlBridge {
   /** Zustand der Simulation für die Anzeige (Firmware, CPU, Zeit, UART, Meldungen) */
   async _pollSim(mon) {
     const exp = this.experiment;
+    if (!(mon instanceof PrefetchedMonitor)) mon = new PrefetchedMonitor(mon, await this._prefetch(mon, this._simCommands()));
     const sim = {
       type: 'sim',
       experiment: { id: exp.id, title: exp.title },
@@ -880,14 +1025,23 @@ class ControlBridge {
   }
 
   /** Peripherie-Register eines Moduls ohne Nebenwirkung lesen */
-  async _peekModule(mon, module) {
+  /** PeekRegisters-Befehle für ein Modul (in Stücken, damit eine Monitor-Zeile nicht zu lang wird) */
+  _peekCommands(module) {
     const regs = this.registers.byModule[module] || [];
     const addrs = [...new Set(regs.map((r) => r.addr))];
-    const values = {};
-    // In Stücken, damit eine Monitor-Zeile nicht zu lang wird
+    const cmds = [];
     for (let i = 0; i < addrs.length; i += 64) {
       const list = addrs.slice(i, i + 64).map((x) => x.toString(16).toUpperCase().padStart(8, '0'));
-      const m = PR_RE.exec(await mon.execute(`${this.experiment.status.path} PeekRegisters "${list.join(',')}"`));
+      cmds.push(`${this.experiment.status.path} PeekRegisters "${list.join(',')}"`);
+    }
+    return cmds;
+  }
+
+  async _peekModule(mon, module) {
+    const regs = this.registers.byModule[module] || [];
+    const values = {};
+    for (const cmd of this._peekCommands(module)) {
+      const m = PR_RE.exec(await mon.execute(cmd));
       if (!m) continue;
       for (const x of m[1].split(';').filter(Boolean)) {
         const [ad, v] = x.split('=');

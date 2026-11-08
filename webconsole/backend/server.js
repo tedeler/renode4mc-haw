@@ -19,6 +19,7 @@ const renode = new RenodeManager({
   bin: cfg.renodeBin,
   headlessFlag: cfg.renodeHeadlessFlag,
   monitorPort: cfg.renodeMonitorPort,
+  queryPort: cfg.renodeQueryPort,
   cwd: cfg.simDir,
 });
 
@@ -33,6 +34,7 @@ const control = new ControlBridge({
   wsPort: cfg.controlWsPort,
   renodeHost: cfg.renodeHost,
   monitorPort: cfg.renodeMonitorPort,
+  queryPort: cfg.renodeQueryPort,
   pollIntervalMs: cfg.pollIntervalMs,
 });
 
@@ -68,6 +70,7 @@ async function startExperiment(exp) {
   control.resetDiagnostics();
   const ports = [
     { port: cfg.renodeMonitorPort, name: 'Renode-Monitor' },
+    { port: cfg.renodeQueryPort, name: 'Renode-Abfrage-Port' },
     { port: cfg.renodeUartPort, name: 'UART-Terminal' },
   ];
   if (exp.ledBridge) ports.push({ port: Number(new URL(exp.ledBridge).port), name: 'LED-Bridge' });

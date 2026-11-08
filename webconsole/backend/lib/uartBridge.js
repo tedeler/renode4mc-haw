@@ -6,7 +6,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Brücke: Renode-UART (CreateServerSocketTerminal, TCP) <-> WebSocket (Binärframes).
+ * Brücke: Renode-UART (UartHostTerminal.ServeTcp, TCP) <-> WebSocket (Binärframes).
  * Mehrere Browser-Clients teilen sich eine TCP-Verbindung zu Renode.
  */
 class UartBridge {

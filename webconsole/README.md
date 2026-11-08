@@ -71,7 +71,7 @@ webconsole/
 | 3333 | UART-WebSocket |
 | 3334 | Control-WebSocket |
 
-Intern, also nicht exponiert: 1234 (Renode-Monitor), 3335 (UART-TCP), 9000 (LED-Bridge).
+Intern, also nicht exponiert: 1234 (Renode-Monitor), 1235 (Abfrage-Port), 3335 (UART-TCP), 9000 (LED-Bridge).
 
 ## Entwicklung ohne Docker
 

@@ -17,11 +17,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Verwaltet genau einen Renode-Child-Prozess (headless).
  */
 class RenodeManager extends EventEmitter {
-  constructor({ bin, headlessFlag, monitorPort, cwd }) {
+  constructor({ bin, headlessFlag, monitorPort, queryPort, cwd }) {
     super();
     this.bin = bin;
     this.headlessFlag = headlessFlag;
     this.monitorPort = monitorPort;
+    this.queryPort = queryPort;
     this.cwd = cwd;
     this.child = null;
     this.experimentId = null;
@@ -60,7 +61,7 @@ class RenodeManager extends EventEmitter {
       '--port',
       String(this.monitorPort),
       '-e',
-      `$elf=@${elfPath}; ${uartVars(uart)}s @${rescPath}`,
+      `$elf=@${elfPath}; ${this.queryPort ? `$queryPort=${this.queryPort}; ` : ''}${uartVars(uart)}s @${rescPath}`,
     ];
     console.log(`[renode] spawn: ${this.bin} ${args.map((a) => JSON.stringify(a)).join(' ')}`);
 

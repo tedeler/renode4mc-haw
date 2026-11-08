@@ -63,6 +63,248 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }, keep);
         }
 
+        // ---- Sammelabfrage (Tempo) ----------------------------------------------------------------
+        //
+        // "sysbus.sysctl Batch \"<Base64>\"": Base64 (UTF-8) einer Liste von Monitor-Befehlen, getrennt
+        // durch Zeilenumbrüche, jeweils "<Pfad> <Methode|Eigenschaft> [Argumente]" wie im Monitor
+        // (Argumente: Zahl dezimal/0x…, "Text", true/false). Ergebnis: die Antworten in derselben
+        // Reihenfolge, getrennt durch eine Zeile BatchSeparator; Fehler als "ERR: …".
+        // Jeder Monitor-Befehl kostet in Renode rund 10 ms Rechenzeit (Parser, Ausgabe, Telnet) –
+        // das Backend fragt 10× je Sekunde mehrere Modelle ab und bremste damit die Simulation auf
+        // zwei Kernen stark. Ein Befehl mit Aufrufen per Reflection kostet kaum mehr als einer.
+        public const string BatchSeparator = "<<<BATCH>>>";
+
+        // Abfrage-Port für das Backend: "sysbus.sysctl ServeQueries 1235". Eine Anfrage = eine Zeile mit
+        // dem Base64 der Befehlsliste wie bei Batch, Antwort = eine Zeile "Z:<Base64 von gzip>" (wie
+        // BatchZ). Renodes Monitor schreibt jede Antwort Zeichen für Zeichen mit je einem Systemaufruf
+        // in den Telnet-Socket (gemessen: ~14 000 sendto/s, ~70 % eines Kerns bei 10 Abfragen je
+        // Sekunde) – über diesen Port ist es ein Schreibvorgang je Antwort. Ausgeführt wird im Thread
+        // der Verbindung (wie Monitor-Befehle außerhalb des CPU-Threads); das Backend schickt Anfragen
+        // nur, wenn der Monitor nichts anderes tut.
+        public void ServeQueries(int port)
+        {
+            if(queryListener != null) return;
+            queryListener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            queryListener.Start();
+            new System.Threading.Thread(QueryAcceptLoop) { IsBackground = true, Name = "TivaSysCtl queries" }.Start();
+            this.Log(LogLevel.Info, "Abfrage-Port {0}", port);
+        }
+
+        private void QueryAcceptLoop()
+        {
+            while(true)
+            {
+                System.Net.Sockets.TcpClient c;
+                try
+                {
+                    c = queryListener.AcceptTcpClient();
+                }
+                catch(Exception)
+                {
+                    return;
+                }
+                c.NoDelay = true;
+                new System.Threading.Thread(() => QueryLoop(c)) { IsBackground = true, Name = "TivaSysCtl query" }.Start();
+            }
+        }
+
+        private void QueryLoop(System.Net.Sockets.TcpClient c)
+        {
+            try
+            {
+                using(c)
+                {
+                    var stream = c.GetStream();
+                    var reader = new System.IO.StreamReader(stream, System.Text.Encoding.ASCII);
+                    while(true)
+                    {
+                        var line = reader.ReadLine();
+                        if(line == null) return;
+                        string answer;
+                        try
+                        {
+                            answer = BatchZ(line.Trim());
+                        }
+                        catch(Exception e)
+                        {
+                            answer = "ERR: " + e.Message;
+                        }
+                        var bytes = System.Text.Encoding.ASCII.GetBytes(answer + "\n");
+                        stream.Write(bytes, 0, bytes.Length);
+                    }
+                }
+            }
+            catch(Exception)
+            {
+            }
+        }
+
+        private System.Net.Sockets.TcpListener queryListener;
+
+        // Wie Batch, Antwort aber als Base64 von gzip: Renodes Monitor gibt lange Texte langsam aus
+        // (Telnet-Ausgabe Zeichen für Zeichen, gemessen ~2/3 eines Kerns bei 10 Abfragen je Sekunde mit
+        // Pendel-, Oszilloskop- und UART-Ereignissen); komprimiert sind es 5–10× weniger Zeichen.
+        public string BatchZ(string base64)
+        {
+            var text = Batch(base64);
+            using(var ms = new System.IO.MemoryStream())
+            {
+                using(var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Fastest, true))
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+                    gz.Write(bytes, 0, bytes.Length);
+                }
+                return "Z:" + Convert.ToBase64String(ms.ToArray());
+            }
+        }
+
+        public string Batch(string base64)
+        {
+            string text;
+            try
+            {
+                text = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+            }
+            catch(Exception e)
+            {
+                return "ERR: Batch: " + e.Message;
+            }
+            var sb = new System.Text.StringBuilder();
+            bool first = true;
+            foreach(var line in text.Split('\n'))
+            {
+                if(line.Trim().Length == 0) continue;
+                if(!first) sb.Append('\n').Append(BatchSeparator).Append('\n');
+                first = false;
+                string result;
+                try
+                {
+                    result = InvokeCommand(line.Trim());
+                }
+                catch(System.Reflection.TargetInvocationException e)
+                {
+                    result = "ERR: " + (e.InnerException ?? e).Message;
+                }
+                catch(Exception e)
+                {
+                    result = "ERR: " + e.Message;
+                }
+                sb.Append(result);
+            }
+            return sb.ToString();
+        }
+
+        private string InvokeCommand(string line)
+        {
+            var tokens = Tokenize(line);
+            if(tokens.Count < 2) throw new ArgumentException("Befehl unvollständig: " + line);
+            object target = ResolveTarget(tokens[0]);
+            if(target == null) throw new ArgumentException("unbekannt: " + tokens[0]);
+            string member = tokens[1];
+            var args = tokens.Skip(2).ToList();
+            var type = target.GetType();
+            if(args.Count == 0)
+            {
+                var prop = type.GetProperty(member);
+                if(prop != null && prop.GetIndexParameters().Length == 0) return Format(prop.GetValue(target, null));
+            }
+            foreach(var m in type.GetMethods().Where(x => x.Name == member))
+            {
+                var ps = m.GetParameters();
+                if(args.Count > ps.Length || args.Count < ps.Count(x => !x.IsOptional)) continue;
+                var values = new object[ps.Length];
+                bool ok = true;
+                for(int i = 0; i < ps.Length && ok; i++)
+                {
+                    if(i < args.Count) ok = TryConvert(args[i], ps[i].ParameterType, out values[i]);
+                    else values[i] = ps[i].DefaultValue;
+                }
+                if(!ok) continue;
+                return Format(m.Invoke(target, values));
+            }
+            throw new ArgumentException(string.Format("{0}: keine passende Methode {1} mit {2} Argument(en)", tokens[0], member, args.Count));
+        }
+
+        private object ResolveTarget(string path)
+        {
+            if(path == "sysbus") return machine.SystemBus;
+            IPeripheral p;
+            if(!resolved.TryGetValue(path, out p))
+            {
+                if(!machine.TryGetByName(path, out p)) return null;
+                resolved[path] = p;
+            }
+            return p;
+        }
+
+        private static string Format(object v)
+        {
+            if(v == null) return "";
+            if(v is bool) return (bool)v ? "True" : "False";
+            if(v is ulong || v is uint || v is long || v is int) return string.Format("0x{0:X}", v);
+            if(v is double) return ((double)v).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return v.ToString();
+        }
+
+        private static bool TryConvert(string s, Type t, out object value)
+        {
+            value = null;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            try
+            {
+                if(t == typeof(string)) { value = s; return true; }
+                if(t == typeof(bool)) { value = bool.Parse(s); return true; }
+                if(t == typeof(double)) { value = double.Parse(s, inv); return true; }
+                if(t == typeof(float)) { value = float.Parse(s, inv); return true; }
+                bool hex = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                ulong u = 0;
+                long l = 0;
+                if(hex) u = Convert.ToUInt64(s.Substring(2), 16);
+                else if(s.StartsWith("-")) l = long.Parse(s, inv);
+                else u = ulong.Parse(s, inv);
+                if(!hex && s.StartsWith("-"))
+                {
+                    if(t == typeof(int)) { value = (int)l; return true; }
+                    if(t == typeof(long)) { value = l; return true; }
+                    return false;
+                }
+                if(t == typeof(int)) { value = checked((int)u); return true; }
+                if(t == typeof(uint)) { value = checked((uint)u); return true; }
+                if(t == typeof(long)) { value = checked((long)u); return true; }
+                if(t == typeof(ulong)) { value = u; return true; }
+                if(t == typeof(ushort)) { value = checked((ushort)u); return true; }
+                if(t == typeof(byte)) { value = checked((byte)u); return true; }
+            }
+            catch(Exception)
+            {
+            }
+            return false;
+        }
+
+        private static List<string> Tokenize(string line)
+        {
+            var list = new List<string>();
+            var cur = new System.Text.StringBuilder();
+            bool quoted = false, any = false;
+            foreach(char ch in line)
+            {
+                if(ch == '"') { quoted = !quoted; any = true; continue; }
+                if(!quoted && char.IsWhiteSpace(ch))
+                {
+                    if(any) list.Add(cur.ToString());
+                    cur.Clear();
+                    any = false;
+                    continue;
+                }
+                cur.Append(ch);
+                any = true;
+            }
+            if(any) list.Add(cur.ToString());
+            return list;
+        }
+
+        private readonly Dictionary<string, IPeripheral> resolved = new Dictionary<string, IPeripheral>();
+
         // ---- Lesen ohne Nebenwirkung (Anzeige) ---------------------------------------------------
 
         // true, solange PeekRegisters auf DIESEM Thread liest (der CPU-Thread ist nie betroffen)
