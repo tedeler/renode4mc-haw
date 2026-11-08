@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchExperiments, startSolution, stopSimulation, uploadElf } from '../api.js';
+import AboutDialog from './AboutDialog.jsx';
+import hawLogo from '../assets/haw-logo.png';
 
 /** Kopfzeile: Versuchsauswahl, ELF-Upload, Start/Stop. */
 export default function SetupBar({ running, activeId, onStarted, onStopped }) {
@@ -12,6 +14,7 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
   const headerRef = useRef(null);
   // Mobil: Einstellungen einklappbar, nach dem Start eingeklappt (Platz für die Panels)
   const [open, setOpen] = useState(!running);
+  const [about, setAbout] = useState(false);
   useEffect(() => setOpen(!running), [running]);
 
   // Höhe der Kopfzeile für Sprungziele (scroll-margin) und Auto-Scroll beim Verschieben
@@ -81,9 +84,13 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
 
   return (
     <header className={`setup-bar ${open ? 'open' : 'closed'}`} ref={headerRef}>
+      <AboutDialog open={about} onClose={() => setAbout(false)} />
       <div className="setup-top">
         <div className="brand" title="renode4mc-haw · Web-Konsole">
-          <span className="brand-dot" /> <span className="brand-long">renode4mc-haw · Web-Konsole</span>
+          <button type="button" className="brand-logo" onClick={() => setAbout(true)} title="Über diese Web-Konsole">
+            <img src={hawLogo} alt="HAW Hamburg – Über diese Web-Konsole" />
+          </button>
+          <span className="brand-long">renode4mc-haw · Web-Konsole</span>
           <span className="brand-short">renode4mc</span>
         </div>
         <div id="hdr-status" className="hdr-status" />

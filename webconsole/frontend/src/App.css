@@ -34,7 +34,33 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .setup-top { display: contents; }
 .brand { order: 0; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .brand-short { display: none; }
-.brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); flex: none; }
+.brand-logo {
+  flex: none; display: flex; align-items: center; padding: 3px 6px; margin: -2px 0;
+  background: #fff; border: 1px solid transparent; border-radius: 4px; cursor: pointer;
+  opacity: .8; transition: opacity .15s, border-color .15s;
+}
+.brand-logo:hover, .brand-logo:focus-visible { opacity: 1; border-color: var(--accent); outline: none; }
+.brand-logo img { height: 18px; width: auto; display: block; }
+
+/* ---------- Über-Dialog ---------- */
+.about-dialog {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0; width: min(440px, calc(100vw - 24px)); box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+}
+.about-dialog::backdrop { background: rgba(4, 8, 16, .6); }
+.about-body { padding: 18px 20px 16px; }
+.about-logo { background: #fff; border-radius: 6px; padding: 12px; display: flex; justify-content: center; margin-bottom: 14px; }
+.about-logo img { height: 44px; width: auto; }
+.about-dialog h2 { margin: 0 0 4px; font-size: 17px; }
+.about-sub { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
+.about-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 16px; font-size: 13px; }
+.about-facts dt { color: var(--muted); }
+.about-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.about-facts a { color: var(--accent); text-decoration: none; }
+.about-facts a:hover { text-decoration: underline; }
+.about-muted { color: var(--muted); }
+.about-dirty { color: var(--warn); }
+.about-actions { display: flex; justify-content: flex-end; }
 .setup-form { order: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex: 1 1 auto; min-width: 0; }
 .hdr-status { order: 2; min-width: 0; }
 .hdr-tools { order: 3; }
