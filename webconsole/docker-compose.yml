@@ -1,9 +1,15 @@
 # Start:  cd webconsole && docker compose up --build      ->  http://localhost:3000
+# Mit Git-Stand im Über-Dialog (Klick aufs HAW-Logo):
+#   GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build
 services:
   webconsole:
     build:
       context: ..
       dockerfile: webconsole/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+        GIT_BRANCH: ${GIT_BRANCH:-}
+        GIT_DATE: ${GIT_DATE:-}
     image: renode4mc-webconsole:latest
     init: true
     ports:

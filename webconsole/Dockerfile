@@ -6,7 +6,8 @@
 #   React-Frontend (zur Build-Zeit gebaut, als statische Dateien in /app/public)
 #
 # Build-Kontext ist das Repository-Wurzelverzeichnis (sim/ wird mit in das Image kopiert):
-#   docker build -f webconsole/Dockerfile -t renode4mc-webconsole .
+#   docker build -f webconsole/Dockerfile -t renode4mc-webconsole \
+#     --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg GIT_DATE=$(git log -1 --format=%cI) .
 #   docker run --rm --init -p 3000:3000 -p 3333:3333 -p 3334:3334 renode4mc-webconsole
 # ------------------------------------------------------------------------------------------------
 ARG NODE_IMAGE=node:20-bookworm-slim
@@ -17,7 +18,12 @@ WORKDIR /build
 COPY webconsole/frontend/package.json webconsole/frontend/package-lock.json* ./
 RUN npm install --no-audit --no-fund
 COPY webconsole/frontend/ ./
-RUN npm run build
+# Git-Stand für den Über-Dialog (.git ist nicht im Build-Kontext):
+#   docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg GIT_DATE=$(git log -1 --format=%cI) ...
+ARG GIT_COMMIT=""
+ARG GIT_BRANCH=""
+ARG GIT_DATE=""
+RUN GIT_COMMIT="$GIT_COMMIT" GIT_BRANCH="$GIT_BRANCH" GIT_DATE="$GIT_DATE" npm run build
 
 # ---------- Stage 2: Backend-Abhängigkeiten (nur production) -----------------------------------
 FROM ${NODE_IMAGE} AS backend

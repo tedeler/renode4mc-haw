@@ -95,6 +95,8 @@ eingereiht.
     Spalten ziehen = neue Spalte an dieser Stelle (blaue senkrechte Linie; höchstens 6 Spalten und so viele,
     wie bei mindestens 240 px Breite passen).
   - Trennlinie zwischen Spalten ziehen: Breite ändern, Doppelklick: beide gleich breit.
+  - HAW-Logo oben links anklicken: Über-Dialog mit Versionsnummer, Git-Commit (Link auf GitHub) und
+    Link zum Repository.
   - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, **↺ Standardlayout**
     (zurück zur Standardanordnung, alles sichtbar; mobil am Ende der Sprungleiste).
 - **Handy / kleines Fenster**: eine Spalte in Layout-Reihenfolge, die Seite scrollt. Die Leiste unter der
@@ -541,10 +543,22 @@ cd webconsole
 docker compose up --build            # -> http://localhost:3000
 ```
 
+Den Git-Stand für den Über-Dialog (Klick aufs HAW-Logo) übergeben – `.git` ist nicht im
+Build-Kontext, ohne diese Angaben zeigt der Dialog „unbekannt“:
+
+```bash
+GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build
+```
+
+Beim lokalen Bauen (`npm run build`/`npm run dev`) liest Vite den Stand direkt aus dem Repository,
+nicht eingecheckte Änderungen werden als „+ lokale Änderungen“ angezeigt. Die Versionsnummer kommt aus
+`webconsole/frontend/package.json`.
+
 oder ohne Compose (Build-Kontext ist das Repository):
 
 ```bash
-docker build -f webconsole/Dockerfile -t renode4mc-webconsole .
+docker build -f webconsole/Dockerfile -t renode4mc-webconsole \
+  --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg GIT_DATE=$(git log -1 --format=%cI) .
 docker run --rm --init -p 3000:3000 -p 3333:3333 -p 3334:3334 renode4mc-webconsole
 ```
 
