@@ -28,7 +28,7 @@ const STATES = {
   Running: ['läuft', 'sim-ok'],
   Paused: ['angehalten', 'sim-warn'],
   Step: ['angehalten (Einzelschritt)', 'sim-warn'],
-  Wake: ['Schritt: läuft bis zum nächsten Interrupt (CPU schläft)', 'sim-warn'],
+  Wake: ['Schritt bis zum nächsten Interrupt', 'sim-warn'],
   InReset: ['im Reset', 'sim-warn'],
   Aborted: ['abgebrochen', 'sim-bad'],
   Halted: ['angehalten', 'sim-warn'],
@@ -224,15 +224,18 @@ function Overview({ sim }) {
         <h4>CPU</h4>
         <dl>
           <dt>Zustand</dt>
-          <dd className={stateClass}>
-            {stateText}
-            {cpu && cpu.halted ? ' – schläft (WFI), wartet auf Interrupt' : ''}
+          {/* Immer zwei Zeilen (Zustand, Schlaf-Hinweis), zu lang -> „…“: Layout springt nicht */}
+          <dd className={`sim-2l ${stateClass}`}>
+            <span title={stateText}>{stateText}</span>
+            <span title={cpu && cpu.halted ? 'schläft (WFI), wartet auf Interrupt' : undefined}>
+              {cpu && cpu.halted ? 'schläft (WFI), wartet auf Interrupt' : '\u00a0'}
+            </span>
           </dd>
           <dt>PC</dt>
           {/* Immer zwei Zeilen (Adresse, Funktion), zu lange Namen mit „…“ gekürzt: Layout springt nicht */}
-          <dd className="sim-pc">
+          <dd className="sim-2l">
             <code>{cpu ? cpu.pc : '–'}</code>
-            <span className="sim-pc-fn" title={cpu && cpu.symbol ? `${cpu.symbol}()` : undefined}>
+            <span title={cpu && cpu.symbol ? `${cpu.symbol}()` : undefined}>
               {cpu && cpu.symbol ? (
                 <>
                   in <code>{cpu.symbol}()</code>
