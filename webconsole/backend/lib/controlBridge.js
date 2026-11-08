@@ -16,6 +16,8 @@ const CR_RE = /CR:(\S*)/;
 // Einzelschritt (TivaSysCtl.StepCpu): SS:<erledigt>:<ok|more|wfi|err>:<PC>
 const SS_RE = /SS:(\d+):(\w+):([0-9A-F]+)/;
 const MAX_STEPS = 10000;
+// CPU-Statistik (TivaSysCtl.GetCpuStats)
+const CS_RE = /CS:(\d+):(\d+):(\d+):(\d+):(\d+):(\d+):([01]):(\d+):([\d.,]+):(\S*)/;
 const MEM_RE = /MEM:([0-9A-F]{8}):([0-9A-F]*)|MEM:ERR:(.*)/;
 const PR_RE = /PR:(\S*)/;
 const DIS_RE = /^0x([0-9a-fA-F]+):\s+([0-9a-fA-F]+)\s+(.*)$/;
@@ -57,6 +59,7 @@ const MAX_DIAGNOSTICS = 100;
  *                                              Simulations-Anzeige an/aus (Zustand alle 500 ms);
  *                                              memory.addr = Zahl oder Symbolname aus der ELF-Datei,
  *                                              periph = Modulname aus "simmeta" (z. B. "UART0")
+ *   { type: "cpuStatsReset" }                  CPU-Statistik (Schlaf/ISR/Normalbetrieb) neu beginnen
  *   { type: "pause" } | { type: "continue" } | { type: "step", count }
  *                                              Ausführung anhalten, fortsetzen, count Befehle ausführen.
  *                                              Schläft die CPU (WFI), läuft ein Schritt bis zum nächsten
@@ -384,6 +387,13 @@ class ControlBridge {
         // Der Reset geschieht beim nächsten Zeitschritt: angehaltene Simulation dafür fortsetzen
         if (this.stopped) await this._continue(run);
         this._broadcast({ type: 'reset' });
+        this._pollSimSoon();
+        break;
+      }
+      case 'cpuStatsReset': {
+        if (!exp.status) throw new Error('Keine CPU-Statistik in diesem Versuch');
+        await run(`${exp.status.path} ResetCpuStats`);
+        this.cpuStatsPrev = null;
         this._pollSimSoon();
         break;
       }
@@ -759,6 +769,8 @@ class ControlBridge {
           return { name, value: parseInt(hex, 16) };
         });
       }
+      const cs = CS_RE.exec(await mon.execute(`${exp.status.path} GetCpuStats`));
+      if (cs) sim.cpuStats = this._cpuStats(cs);
       if (this.stopped && exp.debug && sim.cpu) {
         // Die nächsten Befehle ab PC (Thumb-2: 2 oder 4 Bytes)
         const out = await mon.execute(`${exp.debug.cpu} DisassembleBlock ${sim.cpu.pc} 24`);
@@ -783,6 +795,58 @@ class ControlBridge {
       if (exp.status && ws.simPeriph) own.periph = await this._peekModule(mon, ws.simPeriph);
       if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(own));
     }
+  }
+
+  /**
+   * Anteile Schlaf (WFI) / Interrupt-Routinen / Normalbetrieb, seit Start bzw. ResetCpuStats und im
+   * letzten Abfrageabstand. Renode rechnet je Befehl 1/PerformanceInMips: Wachzeit = Befehle ×
+   * Befehlszeit (genauer als die Zeitstempel der Hooks im 1-µs-Raster), Schlaf = Rest.
+   */
+  _cpuStats(m) {
+    const raw = {
+      ns: Number(m[1]),
+      instr: Number(m[2]),
+      isrInstr: Number(m[4]),
+      isrCount: Number(m[5]),
+      wakes: Number(m[6]),
+      vectors: new Map(),
+    };
+    const sleeping = m[7] === '1';
+    const depth = Number(m[8]);
+    const nsPerInstr = 1000 / Number(m[9].replace(',', '.')) || 0;
+    for (const e of m[10].split(',').filter(Boolean)) {
+      const [v, rest] = e.split('=');
+      const [count, instr] = rest.split('/').map(Number);
+      raw.vectors.set(Number(v), { count, instr });
+    }
+    const shares = (cur, base) => {
+      const ns = cur.ns - (base ? base.ns : 0);
+      const instr = cur.instr - (base ? base.instr : 0);
+      const isrInstr = cur.isrInstr - (base ? base.isrInstr : 0);
+      const awakeNs = Math.min(ns, instr * nsPerInstr);
+      const isrNs = Math.min(awakeNs, isrInstr * nsPerInstr);
+      return {
+        ns,
+        instr,
+        sleepNs: ns - awakeNs,
+        isrNs,
+        normalNs: awakeNs - isrNs,
+        isrCount: cur.isrCount - (base ? base.isrCount : 0),
+        wakes: cur.wakes - (base ? base.wakes : 0),
+      };
+    };
+    // Abfrageabstand: nur wenn derselbe Zählraum (kein Reset/Neustart dazwischen)
+    const prev = this.cpuStatsPrev && this.cpuStatsPrev.ns <= raw.ns && this.cpuStatsPrev.instr <= raw.instr ? this.cpuStatsPrev : null;
+    const recent = prev && raw.ns > prev.ns ? shares(raw, prev) : null;
+    this.cpuStatsPrev = raw;
+    const vectors = [...raw.vectors.entries()].map(([v, x]) => ({
+      vector: v,
+      name: this.registers.vectors[v] || `Vektor ${v}`,
+      count: x.count,
+      instr: x.instr,
+      ns: x.instr * nsPerInstr,
+    }));
+    return { total: shares(raw, null), recent, vectors, sleeping, isrDepth: depth, nsPerInstr };
   }
 
   /** Speicher ab Adresse oder Symbol (Flash/SRAM) */

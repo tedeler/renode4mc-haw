@@ -58,6 +58,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 resetCount++;
                 lastResetNs = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+                ResetCpuStats();   // erst hier: auch der Befehlszähler der CPU ist jetzt zurückgesetzt
                 this.Log(LogLevel.Info, "Reset-Taster: Mikrocontroller neu gestartet");
             }, keep);
         }
@@ -286,6 +287,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             inWfi = false;
             enteringWfi = false;
             haltOnWake = false;
+            ResetCpuStats();
         }
 
         // Offsets und Feldwerte wie in tm4c1294ncpdt.h (SYSCTL_..._R, SYSCTL_DID0_..., SYSCTL_DID1_...);
@@ -445,6 +447,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             tcpu.EnablePostOpcodeExecutionHooks(true);
             tcpu.AddHookAtWfiStateChange(isInWfi =>
             {
+                StatWfi(isInWfi);
                 inWfi = isInWfi;
                 enteringWfi = false;
                 if(!isInWfi && haltOnWake) ArmStop(tcpu, tcpu.PC.RawValue);
@@ -454,12 +457,137 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             tcpu.AddHookAtInterruptBegin(kind =>
             {
                 enteringWfi = false;
-                if(!haltOnWake) return;
                 uint vector = (machine.SystemBus.ReadDoubleWord(IcsrAddress) >> 12) & 0x1FF;
+                StatIsrBegin(vector, tcpu.ExecutedInstructions);
+                if(!haltOnWake) return;
                 if(vector != 0) ArmStop(tcpu, HandlerAddress(tcpu, vector));
             });
+            tcpu.AddHookAtInterruptEnd(kind => StatIsrEnd(tcpu.ExecutedInstructions));
             wfiHooked = true;
         }
+
+        // ---- Statistik: Anteil Schlaf (WFI) / Interrupt-Routinen / Normalbetrieb ----------------
+        //
+        // "sysbus.sysctl GetCpuStats" -> "CS:<Zeit ns>:<Befehle>:<Schlaf ns>:<ISR-Befehle>:<ISR-Aufrufe>:
+        //   <Aufwachen>:<schläft 0/1>:<ISR-Tiefe>:<MIPS>:<Vektor>=<Aufrufe>/<Befehle>,…"
+        // Alles seit ResetCpuStats (Reset der MCU, Start). Schlafzeit = virtuelle Zeit zwischen
+        // Einschlafen und Aufwachen (laufender Schlaf bis jetzt mitgezählt). Die Wachzeit wird nach
+        // ausgeführten Befehlen geteilt: Befehle zwischen Interrupt-Eintritt und Rücksprung zählen
+        // zur ISR (verschachtelt: je Vektor ohne die inneren), der Rest zum Normalbetrieb. Renodes
+        // Zeitraster ist 1 µs – eine ISR dauert oft nur wenige µs, Befehle sind genauer.
+        // Nicht modelliert: Stapeln beim Eintritt (am Board 12 Takte), Wartezyklen des Flash.
+        public string GetCpuStats()
+        {
+            ulong now = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+            var cpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault() as TranslationCPU;
+            ulong instr = cpu != null ? cpu.ExecutedInstructions : 0;
+            if(cpu != null) HookWfi(cpu);
+            var sb = new System.Text.StringBuilder();
+            lock(statLock)
+            {
+                ulong sleep = statSleepNs;
+                if(statSleeping && now > statSleepSince) sleep += now - statSleepSince;
+                ulong isrInstr = statIsrInstr;
+                // laufende ISR bis jetzt mitzählen
+                if(isrStack.Count > 0) isrInstr += instr - isrStack[0].Start;
+                sb.AppendFormat("CS:{0}:{1}:{2}:{3}:{4}:{5}:{6}:{7}:{8}:",
+                    now - statStartNs, instr - statStartInstr, sleep, isrInstr, statIsrCount, statWakes,
+                    statSleeping ? 1 : 0, isrStack.Count, cpu != null ? cpu.PerformanceInMips : 0);
+                bool first = true;
+                foreach(var kv in vectorStats)
+                {
+                    if(!first) sb.Append(',');
+                    first = false;
+                    sb.AppendFormat("{0}={1}/{2}", kv.Key, kv.Value.Count, kv.Value.Instr);
+                }
+            }
+            return sb.ToString();
+        }
+
+        public void ResetCpuStats()
+        {
+            ulong now = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+            var cpu = machine.GetPeripheralsOfType(typeof(ICPU)).Cast<ICPU>().FirstOrDefault();
+            lock(statLock)
+            {
+                statStartNs = now;
+                statStartInstr = cpu != null ? cpu.ExecutedInstructions : 0;
+                statSleepNs = 0;
+                statSleepSince = now;
+                statSleeping = inWfi;
+                statIsrInstr = 0;
+                statIsrCount = 0;
+                statWakes = 0;
+                vectorStats.Clear();
+                isrStack.Clear();
+            }
+        }
+
+        private void StatWfi(bool sleeping)
+        {
+            ulong now = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
+            lock(statLock)
+            {
+                if(sleeping && !statSleeping)
+                {
+                    statSleepSince = now;
+                }
+                else if(!sleeping && statSleeping)
+                {
+                    if(now > statSleepSince) statSleepNs += now - statSleepSince;
+                    statWakes++;
+                }
+                statSleeping = sleeping;
+            }
+        }
+
+        private void StatIsrBegin(uint vector, ulong instr)
+        {
+            lock(statLock)
+            {
+                if(isrStack.Count >= MaxIsrDepth) isrStack.RemoveAt(isrStack.Count - 1);   // Schutz, falls ein Ende fehlt
+                isrStack.Add(new IsrFrame { Vector = vector, Start = instr });
+                statIsrCount++;
+                VectorStat v;
+                if(!vectorStats.TryGetValue(vector, out v)) vectorStats[vector] = v = new VectorStat();
+                v.Count++;
+            }
+        }
+
+        private void StatIsrEnd(ulong instr)
+        {
+            lock(statLock)
+            {
+                if(isrStack.Count == 0) return;
+                var f = isrStack[isrStack.Count - 1];
+                isrStack.RemoveAt(isrStack.Count - 1);
+                ulong incl = instr - f.Start;
+                VectorStat v;
+                if(vectorStats.TryGetValue(f.Vector, out v)) v.Instr += incl > f.Child ? incl - f.Child : 0;
+                if(isrStack.Count > 0) isrStack[isrStack.Count - 1].Child += incl;
+                else statIsrInstr += incl;
+            }
+        }
+
+        private class IsrFrame
+        {
+            public uint Vector;
+            public ulong Start;
+            public ulong Child;
+        }
+
+        private class VectorStat
+        {
+            public ulong Count;
+            public ulong Instr;
+        }
+
+        private const int MaxIsrDepth = 16;
+        private readonly object statLock = new object();
+        private readonly List<IsrFrame> isrStack = new List<IsrFrame>();
+        private readonly SortedDictionary<uint, VectorStat> vectorStats = new SortedDictionary<uint, VectorStat>();
+        private ulong statStartNs, statStartInstr, statSleepNs, statSleepSince, statIsrInstr, statIsrCount, statWakes;
+        private bool statSleeping;
 
         private CpuAddressHook stopHook;
         private readonly HashSet<ulong> stopHooks = new HashSet<ulong>();

@@ -230,6 +230,14 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .sim-tabs button.active { color: var(--text); border-color: var(--border); background: var(--panel-2); }
 .sim-tab { padding-top: 10px; font-size: 13px; }
 .sim-note { color: var(--muted); font-size: 12px; margin: 6px 0; }
+/* CPU-Zeit: Schlaf / ISR / Normalbetrieb */
+.cpu-bar { display: flex; height: 10px; width: 100%; min-width: 120px; border-radius: 3px; overflow: hidden; background: var(--panel-2); margin: 3px 0; }
+.cpu-bar span { display: block; height: 100%; }
+.cpu-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.cpu-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: baseline; }
+.cpu-sleep { background: #64748b; }
+.cpu-isr { background: #f59e0b; }
+.cpu-normal { background: #38bdf8; }
 .sim-changed, .sim-changed code { color: #fbbf24 !important; }
 .sim-regs { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr); gap: 24px; }
 @media (max-width: 760px) { .sim-regs { grid-template-columns: 1fr; } }
@@ -391,3 +399,5 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .pendulum-slow { color: var(--warn); }
 /* beim Verschieben: Trennlinien als mögliche Ablageorte für eine neue Spalte andeuten */
 body.ws-dragging .ws-gutter::after { background: var(--border); }
+.cpu-table { margin-top: 12px; }
+.cpu-table td:nth-child(n+2), .cpu-table th:nth-child(n+2) { text-align: right; font-variant-numeric: tabular-nums; }

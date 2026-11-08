@@ -80,6 +80,120 @@ function UartLine({ uart }) {
   );
 }
 
+// Anteil an der Simulationszeit in Prozent
+const pct = (part, whole) => (whole > 0 ? (100 * part) / whole : 0);
+const usTime = (ns) => (ns >= 1e6 ? `${de(ns / 1e6, 2)} ms` : `${de(ns / 1e3, 1)} µs`);
+
+/** Balken Schlaf / ISR / Normalbetrieb für einen Zeitraum */
+function CpuTimeBar({ w, label }) {
+  if (!w || !(w.ns > 0)) {
+    return (
+      <>
+        <dt>{label}</dt>
+        <dd>–</dd>
+      </>
+    );
+  }
+  const parts = [
+    ['sleep', 'Schlaf', w.sleepNs],
+    ['isr', 'ISR', w.isrNs],
+    ['normal', 'Normal', w.normalNs],
+  ];
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        <div className="cpu-bar" title={parts.map(([, n, v]) => `${n} ${de(pct(v, w.ns), 2)} %`).join(' · ')}>
+          {parts.map(([k, , v]) => (
+            <span key={k} className={`cpu-${k}`} style={{ width: `${pct(v, w.ns)}%` }} />
+          ))}
+        </div>
+        <span className="cpu-legend">
+          {parts.map(([k, n, v]) => (
+            <span key={k}>
+              <i className={`cpu-${k}`} />
+              {n} {de(pct(v, w.ns), pct(v, w.ns) < 10 ? 2 : 1)} %
+            </span>
+          ))}
+        </span>
+      </dd>
+    </>
+  );
+}
+
+/** Reiter "CPU-Zeit": Anteile, Zahlen und je Interrupt-Routine */
+function CpuStats({ sim, onReset }) {
+  const cs = sim.cpuStats;
+  if (!cs) return <p className="sim-note">Keine Statistik (Versuch ohne Status-Modell).</p>;
+  const t = cs.total;
+  const rows = [...cs.vectors].sort((a, b) => b.ns - a.ns);
+  return (
+    <div>
+      <div className="sim-grid">
+        <div>
+          <h4>Anteil der Simulationszeit</h4>
+          <dl>
+            <CpuTimeBar w={t} label="seit Start" />
+            <CpuTimeBar w={cs.recent} label="zuletzt" />
+          </dl>
+        </div>
+        <div>
+          <h4>Seit Start / Reset</h4>
+          <dl>
+            <dt>Zeitraum</dt>
+            <dd>{seconds(t.ns)}</dd>
+            <dt>Schlaf (WFI)</dt>
+            <dd>{`${usTime(t.sleepNs)} · ${de(pct(t.sleepNs, t.ns), 3)} %`}</dd>
+            <dt>Interrupt-Routinen</dt>
+            <dd>{`${usTime(t.isrNs)} · ${de(pct(t.isrNs, t.ns), 3)} % · ${t.isrCount} Aufrufe`}</dd>
+            <dt>Normalbetrieb</dt>
+            <dd>{`${usTime(t.normalNs)} · ${de(pct(t.normalNs, t.ns), 3)} %`}</dd>
+            <dt>Befehle</dt>
+            <dd>{`${de(t.instr)} · ${t.wakes} × aufgewacht`}</dd>
+          </dl>
+        </div>
+      </div>
+      {rows.length > 0 && (
+        <table className="periph cpu-table">
+          <thead>
+            <tr>
+              <th>Interrupt</th>
+              <th>Vektor</th>
+              <th>Aufrufe</th>
+              <th>Zeit</th>
+              <th>Anteil</th>
+              <th>je Aufruf</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((v) => (
+              <tr key={v.vector}>
+                <td>
+                  <code>{v.name}</code>
+                </td>
+                <td>{v.vector}</td>
+                <td>{v.count}</td>
+                <td>{usTime(v.ns)}</td>
+                <td>{`${de(pct(v.ns, t.ns), 3)} %`}</td>
+                <td>{v.count ? `${de(v.instr / v.count, 1)} Befehle · ${usTime(v.ns / v.count)}` : '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p className="sim-note">
+        Wachzeit = ausgeführte Befehle × Befehlszeit von Renode ({de(cs.nsPerInstr, 1)} ns), Schlaf = Rest. ISR = vom
+        Eintritt bis zum Rücksprung (verschachtelte Interrupts je Vektor ohne die inneren). Das Stapeln beim Eintritt
+        (am Board 12 Takte) und Wartezyklen des Flash sind nicht modelliert – die Werte zeigen die Verhältnisse, nicht
+        die exakten Zeiten des Boards. Reset der MCU beginnt die Statistik neu.{' '}
+        <button className="btn small" onClick={onReset}>
+          Statistik neu beginnen
+        </button>
+      </p>
+    </div>
+  );
+}
+
 function Overview({ sim }) {
   const cpu = sim.cpu;
   const [stateText, stateClass] = cpu ? STATES[cpu.state] || [cpu.state, ''] : ['–', ''];
@@ -163,6 +277,16 @@ function Overview({ sim }) {
           <dd>{sim.renode.version || '–'}</dd>
         </dl>
       </div>
+
+      {sim.cpuStats && (
+        <div>
+          <h4>CPU-Zeit</h4>
+          <dl>
+            <CpuTimeBar w={sim.cpuStats.total} label="seit Start" />
+            <CpuTimeBar w={sim.cpuStats.recent} label="zuletzt" />
+          </dl>
+        </div>
+      )}
 
       {sim.uart && (
         <div>
@@ -397,6 +521,7 @@ export default function SimulationPanel({ debug = false }) {
   const stopped = sim && sim.stopped;
   const tabs = [
     ['regs', 'CPU-Register'],
+    ['cpustats', 'CPU-Zeit'],
     ['memory', 'Speicher'],
     ['periph', 'Peripherie'],
     ['messages', `Meldungen${sim && sim.warnings.length ? ` (${sim.warnings.length})` : ''}`],
@@ -451,6 +576,7 @@ export default function SimulationPanel({ debug = false }) {
           </div>
           <div className="sim-tab">
             {tab === 'regs' && <Registers sim={sim} />}
+            {tab === 'cpustats' && <CpuStats sim={sim} onReset={() => send({ type: 'cpuStatsReset' })} />}
             {tab === 'memory' && <Memory sim={sim} request={memory} onRequest={setMemory} />}
             {tab === 'periph' && <Peripheral sim={sim} modules={modules} module={periph} onModule={setPeriph} />}
             {tab === 'messages' && <Messages sim={sim} />}
