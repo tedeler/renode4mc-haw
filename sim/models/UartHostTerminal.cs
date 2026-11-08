@@ -4,7 +4,7 @@
 // COM-Port erscheint. Dieses Modell spielt diesen PC:
 //   * Empfangen: dekodiert die Flanken des Mikrocontrollers mit der hier eingestellten Baudrate
 //     und dem Format (wie die Einstellung im Terminalprogramm) und gibt die Zeichen als Bytes
-//     aus (CharReceived -> z. B. CreateServerSocketTerminal -> Web-Konsole).
+//     aus (CharReceived -> TCP-Terminal ServeTcp -> Web-Konsole).
 //   * Senden: Tastatureingaben (WriteChar) werden mit derselben Einstellung zu Flanken auf der
 //     RX-Leitung des Mikrocontrollers.
 // Passt die Einstellung nicht zu der des Mikrocontrollers, erscheinen falsche Zeichen.
@@ -13,7 +13,13 @@
 //   host: UART.UartHostTerminal @ uart0
 //       baudRate: 115200
 //       format: "8N1"
-// und im .resc:  connector Connect sysbus.uart0.host uart0term
+// und im .resc:  sysbus.uart0.host ServeTcp 3335
+//
+// ServeTcp statt "emulation CreateServerSocketTerminal 3335 …; connector Connect …": Renodes
+// Socket-Terminal (1.17) hält mit verbundenem Client einen Thread dauerhaft bei ~100 % CPU
+// (gemessen) – auf zwei Kernen halbierte das die Simulation. Hier blockiert das Lesen, gesendet
+// wird von einem eigenen Thread; Bytes 1:1, ohne Telnet-Steuerzeichen, ein Client (ein neuer
+// ersetzt den alten). Die Connector-Variante funktioniert weiterhin.
 //
 // Bedienung im Renode-Monitor:
 //   sysbus.uart0.host TerminalBaudRate 9600  Baudrate des Terminals
@@ -21,6 +27,9 @@
 //   sysbus.uart0.host Errors                Anzahl der Zeichen mit Framing-/Paritätsfehler
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Logging;
 
@@ -30,6 +39,7 @@ namespace Antmicro.Renode.Peripherals.UART
     {
         public UartHostTerminal(IMachine machine, uint baudRate = 115200, string format = "8N1") : base(machine)
         {
+            this.hostMachine = machine;
             clock = new VirtualClock(machine);
             settings = UartFrameFormat.Parse(baudRate, format);
             decoder = new UartLineDecoder(() => settings);
@@ -125,6 +135,110 @@ namespace Antmicro.Renode.Peripherals.UART
             lineFreeNs = UartEncoder.Encode(start, value, settings, edges);
             line.LineEdges(edges);
         }
+
+        // ---- TCP-Terminal ----------------------------------------------------------------------
+
+        public void ServeTcp(int port)
+        {
+            if(listener != null) return;
+            listener = new TcpListener(IPAddress.Loopback, port);
+            listener.Start();
+            CharReceived += b =>
+            {
+                lock(outQueue)
+                {
+                    // Ohne Client sammeln (Startmeldung, bevor die Web-Konsole verbunden ist) –
+                    // beim Verbinden wird der Rest gesendet
+                    if(outQueue.Count < MaxQueuedBytes) outQueue.Enqueue(b);
+                    if(client != null) System.Threading.Monitor.Pulse(outQueue);
+                }
+            };
+            new Thread(AcceptLoop) { IsBackground = true, Name = "UartHostTerminal accept" }.Start();
+            new Thread(SendLoop) { IsBackground = true, Name = "UartHostTerminal send" }.Start();
+            this.Log(LogLevel.Info, "Terminal auf TCP-Port {0}", port);
+        }
+
+        private void AcceptLoop()
+        {
+            while(true)
+            {
+                TcpClient c;
+                try
+                {
+                    c = listener.AcceptTcpClient();
+                }
+                catch(Exception)
+                {
+                    return;
+                }
+                c.NoDelay = true;
+                lock(outQueue)
+                {
+                    if(client != null) client.Close();
+                    client = c;
+                    System.Threading.Monitor.Pulse(outQueue);   // Gesammeltes senden
+                }
+                new Thread(() => ReadLoop(c)) { IsBackground = true, Name = "UartHostTerminal read" }.Start();
+            }
+        }
+
+        // Tastatur -> UART (blockierend lesen, im Zeitbereich der Maschine wie Renodes Terminal)
+        private void ReadLoop(TcpClient c)
+        {
+            var buf = new byte[256];
+            try
+            {
+                var stream = c.GetStream();
+                while(true)
+                {
+                    int n = stream.Read(buf, 0, buf.Length);
+                    if(n <= 0) break;
+                    for(int i = 0; i < n; i++)
+                    {
+                        hostMachine.HandleTimeDomainEvent<byte>(WriteChar, buf[i], false);
+                    }
+                }
+            }
+            catch(Exception)
+            {
+            }
+            lock(outQueue)
+            {
+                if(client == c) client = null;
+            }
+            c.Close();
+        }
+
+        // UART -> Terminal (eigener Thread: der CPU-Thread schreibt nie in den Socket)
+        private void SendLoop()
+        {
+            var chunk = new List<byte>();
+            while(true)
+            {
+                TcpClient c;
+                lock(outQueue)
+                {
+                    while(outQueue.Count == 0 || client == null) System.Threading.Monitor.Wait(outQueue);
+                    chunk.Clear();
+                    while(outQueue.Count > 0) chunk.Add(outQueue.Dequeue());
+                    c = client;
+                }
+                try
+                {
+                    var data = chunk.ToArray();
+                    c.GetStream().Write(data, 0, data.Length);
+                }
+                catch(Exception)
+                {
+                }
+            }
+        }
+
+        private readonly IMachine hostMachine;
+        private TcpListener listener;
+        private TcpClient client;
+        private readonly Queue<byte> outQueue = new Queue<byte>();
+        private const int MaxQueuedBytes = 64 * 1024;
 
         protected override void CharWritten()
         {

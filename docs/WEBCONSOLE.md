@@ -30,8 +30,9 @@ Drei Schichten in einem Container:
 │  Node.js / Express  (Entrypoint: node server.js)                                            │
 │  ├─ HTTP :3000   statische React-SPA, POST /upload, GET /api/experiments, /api/status       │
 │  ├─ RenodeManager      startet/beendet Renode als Child-Prozess (cwd = sim/)                │
-│  ├─ UartBridge   :3333 WebSocket  ⇄  TCP 127.0.0.1:3335  (Renode-Socket-Terminal, UART0)    │
+│  ├─ UartBridge   :3333 WebSocket  ⇄  TCP 127.0.0.1:3335  (UartHostTerminal.ServeTcp, UART0) │
 │  └─ ControlBridge:3334 WebSocket  ⇄  TCP 127.0.0.1:1234  (Renode-Monitor, Telnet)           │
+│                                   ⇄  TCP 127.0.0.1:1235  (Abfrage-Port, TivaSysCtl)         │
 │                                   ⇠  WS  127.0.0.1:9000  (LED-Bridge, sim/models)           │
 │                                                                                             │
 │  Renode 1.17.0 (headless):  renode --disable-gui --port 1234                                │
@@ -43,11 +44,12 @@ Drei Schichten in einem Container:
 ```
 
 **Warum Brücken und kein direkter WebSocket zu Renode?** Renode stellt UART, Monitor und GPIO
-nicht als WebSocket bereit, sondern als TCP-Socket. Das sind `CreateServerSocketTerminal` und der
-Telnet-Monitor (`--port`). Die Ausnahme ist die LED-Bridge aus `sim/models/WebSocketBridge.cs`.
+nicht als WebSocket bereit, sondern als TCP-Socket. Das sind das UART-Terminal (`UartHostTerminal.ServeTcp`,
+Port 3335), der Telnet-Monitor (`--port`, 1234) und der Abfrage-Port (`TivaSysCtl.ServeQueries`, 1235).
+Die Ausnahme ist die LED-Bridge aus `sim/models/WebSocketBridge.cs`.
 Das Backend übersetzt deshalb zwischen beiden Welten. Das hat zwei Vorteile:
 
-- Die internen Ports (1234, 3335, 9000) bleiben im Container. Exponiert sind nur 3000, 3333 und 3334.
+- Die internen Ports (1234, 1235, 3335, 9000) bleiben im Container. Exponiert sind nur 3000, 3333 und 3334.
 - Der Browser kann **keine beliebigen Monitor-Befehle** senden. Er schickt nur Ereignisse wie
   „Taster SW1 gedrückt“. Das Backend baut daraus Befehle, und zwar ausschließlich mit Renode-Pfaden
   aus der Versuchs-Konfiguration. Ein Monitor-Zugang wäre sonst ein Zugang zum Container,
@@ -75,7 +77,7 @@ Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar an
 | Anzeige | Quelle | Verfahren |
 |---|---|---|
 | LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`) |
-| UART0 | `sysbus.uart0.host` (PC-Terminal) → `CreateServerSocketTerminal 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
+| UART0 | `sysbus.uart0.host` (PC-Terminal) → `ServeTcp 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
 | Simulations-Anzeige | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode-Log | **Polling** alle 500 ms, nur solange die Anzeige offen ist |
 | Leitungen (Oszilloskop) | `sysbus.uart0 GetEdges` | **Polling** alle 100 ms, nur solange ein Browser die Leitung abonniert hat |
 | OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **Polling** alle 100 ms, nur bei Änderung übertragen |
@@ -482,8 +484,7 @@ include @tm4c1294.resc                              # Basis: Modelle, Maschine, 
 machine LoadPlatformDescription @experiments/<id>.repl   # enthält  host: UART.UartHostTerminal @ uart0
 sysbus.uart0.host TerminalBaudRate $uartBaud
 sysbus.uart0.host Format $uartFormat
-emulation CreateServerSocketTerminal 3335 "uart0term" false
-connector Connect sysbus.uart0.host uart0term
+sysbus.uart0.host ServeTcp 3335                     # TCP-Terminal für die Web-Konsole
 start
 ```
 
@@ -596,6 +597,7 @@ RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 | `RENODE_BIN` | `renode` | Renode-Startprogramm |
 | `RENODE_HEADLESS_FLAG` | `--disable-gui` | in Renode 1.17 gleichbedeutend mit `--disable-xwt` |
 | `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | interne Renode-Ports (3335 muss zum `.resc` passen) |
+| `RENODE_QUERY_PORT` | 1235 | Abfrage-Port (`TivaSysCtl.ServeQueries`, wird als `$queryPort` übergeben) |
 | `RENODE_START_TIMEOUT_MS` | 60000 | Wartezeit auf Renode beim Start |
 | `SIM_DIR` | `<repo>/sim` | Simulator-Verzeichnis (Arbeitsverzeichnis von Renode) |
 | `EXPERIMENTS_SUBDIR` | `experiments` | Versuche relativ zu `SIM_DIR` |
@@ -660,6 +662,28 @@ Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7
 40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
 Danach wird die Pendelfrequenz auf 15, 4, 25 und 10 Hz gestellt: Das Modell muss sie übernehmen,
 die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau stimmen.
+
+## Tempo der Simulation
+
+Renode hält die Simulation höchstens auf Echtzeit (`AdvanceImmediately` aus): Pendel und LEDs laufen
+so schnell wie am Board. Langsamer als Echtzeit wird es, wenn Renode mehr Rechenzeit braucht, als da
+ist (der CPU-Thread und die Zeitquelle belegen bei 10-µs-Zeitscheibe je fast einen Kern). Gemessen
+(2 Kerne, Testprogramm `schlaf_takt` mit Timer-IRQ jede ms, Simulations-Panel, Oszilloskop und
+UART-Flanken aktiv) vorher 0,16 × Echtzeit, jetzt ≈ 1,0 ×. Die Bremsen und was sie ersetzt:
+
+| Bremse (gemessen) | Ersatz |
+|---|---|
+| Renodes `CreateServerSocketTerminal`: Lese-Thread mit verbundenem Client dauerhaft ~100 % CPU | `UartHostTerminal.ServeTcp`: blockierendes Lesen, Senden aus eigenem Thread, Ausgabe vor dem Verbinden wird gesammelt |
+| Telnet-Monitor schreibt Antworten Zeichen für Zeichen (je ein `sendto`, ~14 000/s, ~70 % eines Kerns) und jeder Befehl kostet ~10 ms | Abfrage-Port `TivaSysCtl.ServeQueries`: alle Abfragen einer Runde in einer Zeile, Antwort gzip+Base64 in einem Schreibvorgang; Rückfall `BatchZ` über den Monitor bzw. einzelne Befehle |
+| LED-Bridge schrieb jede Pegeländerung im CPU-Thread in den Socket (1 kHz-LED = 1000 Schreibvorgänge/s) | Senden gesammelt alle 20 ms aus eigenem Thread; kurzes Blinken bleibt sichtbar (beide Wechsel) |
+
+Die Abfragen laufen weiter in der Warteschlange des Monitors (nie gleichzeitig mit Monitor-Befehlen).
+Programme, die ununterbrochen Peripherie-Register lesen (Polling), bleiben langsamer: Jeder Zugriff
+kostet in Renode 0,6–1 µs Rechenzeit (gemessen: Timer-Zähler in einer Schleife 0,4 ×, UART senden 0,4 ×,
+GPIO lesen 0,7 ×). Eine gröbere Zeitscheibe brächte dort etwa +25 %, würde aber die Genauigkeit
+(Pendelbild, Interrupt-Zeitpunkte) verändern – deshalb nicht umgesetzt.
+
+Messen: `node test/perf_tempo.js <firmware.elf> [0|1 Anzeige] [Sekunden] [Versuch]` (Backend läuft).
 
 ## 7. Bekannte Einschränkungen
 

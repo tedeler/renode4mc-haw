@@ -159,6 +159,19 @@ class MonitorClient extends EventEmitter {
     });
   }
 
+  /**
+   * fn() (liefert ein Promise) in der Warteschlange des Monitors ausführen: läuft erst, wenn kein
+   * Monitor-Befehl aktiv ist, und hält andere Befehle so lange zurück (z. B. Abfragen über den
+   * Abfrage-Port von TivaSysCtl, die nicht gleichzeitig mit Monitor-Befehlen laufen sollen).
+   */
+  runExclusive(fn) {
+    return new Promise((resolve, reject) => {
+      if (!this.connected) return reject(new Error('Monitor nicht verbunden'));
+      this.queue.push({ run: fn, resolve, reject, timer: null, cmd: '(Abfrage)' });
+      this._next();
+    });
+  }
+
   /** Mehrere Befehle direkt hintereinander, ohne dass andere Befehle dazwischen geraten. */
   executeAtomic(cmds) {
     return Promise.all(cmds.map((c) => this.execute(c, { priority: true })));
@@ -174,6 +187,16 @@ class MonitorClient extends EventEmitter {
     if (!job) return;
     this.current = job;
     this.buffer = '';
+    if (job.run) {
+      job.timer = setTimeout(() => this._finish(new Error('Timeout bei Abfrage')), this.commandTimeoutMs);
+      Promise.resolve()
+        .then(job.run)
+        .then(
+          (out) => this.current === job && this._finish(null, out),
+          (e) => this.current === job && this._finish(e),
+        );
+      return;
+    }
     job.timer = setTimeout(() => {
       // Fallback: Prompt gesehen, aber Echo nicht erkannt
       const clean = this.buffer.replace(ANSI_RE, '');

@@ -30,7 +30,6 @@ machine LoadPlatformDescription @experiments/example2.repl
 # Ohne Web-Konsole:  nc localhost 3335
 sysbus.uart0.host TerminalBaudRate $uartBaud
 sysbus.uart0.host Format $uartFormat
-emulation CreateServerSocketTerminal 3335 "uart0term" false
-connector Connect sysbus.uart0.host uart0term
+sysbus.uart0.host ServeTcp 3335
 
 start

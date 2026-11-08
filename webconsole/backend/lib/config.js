@@ -15,7 +15,8 @@ module.exports = Object.freeze({
   // Renode-interne Ports (nur im Container bzw. auf localhost, nicht exponiert)
   renodeHost: process.env.RENODE_HOST || '127.0.0.1',
   renodeMonitorPort: int(process.env.RENODE_MONITOR_PORT, 1234),
-  renodeUartPort: int(process.env.RENODE_UART_PORT, 3335), // CreateServerSocketTerminal im .resc
+  renodeQueryPort: int(process.env.RENODE_QUERY_PORT, 1235), // TivaSysCtl.ServeQueries ($queryPort im .resc)
+  renodeUartPort: int(process.env.RENODE_UART_PORT, 3335), // UartHostTerminal.ServeTcp im .resc
 
   renodeBin: process.env.RENODE_BIN || 'renode',
   renodeHeadlessFlag: process.env.RENODE_HEADLESS_FLAG || '--disable-gui',
