@@ -8,6 +8,8 @@
  *   UART0     115200 8N1 mit FIFO, PA0/PA1. Nach jedem Aufwachen liest main empfangene Zeichen:
  *             's' hält Timer0 an (Antwort 'S'), 'g' startet ihn wieder (Antwort 'G')
  *   main      initialisiert und schläft danach nur noch (WFI)
+ *             mit -DOHNE_WFI: wartet stattdessen aktiv (Normalbetrieb statt Schlaf), für
+ *             test/e2e_cpustats.js
  *
  * Bauen (gcc wie tools/build-solutions.sh oder clang):
  *   arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb -Os -g -nostartfiles -I common -T tools/gcc/link.ld \
@@ -104,8 +106,12 @@ int main(void)
 
     while (1)
     {
+#ifdef OHNE_WFI
+        __asm volatile("nop");
+#else
         __asm volatile("wfi");
         wachPhasen++;
+#endif
         while ((UART0_FR_R & UART_FR_RXFE) == 0)
         {
             uint32_t c = UART0_DR_R & 0xFFu;

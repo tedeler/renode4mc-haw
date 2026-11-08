@@ -12,6 +12,9 @@
 const fs = require('fs');
 
 const REG_RE = /^#define\s+(\w+)_R\s+\(\*\(\(volatile uint32_t \*\)0x([0-9A-Fa-f]{8})\)\)/;
+const INT_RE = /^#define\s+(INT_\w+)\s+(\d+)\b/;
+// Ausnahmen 1–15 des Cortex-M4 (stehen nicht im Header)
+const EXCEPTIONS = { 1: 'Reset', 2: 'NMI', 3: 'HardFault', 4: 'MemManage', 5: 'BusFault', 6: 'UsageFault', 11: 'SVCall', 12: 'DebugMon', 14: 'PendSV', 15: 'SysTick' };
 
 // Name -> Modul; null = nicht anzeigen
 function moduleOf(name) {
@@ -28,17 +31,23 @@ function moduleOf(name) {
   return null;
 }
 
-/** Liest die Headerdatei: { modules: [name, ...], byModule: { name: [{ name, addr }] } } */
+/**
+ * Liest die Headerdatei: { modules: [name, ...], byModule: { name: [{ name, addr }] },
+ * vectors: { Nummer: Name } } – Vektoren ab 16 als INT_xxx aus dem Header, 1–15 Cortex-M
+ */
 function load(headerPath) {
   const byModule = {};
+  const vectors = { ...EXCEPTIONS };
   let text;
   try {
     text = fs.readFileSync(headerPath, 'latin1');
   } catch (e) {
     console.error(`[registers] Headerdatei nicht lesbar (${headerPath}): ${e.message}`);
-    return { modules: [], byModule };
+    return { modules: [], byModule, vectors };
   }
   for (const line of text.split(/\r?\n/)) {
+    const iv = INT_RE.exec(line);
+    if (iv && Number(iv[2]) >= 16 && !vectors[iv[2]]) vectors[iv[2]] = iv[1];
     const m = REG_RE.exec(line);
     if (!m) continue;
     const mod = moduleOf(m[1]);
@@ -51,7 +60,7 @@ function load(headerPath) {
     return `${k}${n.replace(/\d+$/, (d) => d.padStart(2, '0'))}`;
   };
   const modules = Object.keys(byModule).sort((a, b) => order(a).localeCompare(order(b)));
-  return { modules, byModule };
+  return { modules, byModule, vectors };
 }
 
 module.exports = { load };

@@ -238,6 +238,7 @@ Browser → Server:
 { "type": "watch", "sim": true,                             // Simulations-Anzeige an (false = aus)
   "memory": { "addr": "ticks", "count": 128 },              //   optional: Speicher (hex-Adresse oder Symbol)
   "periph": "UART0" }                                       //   optional: Modul aus "simmeta"
+{ "type": "cpuStatsReset" }                                 // CPU-Statistik neu beginnen
 { "type": "pause" }                                         // Ausführung anhalten (Zeit steht)
 { "type": "continue" }                                      // weiterlaufen
 { "type": "step", "count": 1 }                              // count Befehle (1–10000) ausführen, dann anhalten;
@@ -275,6 +276,10 @@ Server → Browser:
   "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }],
   "stopped": false,                                        // Pause, Einzelschritt oder Schritt wartet auf Interrupt
   "frozen": false,                                         // Simulationszeit steht (Pause, Einzelschritt)
+  "cpuStats": { "total": { "ns", "instr", "sleepNs", "isrNs", "normalNs", "isrCount", "wakes" },
+                "recent": { … seit der vorigen Meldung … },
+                "vectors": [{ "vector": 35, "name": "INT_TIMER0A", "count", "instr", "ns" }, …],
+                "sleeping", "isrDepth", "nsPerInstr" },
   "regs": [{ "name": "R0", "value": 0 }, …, { "name": "xPSR", … }],    // Kernregister
   "disasm": [{ "addr": 2314, "bytes": "e672", "text": "b #-796" }, …], // nur wenn angehalten
   "memory": { "request": "ticks", "symbol": "ticks", "addr": 536870916, "data": "0E000000…" },  // je Client
@@ -395,6 +400,14 @@ dahin weiter, danach steht die CPU vor dem ersten Befehl der Interrupt-Routine. 
 etwa 1,5 s Wanduhr, zeigt das Panel „läuft bis zum nächsten Interrupt“ (Zustand `Wake`); Pause und
 Weiter brechen das ab. Renodes eigenes `cpu Step` rechnet bei schlafender CPU je Schritt nur eine
 Befehlszeit (≈ 91 ns) weiter – bis zu einem 1-ms-Timer wären über 10 000 Schritte nötig.
+**CPU-Zeit** (Übersicht und eigener Reiter): Anteil der Simulationszeit im Schlaf (WFI), in
+Interrupt-Routinen und im Normalbetrieb – seit Start/Reset und für den letzten Abfrageabstand, dazu je
+Interrupt Aufrufe, Zeit, Anteil und Befehle je Aufruf (`sysbus.sysctl GetCpuStats`, Namen `INT_xxx`
+aus dem Header). Renode rechnet je Befehl eine feste Befehlszeit (1/`PerformanceInMips`, ≈ 91 ns):
+Wachzeit = Befehle × Befehlszeit, Schlaf = Rest; ISR = Befehle vom Eintritt bis zum Rücksprung
+(verschachtelt je Vektor ohne die inneren). Stapeln beim Eintritt und Flash-Wartezyklen sind nicht
+modelliert – die Werte zeigen Verhältnisse, nicht exakte Board-Zeiten. Reset der MCU oder „Statistik
+neu beginnen“ setzt sie zurück.
 Angehalten (Pause, Einzelschritt) zeigt das Pendel genau den Zeitpunkt der CPU (`pdev.frozen`), nach
 Weiter läuft die Wiedergabe aus dem Stand wieder an. Reset aus der Pause startet die Firmware neu und
 läuft weiter.
@@ -597,6 +610,7 @@ node test/e2e_signals.js ../../examples/example03_webkonsole/example03_webkonsol
 node test/e2e_scope.js ../../sim/solutions
 node test/e2e_labs.js <Verzeichnis mit lab01.out … lab04.out>
 node test/e2e_step.js <schlaf_takt.elf>                           # test/firmware/schlaf_takt.c
+node test/e2e_cpustats.js <schlaf_takt.elf> <schlaf_takt_ohne_wfi.elf>   # zweites mit -DOHNE_WFI
 node test/unit_pendulum_timeline.mjs                              # ohne Backend/Renode
 ```
 
@@ -608,7 +622,11 @@ Interrupts im Schrittbetrieb genau 1 ms auseinander, `Schritt 3` = genau 3 Befeh
 Schritten müssen Timer-ISR, D1-Flanken, UART-Zeichen (Firmware = Terminal), Sync-ISR, PL0-Flanken
 am Oszilloskop und die Pendelphase zur CPU-Zeit passen. Langer Schlaf (Timer aus, Pendel 0,1 Hz):
 Zustand `Wake`, Halt direkt nach der Sync-Flanke; Pause während `Wake` und Weiter hält danach nicht
-mehr an. `test/unit_pendulum_timeline.mjs` prüft die Wiedergabeuhr des Pendels: Pause zeigt sofort
+mehr an. `test/e2e_cpustats.js` prüft die CPU-Statistik: Schlaf + ISR + Normal = Zeitraum, Aufrufe je Vektor
+= Zähler der Firmware (Timer, Pendel-Sync), Timer 1 je ms, ISR-Zeit = Befehle × Befehlszeit, > 99 %
+Schlaf mit WFI, ohne WFI kein Schlaf und > 98 % Normalbetrieb, Statistik steht in der Pause, Schritt
+in der ISR zählt genau eine Befehlszeit als ISR, Reset der MCU beginnt neu.
+`test/unit_pendulum_timeline.mjs` prüft die Wiedergabeuhr des Pendels: Pause zeigt sofort
 die CPU-Zeit, Schritte exakt, nach Weiter keine Zeitlupe und kein Sprung.
 
 `test/e2e_signals.js` prüft den Signalstrom: `signals` mit der Baudrate der Firmware, Flanken
