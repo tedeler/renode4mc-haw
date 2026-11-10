@@ -1,6 +1,6 @@
 // Plattform: Tiva TM4C1294NCPDT (EK-TM4C1294XL), vereinfacht.
 // Modelliert: Cortex-M4F + NVIC (SysTick), 1 MB Flash, 256 KB SRAM, Bit-Banding,
-// SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, UART 0-7, I2C 0-9 (Master), LED-Bridge zum Browser.
+// SYSCTL (Clock-Gating), GPIO A-Q, Timer 0-7, UART 0-7, I2C 0-9 (Master).
 // Takt: Reset-Takt PIOSC = 16 MHz.
 // Adressen, Clock-Bits und IRQs wie in common/tm4c1294ncpdt.h; prüfen mit  python3 tools/check_header.py
 // nvic@N: N = IRQ-Nummer = INT_<Name> - 16 (INT_ zählt die Vektortabelle), z. B. Timer0A = 35 - 16 = 19.
@@ -36,8 +36,10 @@ sysctl: Miscellaneous.TivaSysCtl @ sysbus 0x400FE000
 // Oszilloskop der Web-Konsole (Pegel beliebiger Pins, sim/models/Oscilloscope.cs); Adresse nur Platzhalter
 scope: Miscellaneous.Oscilloscope @ sysbus <0xF0001000, +0x100>
 
-// LED-Anzeige im Browser (ws://127.0.0.1:9000): 0=D1, 1=D2, 2=D3, 3=D4
-wsBridge: Miscellaneous.WebSocketBridge
+// LED-Anzeige im Browser (wsBridge, ws://127.0.0.1:9000) legt die Versuchs-Plattform an, sobald der
+// Versuch LEDs hat (Elemente "led" in sim/experiments/<id>.json, z. B. D1 = PN1 -> wsBridge@0).
+// Sie steht dort und nicht hier, weil Renode Geräte ohne Busanschluss nur innerhalb derselben
+// .repl-Datei verdrahten kann.
 
 gpioA: GPIOPort.TivaGPIOPort @ sysbus 0x40058000
     sysCtl: sysctl
@@ -74,8 +76,6 @@ gpioF: GPIOPort.TivaGPIOPort @ sysbus 0x4005D000
     clockBit: 5
     portName: "F"
     IRQ -> nvic@30
-    4 -> wsBridge@2
-    0 -> wsBridge@3
 
 gpioG: GPIOPort.TivaGPIOPort @ sysbus 0x4005E000
     sysCtl: sysctl
@@ -118,8 +118,6 @@ gpioN: GPIOPort.TivaGPIOPort @ sysbus 0x40064000
     clockBit: 12
     portName: "N"
     IRQ -> nvic@73
-    1 -> wsBridge@0
-    0 -> wsBridge@1
 
 gpioP: GPIOPort.TivaGPIOPort @ sysbus 0x40065000
     sysCtl: sysctl

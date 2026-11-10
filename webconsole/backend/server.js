@@ -77,7 +77,8 @@ async function startExperiment(exp) {
   await assertPortsFree(ports);
 
   control.resetLog();
-  await renode.start(exp.id, exp.rescPath, cfg.elfPath, control.terminalSettings(exp));
+  const rescPath = experiments.prepare(exp, cfg.generatedDir);
+  await renode.start(exp.id, rescPath, cfg.elfPath, control.terminalSettings(exp));
   const alive = () => renode.running;
   // Reihenfolge: UART-Socket existiert erst, wenn das .resc-Skript die Maschine angelegt hat
   await uart.attach(cfg.renodeStartTimeoutMs, alive);

@@ -1,121 +1,67 @@
 {
   "title": "Lab 4 – UART: LEDs per Terminal schalten, SW1-Interrupt",
-  "machine": "tm4c1294",
+  "description": "UART0-Terminal 9600 7N1, LEDs D1–D4, USR_SW1/2 (ohne Pull-up auf dem Board: die Firmware muss GPIOPUR setzen), printf",
   "uart": {
+    "baud": 9600,
+    "format": "7N1",
     "label": "UART0 (PA0 RX / PA1 TX) – Terminal wie Tera Term: 9600 Bit/s 7N1, lokales Echo, Empfang CR → CR+LF",
     "localEcho": true,
-    "crlf": true,
-    "host": "sysbus.uart0.host",
-    "baud": 9600,
-    "format": "7N1"
+    "crlf": true
   },
-  "reset": {
-    "path": "sysbus.sysctl"
-  },
-  "status": {
-    "path": "sysbus.sysctl"
-  },
-  "debug": {
-    "cpu": "sysbus.cpu"
-  },
-  "signals": [
-    {
-      "name": "uart0.tx",
-      "label": "U0TX (PA1)",
-      "path": "sysbus.uart0"
-    },
-    {
-      "name": "uart0.rx",
-      "label": "U0RX (PA0)",
-      "path": "sysbus.uart0"
-    }
-  ],
-  "ledBridge": "ws://127.0.0.1:9000",
-  "leds": [
-    {
-      "id": "D1",
-      "label": "D1 (PN1)",
-      "color": "#22c55e",
-      "bridge": 0
-    },
-    {
-      "id": "D2",
-      "label": "D2 (PN0)",
-      "color": "#22c55e",
-      "bridge": 1
-    },
-    {
-      "id": "D3",
-      "label": "D3 (PF4)",
-      "color": "#22c55e",
-      "bridge": 2
-    },
-    {
-      "id": "D4",
-      "label": "D4 (PF0)",
-      "color": "#22c55e",
-      "bridge": 3
-    }
-  ],
-  "buttons": [
-    {
-      "id": "SW1",
-      "label": "USR_SW1 (PJ0)",
-      "port": "sysbus.gpioJ",
-      "pin": 0,
-      "activeLow": true
-    },
-    {
-      "id": "SW2",
-      "label": "USR_SW2 (PJ1)",
-      "port": "sysbus.gpioJ",
-      "pin": 1,
-      "activeLow": true
-    }
-  ],
-  "cio": {
-    "path": "sysbus.cio",
-    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
-  },
+  "quantumUs": 10,
   "solution": {
     "example": "lab04_uart_leds",
     "label": "Musterlösung (examples/lab04_uart_leds)"
   },
+  "elements": [
+    {
+      "type": "led",
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "pin": "PN1"
+    },
+    {
+      "type": "led",
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "pin": "PN0"
+    },
+    {
+      "type": "led",
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "pin": "PF4"
+    },
+    {
+      "type": "led",
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "pin": "PF0"
+    },
+    {
+      "type": "button",
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "pin": "PJ0",
+      "activeLow": true
+    },
+    {
+      "type": "button",
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "pin": "PJ1",
+      "activeLow": true
+    },
+    {
+      "type": "cio",
+      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+    }
+  ],
   "scope": {
-    "signals": [
-      {
-        "pin": "PN1",
-        "label": "LED D1"
-      },
-      {
-        "pin": "PN0",
-        "label": "LED D2"
-      },
-      {
-        "pin": "PF4",
-        "label": "LED D3"
-      },
-      {
-        "pin": "PF0",
-        "label": "LED D4"
-      },
-      {
-        "pin": "PJ0",
-        "label": "USR_SW1"
-      },
-      {
-        "pin": "PJ1",
-        "label": "USR_SW2"
-      },
-      {
-        "pin": "PA0",
-        "label": "U0RX (vom Terminal)"
-      },
-      {
-        "pin": "PA1",
-        "label": "U0TX (zum Terminal)"
-      }
-    ],
     "channels": [
       "PA0",
       "PA1",

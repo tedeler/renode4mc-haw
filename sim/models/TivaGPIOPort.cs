@@ -11,6 +11,9 @@
 //    Empfänger, das Bit liest sich als 0.
 //  * Ein Eingang, den niemand treibt und der weder Pull-up noch Pull-down hat, ist offen:
 //    Er liest sich als 0 (auf dem Board: zufällig).
+//  * Widerstände auf der Platine (nicht im Chip): ExternalPullUp / ExternalPullDown (Bitmaske der Pins),
+//    gesetzt vom Versuch ("pull": "up" eines Tasters in der Versuchs-JSON). Sie wirken wie PUR/PDR,
+//    bleiben bei einem Reset erhalten; ein Pull der Firmware in die Gegenrichtung hat Vorrang.
 // Alle anderen Register (Treiberstärke, ODR, PCTL, AMSEL, ...) werden nur gespeichert.
 //
 // Strenge Prüfung (Warnungen erscheinen in der Web-Konsole unter "Diagnose"), je Pin einmal:
@@ -29,6 +32,7 @@
 //
 // Monitor (bzw. Web-Konsole):  sysbus.gpioJ OnGPIO 0 false     Pin von außen auf LOW treiben
 //                              sysbus.gpioJ ReleaseInput 0     Pin nicht mehr treiben (offen)
+//                              sysbus.gpioJ ExternalPullUp 0x01  Pull-up-Widerstand auf der Platine an PJ0
 using System;
 using System.Collections.Generic;
 using Antmicro.Renode.Core;
@@ -148,6 +152,40 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             DetectEdges(old, ReceiverLevels());
             UpdateInterrupt();
             UpdatePads();
+        }
+
+        // Pull-Widerstände auf der Platine (Bitmasken); ein Pin hat höchstens eine Richtung
+        public uint ExternalPullUp
+        {
+            get { return extPu; }
+            set { SetExternalPull(value & 0xFF, extPd & ~value & 0xFF); }
+        }
+
+        public uint ExternalPullDown
+        {
+            get { return extPd; }
+            set { SetExternalPull(extPu & ~value & 0xFF, value & 0xFF); }
+        }
+
+        private void SetExternalPull(uint up, uint down)
+        {
+            uint old = ReceiverLevels();
+            extPu = up;
+            extPd = down;
+            DetectEdges(old, ReceiverLevels());
+            UpdateInterrupt();
+            UpdatePads();
+        }
+
+        // Wirksame Pulls: Firmware (PUR/PDR) oder Platine; die Firmware hat bei Gegenrichtung Vorrang
+        private uint PullUps()
+        {
+            return (pur | (extPu & ~pdr)) & 0xFF;
+        }
+
+        private uint PullDowns()
+        {
+            return (pdr | (extPd & ~pur)) & 0xFF;
         }
 
         // Prüft, ob der Pin für die alternative Funktion "function" (GPIOPCTL-Wert) eingestellt ist
@@ -311,8 +349,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             if((OutputEnabled() & bit) != 0) return (dataLatch & bit) != 0 ? 1 : 0;
             if(AlternateActive(i)) return afIdle[i] ? 1 : 0;
             if((inputDriven & bit) != 0) return (inputValue & bit) != 0 ? 1 : 0;
-            if((pur & bit) != 0) return 1;
-            if((pdr & bit) != 0) return 0;
+            if((PullUps() & bit) != 0) return 1;
+            if((PullDowns() & bit) != 0) return 0;
             return 2;
         }
 
@@ -329,7 +367,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         // Pegel am Pin von außen: getrieben, sonst Pull-up/Pull-down, sonst offen (0)
         private uint PadInput()
         {
-            return ((inputValue & inputDriven) | (pur & ~inputDriven)) & 0xFF;
+            return ((inputValue & inputDriven) | (PullUps() & ~inputDriven)) & 0xFF;
         }
 
         // Was der GPIO-Empfänger sieht (= Lesen von GPIODATA ohne Maske):
@@ -357,12 +395,12 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 if((den & bit) == 0)
                 {
                     // Nur melden, wenn der Pin offensichtlich benutzt wird (konfiguriert oder angeschlossen)
-                    if((pur | pdr | inputDriven | im) != 0 && ((pur | pdr | inputDriven | im) & bit) != 0)
+                    if(((PullUps() | PullDowns() | inputDriven | im) & bit) != 0)
                     {
                         Warn("denIn" + i, string.Format("{0} wird als Eingang gelesen, aber GPIODEN = 0: liest immer 0. DEN-Bit setzen.", Pin(i)));
                     }
                 }
-                else if(((inputDriven | pur | pdr) & bit) == 0)
+                else if(((inputDriven | PullUps() | PullDowns()) & bit) == 0)
                 {
                     Warn("float" + i, string.Format("{0} ist ein offener Eingang (nichts angeschlossen bzw. Taster losgelassen, kein Pull-up/Pull-down): " +
                         "Pegel undefiniert, im Simulator 0. GPIOPUR oder GPIOPDR setzen.", Pin(i)));
@@ -385,7 +423,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         private void CheckInterruptPins()
         {
             uint bad = im & ~den & 0xFF;
-            uint open = im & den & ~dir & ~afsel & ~(inputDriven | pur | pdr) & 0xFF;
+            uint open = im & den & ~dir & ~afsel & ~(inputDriven | PullUps() | PullDowns()) & 0xFF;
             for(int i = 0; i < 8; i++)
             {
                 if((bad & (1u << i)) != 0)
@@ -500,6 +538,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         private readonly string portName;
         private readonly uint protectedPins;
         private uint dataLatch, dir, isLevel, ibe, iev, im, ris, afsel, pur, pdr, den, cr;
+        private uint extPu, extPd; // Pull-Widerstände auf der Platine (kein Reset)
         private bool locked;
         private uint inputDriven, inputValue, drivenLevels;
         private bool clockWarned;

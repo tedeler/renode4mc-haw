@@ -6,8 +6,9 @@ check_header.py - prüft Simulator-Hardware und Beispiele gegen common/tm4c1294n
 
 Geprüft wird:
   1. sim/platforms/tm4c1294ncpdt.repl: Basisadresse, Clock-Gating-Bit (RCGC...) und NVIC-Nummer
-     jedes Peripheriemoduls; NVIC-Basis (EN0 muss bei +0x100 liegen); sim/experiments/*.repl legen
-     keine Chip-Peripherie neu an und belegen keine Adresse der Basisplattform doppelt
+     jedes Peripheriemoduls; NVIC-Basis (EN0 muss bei +0x100 liegen); die aus sim/experiments/*.json
+     erzeugten Plattformen (tools/check_experiment.js, braucht node) legen keine Chip-Peripherie neu an
+     und belegen keine Adresse der Basisplattform doppelt
   2. sim/models/*.cs: Register-Offsets und Bitkonstanten der Modelle (benannte Konstanten)
   3. common/startup_tm4c1294.c: jeder INT_-Eintrag der Headerdatei hat seinen Handler am richtigen Platz
   4. alle .c/.h in examples/ und common/ (außer tm4c1294ncpdt.h): keine selbst definierten Adressen
@@ -16,7 +17,10 @@ Ausgabe: FEHLER (Abweichung), HINWEIS (nicht modelliert/nicht angeschlossen), R�
 """
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 fehler = []
@@ -168,22 +172,32 @@ for e in repl:
         pruefe(reg('NVIC_ST_CTRL_R') - adr == 0x010,
                f'repl {name}: Basis 0x{adr:08X}, NVIC_ST_CTRL_R (SysTick) liegt nicht bei Basis + 0x10')
 
-# Versuchs-Plattformen (sim/experiments/*.repl) erweitern die Basisplattform: Sie dürfen keine
-# Peripherie an einer Adresse anlegen, die die Basis schon belegt, und keine Tiva-Peripherie neu
-# anlegen (Adressen, Takt und IRQs der Chip-Peripherie stehen nur in tm4c1294ncpdt.repl).
+# Versuchs-Plattformen erweitern die Basisplattform: Sie dürfen keine Peripherie an einer Adresse
+# anlegen, die die Basis schon belegt, und keine Tiva-Peripherie neu anlegen (Adressen, Takt und IRQs
+# der Chip-Peripherie stehen nur in tm4c1294ncpdt.repl). Die .repl werden aus sim/experiments/*.json
+# erzeugt (tools/check_experiment.js --out); ungültige Versuchsdateien sind hier ein Fehler.
 basis_adressen = {e['adresse']: e['name'] for e in repl if e['bus'] == 'sysbus' and e['adresse'] is not None}
-for pfad in sorted(os.listdir(os.path.join(ROOT, 'sim', 'experiments'))):
-    if not pfad.endswith('.repl'):
-        continue
-    for e in lies_repl(os.path.join(ROOT, 'sim', 'experiments', pfad)):
-        if e['bus'] != 'sysbus' or e['adresse'] is None:
-            continue
-        pruefe(e['adresse'] not in basis_adressen,
-               f'experiments/{pfad}: {e["name"]} @ 0x{e["adresse"]:08X} belegt dieselbe Adresse wie '
-               f'{basis_adressen.get(e["adresse"])} der Basisplattform')
-        pruefe(not e['typ'].split('.')[-1].startswith('Tiva'),
-               f'experiments/{pfad}: {e["name"]} ({e["typ"]}) ist Chip-Peripherie – gehört in '
-               f'platforms/tm4c1294ncpdt.repl')
+node = shutil.which('node')
+if not node:
+    hinweise.append('node nicht gefunden: Versuchs-Plattformen (sim/experiments/*.json) nicht geprüft')
+else:
+    with tempfile.TemporaryDirectory() as gen:
+        lauf = subprocess.run([node, os.path.join(ROOT, 'tools', 'check_experiment.js'), '-q', '--out', gen],
+                              capture_output=True, text=True)
+        pruefe(lauf.returncode == 0, 'tools/check_experiment.js: ungültige Versuchsdatei(en)\n' + lauf.stdout.strip())
+        for pfad in sorted(os.listdir(gen)):
+            if not pfad.endswith('.repl'):
+                continue
+            json_name = pfad[:-5] + '.json'
+            for e in lies_repl(os.path.join(gen, pfad)):
+                if e['bus'] != 'sysbus' or e['adresse'] is None:
+                    continue
+                pruefe(e['adresse'] not in basis_adressen,
+                       f'experiments/{json_name}: {e["name"]} @ 0x{e["adresse"]:08X} belegt dieselbe Adresse wie '
+                       f'{basis_adressen.get(e["adresse"])} der Basisplattform')
+                pruefe(not e['typ'].split('.')[-1].startswith('Tiva'),
+                       f'experiments/{json_name}: {e["name"]} ({e["typ"]}) ist Chip-Peripherie – gehört in '
+                       f'platforms/tm4c1294ncpdt.repl')
 
 # Module des Headers, die im Simulator fehlen
 for art, muster in (('GPIO', r'GPIO_PORT([A-Z])(?:_AHB)?_DATA_BITS_R'), ('TIMER', r'TIMER(\d)_CFG_R'),
