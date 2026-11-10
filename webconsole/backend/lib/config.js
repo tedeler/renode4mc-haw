@@ -1,5 +1,6 @@
 'use strict';
 
+const os = require('os');
 const path = require('path');
 
 const int = (v, d) => (Number.isFinite(parseInt(v, 10)) ? parseInt(v, 10) : d);
@@ -28,6 +29,8 @@ module.exports = Object.freeze({
   // TI-Headerdatei für die Registernamen der Simulations-Anzeige
   headerPath: process.env.HEADER_PATH || path.resolve(__dirname, '..', '..', '..', 'common', 'tm4c1294ncpdt.h'),
   experimentsSubdir: process.env.EXPERIMENTS_SUBDIR || 'experiments',
+  // Hierhin schreibt das Backend die aus <id>.json erzeugte Plattform (.repl) und das Startskript (.resc)
+  generatedDir: process.env.GENERATED_DIR || path.join(os.tmpdir(), 'renode4mc-experiments'),
 
   elfPath: process.env.ELF_PATH || '/tmp/app.elf',
   publicDir: process.env.PUBLIC_DIR || path.join(__dirname, '..', 'public'),

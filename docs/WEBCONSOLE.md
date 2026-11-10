@@ -36,8 +36,9 @@ Drei Schichten in einem Container:
 │                                   ⇠  WS  127.0.0.1:9000  (LED-Bridge, sim/models)           │
 │                                                                                             │
 │  Renode 1.17.0 (headless):  renode --disable-gui --port 1234                                │
-│                             -e "$elf=@/tmp/app.elf; s @experiments/<versuch>.resc"          │
-│  └─ sim/tm4c1294.resc + sim/platforms/tm4c1294ncpdt.repl + sim/experiments/<versuch>.repl   │
+│                             -e "$elf=@/tmp/app.elf; s @/tmp/renode4mc-experiments/<id>.resc"│
+│  └─ sim/tm4c1294.resc + sim/platforms/tm4c1294ncpdt.repl + erzeugte <id>.repl               │
+│     (.resc/.repl erzeugt aus sim/experiments/<id>.json, siehe EXPERIMENTS.md)               │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
          ▲ :3000 HTTP            ▲ :3333 UART-WS              ▲ :3334 Control-WS
          └────────────────────── Browser (React, xterm.js, Canvas) ─────────────────────────────┘
@@ -58,8 +59,9 @@ Das Backend übersetzt deshalb zwischen beiden Welten. Das hat zwei Vorteile:
 ### Ablauf beim Klick auf „Start“
 
 1. Der Browser sendet `POST /upload` (`multipart/form-data`: `experiment_id`, `file`).
-2. Das Backend prüft die Versuchs-ID (Datei `sim/experiments/<id>.resc` muss existieren) und die
-   ELF-Signatur (`0x7F 'E' 'L' 'F'`).
+2. Das Backend prüft die Versuchs-ID (Datei `sim/experiments/<id>.json` muss existieren und gültig
+   sein) und die ELF-Signatur (`0x7F 'E' 'L' 'F'`). Aus der Versuchsdatei erzeugt es `.repl` und
+   `.resc` in `GENERATED_DIR`.
 3. Die Browser-WebSockets werden mit Code `4000` geschlossen. Das Frontend verbindet sich danach
    sofort neu.
 4. Eine laufende Renode-Instanz wird beendet: SIGTERM an die Prozessgruppe, nach 4 s SIGKILL,
@@ -117,7 +119,7 @@ eingereiht.
 ## 2. Simulierte Hardware von Example 1
 
 Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, GPIO A–Q, Timer,
-**UART 0–7, I2C 0–9**). Darauf setzt `sim/experiments/example1.repl` auf.
+**UART 0–7, I2C 0–9**). Die Bausteine von Example 1 beschreibt `sim/experiments/example1.json`.
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
@@ -153,7 +155,7 @@ zu treiben, sieht keinen Tastendruck. Das ist didaktisch gewollt.
 
 ### Example 2: Pendeldisplay
 
-`sim/experiments/example2.repl` ergänzt die Basisplattform um ein Pendeldisplay und den
+`sim/experiments/example2.json` ergänzt die Basisplattform um ein Pendeldisplay und den
 Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Example 1.
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
@@ -179,13 +181,13 @@ Winkelstücke, die das Pendel seitdem überstrichen hat. Der Schwenkbereich ist 
 Schwungrichtung, jeweils vom letzten Schwung. Das Frontend zeigt beide überlagert (wie das Auge)
 oder einzeln. So sieht man sofort, ob Hin- und Rückschwung übereinanderpassen.
 
-Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt `example2.resc` die Zeitscheibe von
-Renode auf 10 µs (`emulation SetGlobalQuantum "0.00001"`, Standard 100 µs).
+Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt Example 2 die Zeitscheibe von
+Renode auf 10 µs (`"quantumUs": 10`, erzeugt `emulation SetGlobalQuantum "0.00001"`; Renode-Standard 100 µs).
 
 ### Monitor-Befehle (zum Ausprobieren ohne Browser)
 
-Renode lässt sich auch direkt starten: `cd sim`, dann
-`renode --console -e "\$elf=@../examples/example03_webkonsole/example03_webkonsole.out; s @experiments/example1.resc"`.
+Renode lässt sich auch direkt starten: `node tools/check_experiment.js --out /tmp/v example1`, dann `cd sim` und
+`renode --console -e "\$elf=@../examples/example03_webkonsole/example03_webkonsole.out; s @/tmp/v/example1.resc"`.
 Danach `nc localhost 3335` für den UART. Im Monitor:
 
 ```
@@ -196,7 +198,7 @@ sysbus.gpioK.keypad SetKey 1 1 false
 sysbus.i2c0.sensor Distance 42         # Abstand 42 cm
 sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
 
-# Example 2 (s @experiments/example2.resc):
+# Example 2 (s @/tmp/v/example2.resc):
 sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
 sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
 sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
@@ -212,7 +214,7 @@ sysbus.gpioM.pendel GetEvents          # "EV:<t>:<Phase>:<LEDs>:<Periode>:<t,Pha
 
 | Methode, Pfad | Beschreibung |
 |---|---|
-| `GET /api/experiments` | Liste der Versuche `[{ id, title, solution }]` (alle `sim/experiments/*.resc`; `solution` = `{ label, available }` oder `null`) |
+| `GET /api/experiments` | Liste der Versuche `[{ id, title, solution }]` (alle gültigen `sim/experiments/*.json`; `solution` = `{ label, available }` oder `null`) |
 | `GET /api/status` | `{ running, experiment, solution }` – stellt nach einem Neuladen der Seite das Bedienfeld wieder her |
 | `POST /api/solution` | JSON `{ experiment_id }`: Musterlösung des Versuchs (`sim/solutions/<Beispiel>.elf`) starten, Antwort wie `/upload` mit `solution: true` ([LABORE.md](LABORE.md)) |
 | `POST /upload` | `multipart/form-data`: `experiment_id`, `file` (`.out`/`.elf`/`.axf`, max. 16 MB). Antwort 200 `{ status: "running", experiment }`, sonst 400/500 `{ error, log? }` |
@@ -463,76 +465,20 @@ Netzverbindung verbindet er sofort.
 
 ## 4. Eigenen Versuch anlegen
 
-Ein Versuch besteht aus bis zu drei Dateien in `sim/experiments/`. Er erscheint automatisch in
-der Auswahlliste.
+Ein Versuch ist **eine Datei** `sim/experiments/<id>.json`. Sie zählt die Bedienelemente auf und legt
+für jedes die Pins fest; Renode-Plattform (`.repl`) und Startskript (`.resc`) erzeugt das Backend
+daraus selbst (`lib/experimentSpec.js`, Ablage in `GENERATED_DIR`). Datei ablegen → der Versuch
+erscheint in der Auswahlliste.
 
-| Datei | Pflicht | Inhalt |
-|---|---|---|
-| `<id>.resc` | ja | Startskript. Muss `$elf` verwenden und UART-Terminal Port 3335 anlegen. |
-| `<id>.repl` | nein | Erweiterung der Basisplattform (zusätzliche Geräte, Verdrahtung) |
-| `<id>.json` | nein | Bedienelemente der Web-Konsole |
-
-`<id>`: Buchstaben, Ziffern, `_`, `-` (max. 64 Zeichen).
-
-**Minimales `.resc`** (Vorlage: `example1.resc`):
-
-```
-$elf?=@/tmp/app.elf
-$uartBaud?=115200                                   # PC-Terminal, setzt die Web-Konsole
-$uartFormat?="8N1"
-include @models/MeinModell.cs                       # nur falls eigene Modelle nötig
-include @tm4c1294.resc                              # Basis: Modelle, Maschine, Plattform, LoadELF
-machine LoadPlatformDescription @experiments/<id>.repl   # enthält  host: UART.UartHostTerminal @ uart0
-sysbus.uart0.host TerminalBaudRate $uartBaud
-sysbus.uart0.host Format $uartFormat
-sysbus.uart0.host ServeTcp 3335                     # TCP-Terminal für die Web-Konsole
-start
+```bash
+node tools/check_experiment.js mein_versuch.json   # prüfen (wie das Backend), Exit-Code 1 bei Fehlern
+node tools/check_experiment.js --types             # Elementtypen und Anschlüsse
 ```
 
-Ohne `UartHostTerminal` kann das Terminal wie früher direkt an `sysbus.uart0` hängen; der UART
-gibt dann jedes Zeichen am Ende seines Frames als Byte aus (ohne Baudraten-Prüfung).
+Format, Elementtypen, Prüfregeln und ein Beispiel: [EXPERIMENTS.md](EXPERIMENTS.md).
 
-Alle Pfade sind relativ zu `sim/`, denn Renode läuft mit diesem Arbeitsverzeichnis.
-
-**`<id>.json`** (alle Abschnitte optional):
-
-```jsonc
-{
-  "title": "Anzeigename im Dropdown",
-  "machine": "tm4c1294",                       // Maschinenname aus tm4c1294.resc
-  "uart":   { "label": "UART0", "host": "sysbus.uart0.host",   // PC-Terminal (UartHostTerminal)
-              "baud": 115200, "format": "8N1" },              // Standard-Einstellung des Terminals
-  "reset":  { "path": "sysbus.sysctl" },                     // Reset-Taster (TivaSysCtl.ResetMcu)
-  "status": { "path": "sysbus.sysctl" },                     // Simulations-Anzeige (TivaSysCtl.GetStatus)
-  "debug":  { "cpu": "sysbus.cpu" },                          // Pause / Schritt / Weiter
-  "signals": [                                                // Leitungen für das Oszilloskop
-    { "name": "uart0.tx", "label": "U0TX (PA1)", "path": "sysbus.uart0" },
-    { "name": "uart0.rx", "label": "U0RX (PA0)", "path": "sysbus.uart0" }
-  ],
-  "ledBridge": "ws://127.0.0.1:9000",          // LED-Bridge aus der Basisplattform
-  "leds": [
-    { "id": "D1", "label": "D1 (PN1)", "color": "#22c55e", "bridge": 0 },   // Eingang 0 von wsBridge
-    { "id": "X",  "label": "LED X", "path": "sysbus.gpioA.ledX" }            // oder: Renode-LED, Polling
-  ],
-  "buttons": [
-    { "id": "SW1", "label": "USR_SW1 (PJ0)", "port": "sysbus.gpioJ", "pin": 0, "activeLow": true },
-    { "id": "B",   "label": "Button", "path": "sysbus.gpioA.btn" }          // oder: Miscellaneous.Button
-  ],
-  "oled":   { "path": "sysbus.i2c0.oled", "width": 128, "height": 64, "label": "…" },
-  "sensor": { "path": "sysbus.i2c0.sensor", "min": 0, "max": 400, "unit": "cm", "label": "…" },
-  "pendulum": { "path": "sysbus.gpioM.pendel", "label": "…",                    // PendulumDisplay
-                "frequency": 10, "minFrequency": 0.1, "maxFrequency": 20 },    // Hz, Schieberegler
-  "keypad": {
-    "path": "sysbus.gpioK.keypad",
-    "rowPins": ["PK0", "PK1", "PK2", "PK3"], "colPins": ["PK4", "PK5", "PK6"],
-    "layout": [["1","2","3"], ["4","5","6"], ["7","8","9"], ["*","0","#"]]
-  }
-}
-```
-
-Das Backend prüft beim Laden alle Renode-Pfade (`sysbus.<name>.<name>…`). Ungültige Versuche
-werden nicht angezeigt, und der Grund steht im Server-Log. Renode-Pfade, Ports und Pins werden
-nie an den Browser geschickt.
+Ungültige Versuche werden nicht angezeigt, und der Grund steht im Server-Log. Renode-Pfade, Ports und
+Pins der Taster werden nie an den Browser geschickt.
 
 ---
 
@@ -597,11 +543,12 @@ RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 | `UART_WS_PORT` / `CONTROL_WS_PORT` | 3333 / 3334 | WebSocket-Ports |
 | `RENODE_BIN` | `renode` | Renode-Startprogramm |
 | `RENODE_HEADLESS_FLAG` | `--disable-gui` | in Renode 1.17 gleichbedeutend mit `--disable-xwt` |
-| `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | interne Renode-Ports (3335 muss zum `.resc` passen) |
+| `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | interne Renode-Ports (3335 steht fest im erzeugten `.resc`) |
 | `RENODE_QUERY_PORT` | 1235 | Abfrage-Port (`TivaSysCtl.ServeQueries`, wird als `$queryPort` übergeben) |
 | `RENODE_START_TIMEOUT_MS` | 60000 | Wartezeit auf Renode beim Start |
 | `SIM_DIR` | `<repo>/sim` | Simulator-Verzeichnis (Arbeitsverzeichnis von Renode) |
-| `EXPERIMENTS_SUBDIR` | `experiments` | Versuche relativ zu `SIM_DIR` |
+| `EXPERIMENTS_SUBDIR` | `experiments` | Versuche (`<id>.json`) relativ zu `SIM_DIR` |
+| `GENERATED_DIR` | `<tmp>/renode4mc-experiments` | hier legt das Backend die erzeugten `.repl`/`.resc` ab (beschreibbar) |
 | `ELF_PATH` | `/tmp/app.elf` | Ablageort der hochgeladenen Firmware |
 | `PUBLIC_DIR` | `backend/public` | gebautes Frontend |
 | `POLL_INTERVAL_MS` | 100 | OLED-/LED-Polling |

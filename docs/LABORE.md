@@ -29,7 +29,8 @@ In jeder Umgebung gibt es zusätzlich:
 ## Die Umgebungen im Einzelnen
 
 Die Pins sind eine mögliche Verdrahtung nach den Bildern der Laborunterlagen. Wer anders
-verdrahtet, ändert nur die `.repl`-Datei des Versuchs.
+verdrahtet, ändert nur die Pins in der Versuchsdatei `sim/experiments/<id>.json`
+([EXPERIMENTS.md](EXPERIMENTS.md)) und prüft sie mit `node tools/check_experiment.js`.
 
 ### Lab 1 – Hex-Keypad und BCD-Anzeige
 

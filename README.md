@@ -50,10 +50,11 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | `examples/lab01_hexkeypad_bcd` … `examples/lab04_uart_leds` | Musterlösungen der Praktikumsversuche Lab 1–4 ([docs/LABORE.md](docs/LABORE.md)) |
 | `tools/build-solutions.sh`, `tools/gcc/` | Musterlösungen mit gcc für die Web-Konsole bauen (`sim/solutions/`) |
 | `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294) – **identisch für Board und Simulator** |
-| `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, UART, I2C, WebSocket-Brücke, OLED, Ultraschall, Keypad, Pendeldisplay), LED-Anzeige `visualizer/ek-tm4c1294xl.html`, Versuche für die Web-Konsole `experiments/` |
+| `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, UART, I2C, WebSocket-Brücke, OLED, Ultraschall, Keypad, Pendeldisplay), LED-Anzeige `visualizer/ek-tm4c1294xl.html`, Versuche für die Web-Konsole `experiments/` (je eine JSON-Datei mit Bedienelementen und Pins, [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)) |
 | `webconsole/` | Web-Konsole: Node.js-Backend, React-Frontend, `Dockerfile`, `docker-compose.yml` |
 | `tools/ccs-import.sh` | CCS-Projekt ohne Oberfläche importieren und bauen |
 | `tools/check_header.py` | Simulator-Hardware, Vektortabelle und Beispiele gegen `common/tm4c1294ncpdt.h` prüfen |
+| `tools/check_experiment.js` | Versuchsdateien `sim/experiments/*.json` prüfen (Pins, Belegung, Felder) und erzeugte Renode-Plattform zeigen |
 | `common/tm4c1294ncpdt.h` | Registernamen und Bitkonstanten von TI (wird von allen Beispielen eingebunden) |
 | `docs/` | `INSTALL_LINUX.md`, `TOOLCHAIN.md` (Konzept, CCS-Debugging des Simulators), `ROADMAP.md` (weitere Peripherie), `WEBCONSOLE.md` (Web-Konsole: Architektur, Protokolle, eigene Versuche) |
 

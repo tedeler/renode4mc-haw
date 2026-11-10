@@ -1,180 +1,112 @@
 {
   "title": "Lab 3 – NVIC: LED-Pendel und HC-SR04 mit Interrupts",
-  "machine": "tm4c1294",
+  "description": "LED-Pendel an Port M (PM7 = oberste LED), Signal R/L an PL0, HC-SR04 an PD0/PD1, LEDs, Taster, UART0, printf",
   "uart": {
-    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1",
-    "host": "sysbus.uart0.host",
     "baud": 115200,
-    "format": "8N1"
+    "format": "8N1",
+    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1"
   },
-  "reset": {
-    "path": "sysbus.sysctl"
-  },
-  "status": {
-    "path": "sysbus.sysctl"
-  },
-  "debug": {
-    "cpu": "sysbus.cpu"
-  },
-  "signals": [
-    {
-      "name": "uart0.tx",
-      "label": "U0TX (PA1)",
-      "path": "sysbus.uart0"
-    },
-    {
-      "name": "uart0.rx",
-      "label": "U0RX (PA0)",
-      "path": "sysbus.uart0"
-    }
-  ],
-  "ledBridge": "ws://127.0.0.1:9000",
-  "leds": [
-    {
-      "id": "D1",
-      "label": "D1 (PN1)",
-      "color": "#22c55e",
-      "bridge": 0
-    },
-    {
-      "id": "D2",
-      "label": "D2 (PN0)",
-      "color": "#22c55e",
-      "bridge": 1
-    },
-    {
-      "id": "D3",
-      "label": "D3 (PF4)",
-      "color": "#22c55e",
-      "bridge": 2
-    },
-    {
-      "id": "D4",
-      "label": "D4 (PF0)",
-      "color": "#22c55e",
-      "bridge": 3
-    }
-  ],
-  "buttons": [
-    {
-      "id": "SW1",
-      "label": "USR_SW1 (PJ0)",
-      "port": "sysbus.gpioJ",
-      "pin": 0,
-      "activeLow": true
-    },
-    {
-      "id": "SW2",
-      "label": "USR_SW2 (PJ1)",
-      "port": "sysbus.gpioJ",
-      "pin": 1,
-      "activeLow": true
-    }
-  ],
-  "cio": {
-    "path": "sysbus.cio",
-    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
-  },
-  "sensor": {
-    "path": "sysbus.gpioD.hcsr04",
-    "min": 0,
-    "max": 350,
-    "unit": "cm",
-    "initial": 65,
-    "title": "Ultraschall HC-SR04",
-    "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo"
-  },
-  "pendulum": {
-    "path": "sysbus.gpioM.pendel",
-    "label": "8 LEDs an PM0–PM7 (PM7 = LED 7 oben), Signal R/L an PL0: steigende Flanke = linker, fallende = rechter Umkehrpunkt · Start mit 8,3 Hz wie das echte Pendel und 1 s Nachleuchten",
-    "frequency": 8.3,
-    "minFrequency": 2,
-    "maxFrequency": 15,
-    "afterglowMs": 1000
-  },
+  "quantumUs": 10,
   "solution": {
     "example": "lab03_nvic_pendel",
     "label": "Musterlösung (examples/lab03_nvic_pendel)"
   },
-  "scope": {
-    "signals": [
-      {
-        "pin": "PD0",
-        "label": "HC-SR04 Trigger"
+  "elements": [
+    {
+      "type": "pendulum",
+      "label": "8 LEDs an PM0–PM7 (PM7 = LED 7 oben), Signal R/L an PL0: steigende Flanke = linker, fallende = rechter Umkehrpunkt · Start mit 8,3 Hz wie das echte Pendel und 1 s Nachleuchten",
+      "frequency": 8.3,
+      "minFrequency": 2,
+      "maxFrequency": 15,
+      "afterglowMs": 1000,
+      "syncMode": "direction",
+      "periodUs": 120000,
+      "columns": 120,
+      "_pins": "LED0 ist die oberste LED (Spitze). Beim HAW-Pendel ist das PM7.",
+      "pins": {
+        "LED0": "PM7",
+        "LED1": "PM6",
+        "LED2": "PM5",
+        "LED3": "PM4",
+        "LED4": "PM3",
+        "LED5": "PM2",
+        "LED6": "PM1",
+        "LED7": "PM0",
+        "SYNC": "PL0"
       },
-      {
-        "pin": "PD1",
-        "label": "HC-SR04 Echo"
-      },
-      {
-        "pin": "PL0",
-        "label": "Pendel R/L"
-      },
-      {
-        "pin": "PM7",
-        "label": "Pendel-LED 7 (oben)"
-      },
-      {
-        "pin": "PM6",
-        "label": "Pendel-LED 6"
-      },
-      {
-        "pin": "PM5",
-        "label": "Pendel-LED 5"
-      },
-      {
-        "pin": "PM4",
-        "label": "Pendel-LED 4"
-      },
-      {
-        "pin": "PM3",
-        "label": "Pendel-LED 3"
-      },
-      {
-        "pin": "PM2",
-        "label": "Pendel-LED 2"
-      },
-      {
-        "pin": "PM1",
-        "label": "Pendel-LED 1"
-      },
-      {
-        "pin": "PM0",
-        "label": "Pendel-LED 0"
-      },
-      {
-        "pin": "PN1",
-        "label": "LED D1"
-      },
-      {
-        "pin": "PN0",
-        "label": "LED D2"
-      },
-      {
-        "pin": "PF4",
-        "label": "LED D3"
-      },
-      {
-        "pin": "PF0",
-        "label": "LED D4"
-      },
-      {
-        "pin": "PJ0",
-        "label": "USR_SW1"
-      },
-      {
-        "pin": "PJ1",
-        "label": "USR_SW2"
-      },
-      {
-        "pin": "PA0",
-        "label": "U0RX (vom Terminal)"
-      },
-      {
-        "pin": "PA1",
-        "label": "U0TX (zum Terminal)"
+      "labels": {
+        "LED0": "Pendel-LED 7 (oben)",
+        "LED1": "Pendel-LED 6",
+        "LED2": "Pendel-LED 5",
+        "LED3": "Pendel-LED 4",
+        "LED4": "Pendel-LED 3",
+        "LED5": "Pendel-LED 2",
+        "LED6": "Pendel-LED 1",
+        "LED7": "Pendel-LED 0",
+        "SYNC": "Pendel R/L"
       }
-    ],
+    },
+    {
+      "type": "hcsr04",
+      "title": "Ultraschall HC-SR04",
+      "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo",
+      "initial": 65,
+      "min": 0,
+      "max": 350,
+      "unit": "cm",
+      "pins": {
+        "TRIG": "PD0",
+        "ECHO": "PD1"
+      }
+    },
+    {
+      "type": "led",
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "pin": "PN1"
+    },
+    {
+      "type": "led",
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "pin": "PN0"
+    },
+    {
+      "type": "led",
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "pin": "PF4"
+    },
+    {
+      "type": "led",
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "pin": "PF0"
+    },
+    {
+      "type": "button",
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "pin": "PJ0",
+      "activeLow": true
+    },
+    {
+      "type": "button",
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "pin": "PJ1",
+      "activeLow": true
+    },
+    {
+      "type": "cio",
+      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+    }
+  ],
+  "scope": {
     "channels": [
       "PL0",
       "PM7",

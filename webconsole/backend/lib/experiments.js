@@ -1,10 +1,11 @@
 'use strict';
 
 /**
- * Versuche (Experimente) = Dateien in sim/experiments/:
- *   <id>.resc  Renode-Startskript (Pflicht)
- *   <id>.repl  Plattform-Erweiterung (optional, vom .resc geladen)
- *   <id>.json  Widget-Konfiguration für die Web-Konsole (optional)
+ * Versuche (Experimente) = je EINE Datei sim/experiments/<id>.json (Format: docs/EXPERIMENTS.md).
+ * Sie zählt die Bedienelemente auf und legt für jedes die Pins fest. lib/experimentSpec.js prüft sie und
+ * erzeugt daraus die Renode-Plattform (.repl), das Startskript (.resc) und die interne Konfiguration
+ * (Renode-Pfade, Widget-Einstellungen). prepare() schreibt .repl/.resc vor dem Start in ein
+ * temporäres Verzeichnis. Prüfen ohne Backend:  node tools/check_experiment.js
  *
  * Musterlösung: "solution": { "example": "<Beispiel>", "label": "..." } in der JSON-Datei verweist auf
  *   sim/solutions/<Beispiel>.elf (gebaut von tools/build-solutions.sh bzw. im Docker-Image).
@@ -14,6 +15,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const spec = require('./experimentSpec');
 
 const ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 const PATH_RE = /^sysbus(\.[A-Za-z_][A-Za-z0-9_]*)+$/;
@@ -111,20 +113,40 @@ function dir(simDir, sub) {
   return path.join(simDir, sub);
 }
 
+/**
+ * Versuchsbeschreibung lesen und prüfen. Liefert null, wenn es die Datei nicht gibt; wirft bei Fehlern
+ * (alle Meldungen in der Fehlermeldung).
+ */
 function load(simDir, sub, id) {
   if (!isValidId(id)) return null;
-  const base = dir(simDir, sub);
-  const resc = path.join(base, `${id}.resc`);
-  const json = path.join(base, `${id}.json`);
-  if (!fs.existsSync(resc)) return null;
-  let cfg = { id, title: id, machine: 'tm4c1294' };
-  if (fs.existsSync(json)) {
-    cfg = { ...cfg, ...JSON.parse(fs.readFileSync(json, 'utf8')), id };
+  const json = path.join(dir(simDir, sub), `${id}.json`);
+  if (!fs.existsSync(json)) return null;
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(json, 'utf8'));
+  } catch (e) {
+    throw new Error(`${json}: kein gültiges JSON (${e.message})`);
   }
-  // Pfad relativ zum Simulator-Verzeichnis (Arbeitsverzeichnis von Renode)
-  const v = validate(cfg, json);
+  const r = spec.build(data, id);
+  if (r.errors.length) throw new Error(`${json}: ${r.errors.length} Fehler\n  ${r.errors.join('\n  ')}`);
+  for (const w of r.warnings) console.warn(`[experiments] ${id}: Hinweis: ${w}`);
+  // Zweite Sicherung: dieselben Prüfungen wie für die frühere handgeschriebene Konfiguration
+  const v = validate({ id, ...r.config }, json);
   const solutionPath = v.solution ? path.join(simDir, 'solutions', `${v.solution.example}.elf`) : null;
-  return { ...v, rescPath: `${sub}/${id}.resc`, solutionPath };
+  return { ...v, solutionPath, generated: { repl: r.repl, resc: r.resc } };
+}
+
+/**
+ * Erzeugte Plattform und Startskript nach genDir schreiben; liefert den absoluten Pfad des .resc
+ * (Renode läuft mit Arbeitsverzeichnis sim/, die Modelle werden relativ dazu geladen).
+ */
+function prepare(exp, genDir) {
+  fs.mkdirSync(genDir, { recursive: true });
+  const repl = path.resolve(genDir, `${exp.id}.repl`);
+  const resc = path.resolve(genDir, `${exp.id}.resc`);
+  fs.writeFileSync(repl, exp.generated.repl);
+  fs.writeFileSync(resc, exp.generated.resc(repl));
+  return resc;
 }
 
 function list(simDir, sub) {
@@ -132,7 +154,7 @@ function list(simDir, sub) {
   if (!fs.existsSync(base)) return [];
   return fs
     .readdirSync(base)
-    .filter((f) => f.endsWith('.resc'))
+    .filter((f) => f.endsWith('.json'))
     .map((f) => f.slice(0, -5))
     .filter(isValidId)
     .map((id) => {
@@ -160,7 +182,7 @@ function solutionInfo(cfg) {
 /** Konfiguration ohne interne Felder (für das Frontend). */
 function publicView(cfg) {
   if (!cfg) return null;
-  const { rescPath, ledBridge, solutionPath: _s, ...rest } = cfg;
+  const { ledBridge, solutionPath: _s, generated: _g, ...rest } = cfg;
   return {
     ...rest,
     solution: solutionInfo(cfg),
@@ -180,4 +202,4 @@ function publicView(cfg) {
   };
 }
 
-module.exports = { isValidId, isValidUartSettings, load, list, publicView };
+module.exports = { isValidId, isValidUartSettings, load, list, prepare, publicView };

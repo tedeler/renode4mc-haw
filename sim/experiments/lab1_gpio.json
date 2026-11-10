@@ -1,250 +1,97 @@
 {
   "title": "Lab 1 – GPIO: Hex-Keypad und BCD-Anzeige (MCL Lab Session 1)",
-  "machine": "tm4c1294",
+  "description": "MCL Lab Session 1: Hex-Keypad an Port M, BCD-Anzeige an Port K/L, LEDs D1–D4, Taster, UART0, printf",
   "uart": {
-    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1",
-    "host": "sysbus.uart0.host",
     "baud": 115200,
-    "format": "8N1"
+    "format": "8N1",
+    "label": "UART0 (PA0 RX / PA1 TX) – Terminal 115200 8N1"
   },
-  "reset": {
-    "path": "sysbus.sysctl"
-  },
-  "status": {
-    "path": "sysbus.sysctl"
-  },
-  "debug": {
-    "cpu": "sysbus.cpu"
-  },
-  "signals": [
-    {
-      "name": "uart0.tx",
-      "label": "U0TX (PA1)",
-      "path": "sysbus.uart0"
-    },
-    {
-      "name": "uart0.rx",
-      "label": "U0RX (PA0)",
-      "path": "sysbus.uart0"
-    }
-  ],
-  "ledBridge": "ws://127.0.0.1:9000",
-  "leds": [
-    {
-      "id": "D1",
-      "label": "D1 (PN1)",
-      "color": "#22c55e",
-      "bridge": 0
-    },
-    {
-      "id": "D2",
-      "label": "D2 (PN0)",
-      "color": "#22c55e",
-      "bridge": 1
-    },
-    {
-      "id": "D3",
-      "label": "D3 (PF4)",
-      "color": "#22c55e",
-      "bridge": 2
-    },
-    {
-      "id": "D4",
-      "label": "D4 (PF0)",
-      "color": "#22c55e",
-      "bridge": 3
-    }
-  ],
-  "buttons": [
-    {
-      "id": "SW1",
-      "label": "USR_SW1 (PJ0)",
-      "port": "sysbus.gpioJ",
-      "pin": 0,
-      "activeLow": true
-    },
-    {
-      "id": "SW2",
-      "label": "USR_SW2 (PJ1)",
-      "port": "sysbus.gpioJ",
-      "pin": 1,
-      "activeLow": true
-    }
-  ],
-  "cio": {
-    "path": "sysbus.cio",
-    "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
-  },
-  "keypad": {
-    "path": "sysbus.gpioM.hexkeypad",
-    "title": "Hex-Keypad 4×4 (aktiv LOW)",
-    "rowPins": [
-      "PM4",
-      "PM5",
-      "PM6",
-      "PM7"
-    ],
-    "colPins": [
-      "PM0",
-      "PM1",
-      "PM2",
-      "PM3"
-    ],
-    "rowNames": [
-      "Y1",
-      "Y2",
-      "Y3",
-      "Y4"
-    ],
-    "colNames": [
-      "X1",
-      "X2",
-      "X3",
-      "X4"
-    ],
-    "layout": [
-      [
-        "1",
-        "2",
-        "3",
-        "F"
-      ],
-      [
-        "4",
-        "5",
-        "6",
-        "E"
-      ],
-      [
-        "7",
-        "8",
-        "9",
-        "D"
-      ],
-      [
-        "A",
-        "0",
-        "B",
-        "C"
-      ]
-    ],
-    "label": "Spalten X1–X4 = PM0–PM3 (Ausgänge), Zeilen Y1–Y4 = PM4–PM7 (Eingänge mit Pull-up). Gedrückte Taste: Y = 0, wenn ihr X = 0."
-  },
-  "bcd": {
-    "path": "sysbus.gpioK.bcd",
-    "label": "D0–D7 = PK0–PK7, EN rechts (Ziffern 1/0) = PL0, EN links (Ziffern 3/2) = PL1, EN aktiv HIGH"
-  },
+  "quantumUs": 10,
   "solution": {
     "example": "lab01_hexkeypad_bcd",
     "label": "Musterlösung (examples/lab01_hexkeypad_bcd)"
   },
-  "scope": {
-    "signals": [
-      {
-        "pin": "PM0",
-        "label": "Keypad X1 (Spalte)"
-      },
-      {
-        "pin": "PM1",
-        "label": "Keypad X2 (Spalte)"
-      },
-      {
-        "pin": "PM2",
-        "label": "Keypad X3 (Spalte)"
-      },
-      {
-        "pin": "PM3",
-        "label": "Keypad X4 (Spalte)"
-      },
-      {
-        "pin": "PM4",
-        "label": "Keypad Y1 (Zeile)"
-      },
-      {
-        "pin": "PM5",
-        "label": "Keypad Y2 (Zeile)"
-      },
-      {
-        "pin": "PM6",
-        "label": "Keypad Y3 (Zeile)"
-      },
-      {
-        "pin": "PM7",
-        "label": "Keypad Y4 (Zeile)"
-      },
-      {
-        "pin": "PK0",
-        "label": "BCD D0"
-      },
-      {
-        "pin": "PK1",
-        "label": "BCD D1"
-      },
-      {
-        "pin": "PK2",
-        "label": "BCD D2"
-      },
-      {
-        "pin": "PK3",
-        "label": "BCD D3"
-      },
-      {
-        "pin": "PK4",
-        "label": "BCD D4"
-      },
-      {
-        "pin": "PK5",
-        "label": "BCD D5"
-      },
-      {
-        "pin": "PK6",
-        "label": "BCD D6"
-      },
-      {
-        "pin": "PK7",
-        "label": "BCD D7"
-      },
-      {
-        "pin": "PL0",
-        "label": "BCD EN rechts"
-      },
-      {
-        "pin": "PL1",
-        "label": "BCD EN links"
-      },
-      {
-        "pin": "PN1",
-        "label": "LED D1"
-      },
-      {
-        "pin": "PN0",
-        "label": "LED D2"
-      },
-      {
-        "pin": "PF4",
-        "label": "LED D3"
-      },
-      {
-        "pin": "PF0",
-        "label": "LED D4"
-      },
-      {
-        "pin": "PJ0",
-        "label": "USR_SW1"
-      },
-      {
-        "pin": "PJ1",
-        "label": "USR_SW2"
-      },
-      {
-        "pin": "PA0",
-        "label": "U0RX (vom Terminal)"
-      },
-      {
-        "pin": "PA1",
-        "label": "U0TX (zum Terminal)"
+  "elements": [
+    {
+      "type": "hexkeypad",
+      "title": "Hex-Keypad 4×4 (aktiv LOW)",
+      "label": "Spalten X1–X4 = PM0–PM3 (Ausgänge), Zeilen Y1–Y4 = PM4–PM7 (Eingänge mit Pull-up). Gedrückte Taste: Y = 0, wenn ihr X = 0.",
+      "riseTimeUs": 20,
+      "pins": {
+        "X1": "PM0",
+        "X2": "PM1",
+        "X3": "PM2",
+        "X4": "PM3",
+        "Y1": "PM4",
+        "Y2": "PM5",
+        "Y3": "PM6",
+        "Y4": "PM7"
       }
-    ],
+    },
+    {
+      "type": "bcd",
+      "label": "D0–D7 = PK0–PK7, EN rechts (Ziffern 1/0) = PL0, EN links (Ziffern 3/2) = PL1, EN aktiv HIGH",
+      "pins": {
+        "D0": "PK0",
+        "D1": "PK1",
+        "D2": "PK2",
+        "D3": "PK3",
+        "D4": "PK4",
+        "D5": "PK5",
+        "D6": "PK6",
+        "D7": "PK7",
+        "EN_R": "PL0",
+        "EN_L": "PL1"
+      }
+    },
+    {
+      "type": "led",
+      "id": "D1",
+      "label": "D1 (PN1)",
+      "color": "#22c55e",
+      "pin": "PN1"
+    },
+    {
+      "type": "led",
+      "id": "D2",
+      "label": "D2 (PN0)",
+      "color": "#22c55e",
+      "pin": "PN0"
+    },
+    {
+      "type": "led",
+      "id": "D3",
+      "label": "D3 (PF4)",
+      "color": "#22c55e",
+      "pin": "PF4"
+    },
+    {
+      "type": "led",
+      "id": "D4",
+      "label": "D4 (PF0)",
+      "color": "#22c55e",
+      "pin": "PF0"
+    },
+    {
+      "type": "button",
+      "id": "SW1",
+      "label": "USR_SW1 (PJ0)",
+      "pin": "PJ0",
+      "activeLow": true
+    },
+    {
+      "type": "button",
+      "id": "SW2",
+      "label": "USR_SW2 (PJ1)",
+      "pin": "PJ1",
+      "activeLow": true
+    },
+    {
+      "type": "cio",
+      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+    }
+  ],
+  "scope": {
     "channels": [
       "PM0",
       "PM4",

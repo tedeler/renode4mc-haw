@@ -46,7 +46,8 @@ webconsole/
 │   ├── server.js         HTTP: SPA, POST /upload, /api/*
 │   ├── lib/
 │   │   ├── config.js         Umgebungsvariablen
-│   │   ├── experiments.js    Versuche aus sim/experiments laden und prüfen
+│   │   ├── experiments.js    Versuche (sim/experiments/<id>.json) laden, .repl/.resc ablegen
+│   │   ├── experimentSpec.js Versuchsdatei prüfen, Renode-Plattform und Startskript erzeugen
 │   │   ├── renodeManager.js  Renode-Child-Prozess starten/beenden, Log weiterleiten
 │   │   ├── monitorClient.js  Telnet-Client für den Renode-Monitor (Befehlswarteschlange)
 │   │   ├── uartBridge.js     UART-TCP ⇄ WebSocket :3333
