@@ -328,7 +328,7 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 .bcd-en.on { color: var(--ok); font-weight: 700; }
 
 .solution-badge { background: rgba(56, 189, 248, 0.15); color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 1px 10px; font-size: 12px; font-weight: 600; }
-.preview-badge { flex-shrink: 0; color: var(--muted, #94a3b8); border: 1px dashed currentColor; border-radius: 999px; padding: 1px 10px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+.preview-badge { flex-shrink: 1; min-width: 4em; color: var(--muted, #94a3b8); border: 1px dashed currentColor; border-radius: 999px; padding: 1px 10px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
 
 /* ---------- Mobil: eine Spalte, Seite scrollt ---------- */
 @media not all and (min-width: 760px) and (min-height: 520px) {
@@ -382,9 +382,11 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
 }
 @media (min-width: 760px) and (min-height: 520px) {
   .setup-form { flex: 0 1 auto; }
-  .hdr-status { flex: 1 1 0; min-width: 140px; display: flex; justify-content: flex-end; }
+  /* Status darf nie über die Werkzeuge rechts laufen: Inhalt schrumpft (…), Rest wird abgeschnitten */
+  .hdr-status { flex: 1 1 0; min-width: 140px; display: flex; justify-content: flex-end; overflow: hidden; }
   .session-status { min-width: 0; }
-  .exp-title { min-width: 60px; }
+  /* Versuchsname steht auf dem Desktop schon in der Auswahlliste daneben */
+  .exp-title { display: none; }
 }
 
 /* ---------- Zusatzwerkzeuge ---------- */
