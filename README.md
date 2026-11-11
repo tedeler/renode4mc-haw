@@ -26,7 +26,9 @@ Lehrmaterial für das Mikrocontroller-Praktikum an der HAW mit dem **EK-TM4C1294
    Keypad-Multiplexing, Taster-Interrupts) – läuft in der [Web-Konsole](webconsole/README.md)
 5. [Example 04 – Pendeldisplay](examples/example04_pendeldisplay/README.md) (POV-Anzeige mit Einmal-Timer,
    Synchronisation auf ein externes Signal, Ultraschallsensor, UART) – Web-Konsole, Example 2
-6. **Praktikumsversuche Lab 1–4** mit eigener Simulator-Umgebung, Musterlösung und strenger Prüfung
+6. [Example 05 – Timer mit CCP-Pins](examples/example05_timer_ccp/README.md) (PWM und Puls im
+   16-Bit-Compare-Mode, Tastendauer per Capture, UART, Oszilloskop) – Web-Konsole, Example 3
+7. **Praktikumsversuche Lab 1–4** mit eigener Simulator-Umgebung, Musterlösung und strenger Prüfung
    der Register: [docs/LABORE.md](docs/LABORE.md) – Beispiele `lab01_hexkeypad_bcd`,
    `lab02_led_pendel`, `lab03_nvic_pendel`, `lab04_uart_leds`
 
@@ -46,7 +48,7 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 
 | Pfad | Inhalt |
 |---|---|
-| `examples/example01_blinky`, `examples/example02_timer_blink`, `examples/example03_webkonsole`, `examples/example04_pendeldisplay` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
+| `examples/example01_blinky` … `examples/example05_timer_ccp` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
 | `examples/lab01_hexkeypad_bcd` … `examples/lab04_uart_leds` | Musterlösungen der Praktikumsversuche Lab 1–4 ([docs/LABORE.md](docs/LABORE.md)) |
 | `tools/build-solutions.sh`, `tools/gcc/` | Musterlösungen mit gcc für die Web-Konsole bauen (`sim/solutions/`) |
 | `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294) – **identisch für Board und Simulator** |
@@ -65,7 +67,7 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | Cortex-M4F, NVIC, 1 MB Flash, 256 KB SRAM, Bit-Banding | ✔ |
 | SYSCTL: Clock-Gating (`RCGC*`/`PR*`), Warnung bei fehlendem Takt | ✔ (PLL/Takt-Umschaltung nicht; Takt fest 16 MHz) |
 | GPIO A–Q: Ausgänge, Eingänge, Pull-up/-down, Interrupts, DEN wie im Datenblatt, Lock/Commit, Warnungen bei Fehlkonfiguration | ✔ |
-| Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, auf-/abwärts, Prescaler, TnR/TnV, Interrupt, Warnungen | ✔ (Timer 6/7 an 0x400E0000/0x400E1000; kein Capture/PWM/RTC) |
+| Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, auf-/abwärts, Prescaler, TnR/TnV, Interrupt, Warnungen; Compare-Action (TCACT), PWM und Input Edge-Time an den CCP-Pins | ✔ (Timer 6/7 an 0x400E0000/0x400E1000; kein Edge-Count/RTC/Match-Interrupt) |
 | UART 0–7: Senden/Empfangen als Flanken mit Baudraten-Timing, FIFOs, Fehlerbits, Interrupts; IBRD/FBRD erst mit LCRH wirksam, Warnung bei falscher Baudrate/Format | ✔ (kein µDMA; UART0 mit Pin-Prüfung und PC-Terminal) |
 | Hex-Keypad 4×4, BCD-Anzeige, HC-SR04, LED-Pendel (HAW), printf → CCS-Konsole | ✔ (Lab-Umgebungen, [docs/LABORE.md](docs/LABORE.md)) |
 | I2C 0–9 als Master; Geräte SSD1306-OLED, MaxBotix MB1242 | ✔ (Example 1 der Web-Konsole) |

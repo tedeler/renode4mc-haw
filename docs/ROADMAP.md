@@ -7,7 +7,7 @@
 > abweichend von „Nicht im Umfang“ – gibt es einen I2C-Master (`TivaI2C.cs`) mit OLED-, Ultraschall-
 > und Keypad-Modell für die Web-Konsole ([WEBCONSOLE.md](WEBCONSOLE.md), Example 03).
 > Praktikumsversuche Lab 1–4 mit eigenen Umgebungen, Musterlösungen und strenger Registerprüfung:
-> [LABORE.md](LABORE.md). Offen: M2 (SysTick-Test), M6 (ADC), Timer-Capture/PWM, Bus-Fault bei
+> [LABORE.md](LABORE.md). Offen: M2 (SysTick-Test), M6 (ADC), Timer-Edge-Count/RTC, Bus-Fault bei
 > Zugriff ohne Takt.
 > Die folgenden Abschnitte beschreiben den ursprünglichen Plan.
 

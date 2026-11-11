@@ -9,6 +9,7 @@ const registers = require('./registers');
 
 const FB_RE = /FB:(\d+)x(\d+):([01])([01]):([A-Za-z0-9+/=]+)/;
 const LED_RE = /^LED(\d)=([01])$/;
+const LED_LEVEL_RE = /^LEDB(\d)=(\d+|-)$/;   // Helligkeit in Promille bei PWM, "-" = wieder nur an/aus
 const PD_RE = /PD:(\d+):(\d+):(\d+):(\d+):([A-Za-z0-9+/=]+)/;
 const EV_RE = /EV:(\d+):(\d+):(\d+):(\d+):([\d,;]*)/;
 // Flanken einer Leitung (sim/models/UartLine.cs, SignalRecorder.Format):
@@ -94,7 +95,7 @@ const MAX_DIAGNOSTICS = 100;
  *                                              aller Browser (sim/models/Oscilloscope.cs).
  * Server -> Client
  *   { type: "hello", experiment, renode, leds, fb, pd, uartConfig }
- *   { type: "leds", states: { [id]: boolean } }
+ *   { type: "leds", states: { [id]: boolean }, levels: { [id]: 0..1 } }   levels nur für LEDs mit PWM
  *   { type: "fb", width, height, on, invert, data }   data = Base64, SSD1306-Page-Format
  *   { type: "pd", columns, periodUs, phase, leds, data }
  *                                                     Pendeldisplay: phase = 1/10000 halbe Schwingung
@@ -147,6 +148,7 @@ class ControlBridge {
     this.monitor = null;
     this.experiment = null; // vollständige Konfiguration (mit Renode-Pfaden)
     this.ledStates = {};
+    this.ledLevels = {};
     this.lastFrame = null;
     this.lastPendulum = null;
     this.lastBcd = null;
@@ -266,6 +268,7 @@ class ControlBridge {
       experiment: experiments.publicView(this.experiment),
       renode: this.attached ? 'running' : 'stopped',
       leds: this.ledStates,
+      ledLevels: this.ledLevels,
       fb: this.lastFrame,
       pd: this.lastPendulum,
       uartConfig: this.terminalSettings(),
@@ -564,6 +567,7 @@ class ControlBridge {
       this.uartSettings.delete('*');
     }
     this.ledStates = Object.fromEntries((experiment.leds || []).map((l) => [l.id, false]));
+    this.ledLevels = {};
     this.lastFrame = null;
     this.lastPendulum = null;
     this.signalInfo = {};
@@ -642,14 +646,24 @@ class ControlBridge {
     this.ledSocket = ws;
     ws.on('open', () => console.log(`[control] LED-Bridge verbunden (${exp.ledBridge})`));
     ws.on('message', (data) => {
-      const m = LED_RE.exec(data.toString());
+      const text = data.toString();
+      const b = LED_LEVEL_RE.exec(text);
+      if (b) {
+        const id = byIndex.get(+b[1]);
+        if (id === undefined) return;
+        if (b[2] === '-') delete this.ledLevels[id];
+        else this.ledLevels[id] = Math.min(1, +b[2] / 1000);
+        this._broadcastLeds();
+        return;
+      }
+      const m = LED_RE.exec(text);
       if (!m) return;
       const id = byIndex.get(+m[1]);
       if (id === undefined) return;
       const on = m[2] === '1';
       if (this.ledStates[id] !== on) {
         this.ledStates[id] = on;
-        this._broadcast({ type: 'leds', states: this.ledStates });
+        this._broadcastLeds();
       }
     });
     ws.on('error', () => {});
@@ -657,6 +671,10 @@ class ControlBridge {
       if (this.ledSocket !== ws || !this.attached) return;
       this.ledRetry = setTimeout(() => this._connectLedBridge(), 500);
     });
+  }
+
+  _broadcastLeds() {
+    this._broadcast({ type: 'leds', states: this.ledStates, levels: this.ledLevels });
   }
 
   _disconnectLedBridge() {
@@ -800,7 +818,7 @@ class ControlBridge {
           changed = true;
         }
       }
-      if (changed) this._broadcast({ type: 'leds', states: this.ledStates });
+      if (changed) this._broadcastLeds();
 
       if (exp.oled) {
         const out = await mon.execute(`${exp.oled.path} GetFrameIfChanged`);
