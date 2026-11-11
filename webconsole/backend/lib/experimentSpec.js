@@ -25,10 +25,16 @@
 const PORT_PINS = { A: 8, B: 6, C: 8, D: 8, E: 6, F: 5, G: 2, H: 4, J: 2, K: 8, L: 8, M: 8, N: 6, P: 6, Q: 5 };
 const PIN_RE = /^P([A-HJ-NPQ])([0-7])$/;
 
+/**
+ * UART-Pins laut Datenblatt Tabelle 10-2 (128-TQFP), alle mit GPIOPCTL-Funktion 1:
+ * Pin -> UART-Nummer. TX und RX müssen zum selben UART gehören, dürfen aber an verschiedenen Ports liegen.
+ */
+const UART_RX_PINS = { PA0: 0, PB0: 1, PQ4: 1, PA6: 2, PD4: 2, PA4: 3, PJ0: 3, PA2: 4, PK0: 4, PC6: 5, PP0: 6, PC4: 7 };
+const UART_TX_PINS = { PA1: 0, PB1: 1, PA7: 2, PD5: 2, PA5: 3, PJ1: 3, PA3: 4, PK1: 4, PC7: 5, PP1: 6, PC5: 7 };
+const UART_PIN_FUNCTION = 1;
+
 /** Fest belegte Pins: dürfen nicht verwendet werden */
 const RESERVED_PINS = {
-  PA0: 'UART0 RX (PC-Terminal)',
-  PA1: 'UART0 TX (PC-Terminal)',
   PC0: 'JTAG/SWD TCK (Debugger)',
   PC1: 'JTAG/SWD TMS (Debugger)',
   PC2: 'JTAG TDI (Debugger)',
@@ -40,6 +46,8 @@ const I2C_PINS = { i2c0: ['PB2', 'PB3'] };
 
 /** Pins, die auf dem EK-TM4C1294XL schon mit etwas verbunden sind (nur Hinweis) */
 const BOARD_PINS = {
+  PA0: 'dem Debug-Chip (virtueller COM-Port, U0RX)',
+  PA1: 'dem Debug-Chip (virtueller COM-Port, U0TX)',
   PN1: 'LED D1',
   PN0: 'LED D2',
   PF4: 'LED D3',
@@ -317,6 +325,8 @@ const TOP_FIELDS = {
   scope: F.object,
 };
 const UART_FIELDS = {
+  rx: F.pin,
+  tx: F.pin,
   baud: F.int(50, 4000000),
   format: F.re(UART_FORMAT_RE, 'Format wie "8N1" oder "7E1"'),
   label: F.str,
@@ -408,8 +418,15 @@ function build(spec, id) {
   if (spec.scope) checkFields(scope, SCOPE_FIELDS, 'scope', errors);
   const elements = Array.isArray(spec.elements) ? spec.elements : [];
 
-  // --- Elemente einzeln ---------------------------------------------------------------------
+  // --- UART zum PC-Terminal: Pins legen die UART-Nummer fest ----------------------------------
   const used = new Map(); // Pin -> Beschreibung des Benutzers
+  const uartPins = resolveUartPins(uart, errors, warnings);
+  if (uartPins) {
+    used.set(uartPins.rx, 'uart.rx');
+    used.set(uartPins.tx, 'uart.tx');
+  }
+
+  // --- Elemente einzeln ---------------------------------------------------------------------
   const guiOwner = new Map(); // Widget-Abschnitt -> Element (für Einzel-Widgets)
   const ids = new Map(); // gui -> Set(id)
   const i2cUsed = new Map(); // "i2c0:0x3C" -> Element
@@ -534,7 +551,7 @@ function build(spec, id) {
   }
 
   // Oszilloskop
-  const knownPins = new Set(['PA0', 'PA1', ...used.keys()]);
+  const knownPins = new Set(used.keys());
   const scopeCheckPin = (p, where) => {
     const e = checkPinName(p);
     if (e) errors.push(`${where}: ${e}`);
@@ -552,13 +569,61 @@ function build(spec, id) {
   }
 
   if (errors.length) return fail();
-  return generate(spec, id, items, warnings);
+  return generate(spec, id, items, warnings, uartPins);
 }
 
-function generate(spec, id, items, warnings) {
+/**
+ * RX/TX des Terminal-UARTs prüfen. Standard: UART0 an PA0/PA1 (virtueller COM-Port des Boards).
+ * Liefert { n, rx, tx } oder null (Fehler stehen dann in errors).
+ */
+function resolveUartPins(uart, errors, warnings) {
+  const rx = uart.rx ?? 'PA0';
+  const tx = uart.tx ?? 'PA1';
+  if (checkPinName(rx) || checkPinName(tx)) return null; // Meldung kommt aus checkFields
+  const list = (table) =>
+    Object.entries(table)
+      .map(([p, n]) => `${p} (U${n})`)
+      .join(', ');
+  const nRx = UART_RX_PINS[rx];
+  const nTx = UART_TX_PINS[tx];
+  let ok = true;
+  if (nRx === undefined) {
+    errors.push(`uart.rx: ${rx} kann kein UART-Empfänger sein (GPIOPCTL). Möglich: ${list(UART_RX_PINS)}`);
+    ok = false;
+  }
+  if (nTx === undefined) {
+    errors.push(`uart.tx: ${tx} kann kein UART-Sender sein (GPIOPCTL). Möglich: ${list(UART_TX_PINS)}`);
+    ok = false;
+  }
+  if (!ok) return null;
+  if (nRx !== nTx) {
+    const rxOf = (n) => Object.keys(UART_RX_PINS).filter((p) => UART_RX_PINS[p] === n).join('/');
+    const txOf = (n) => Object.keys(UART_TX_PINS).filter((p) => UART_TX_PINS[p] === n).join('/');
+    errors.push(
+      `uart: ${rx} ist U${nRx}Rx, ${tx} ist U${nTx}Tx – RX und TX müssen zum selben UART gehören ` +
+        `(U${nRx}: RX ${rxOf(nRx)}, TX ${txOf(nRx)}; U${nTx}: RX ${rxOf(nTx)}, TX ${txOf(nTx)})`,
+    );
+    return null;
+  }
+  if (nRx !== 0) {
+    warnings.push(
+      `uart: UART${nRx} (${rx}/${tx}) – auf dem Board hängt nur UART0 (PA0/PA1) am virtuellen COM-Port; ` +
+        `an UART${nRx} braucht echte Hardware einen USB-Seriell-Adapter (3,3 V)`,
+    );
+  }
+  for (const [what, p] of [['rx', rx], ['tx', tx]]) {
+    if (BOARD_PINS[p] && nRx !== 0) warnings.push(`uart.${what}: ${p} ist auf dem Board mit ${BOARD_PINS[p]} verbunden`);
+    if (LOCKED_PINS[p]) warnings.push(`uart.${what}: ${p} ist geschützt – die Firmware muss GPIOLOCK/GPIOCR entsperren`);
+  }
+  return { n: nRx, rx, tx };
+}
+
+function generate(spec, id, items, warnings, uartPins) {
   const uart = spec.uart || {};
   const baud = uart.baud ?? 115200;
   const format = uart.format ?? '8N1';
+  const { n: un, rx: urx, tx: utx } = uartPins;
+  const uartName = `uart${un}`;
   const quantumUs = spec.quantumUs ?? 10;
 
   // --- interne Konfiguration (Form wie bisher, siehe lib/experiments.js) ----------------------
@@ -566,9 +631,9 @@ function generate(spec, id, items, warnings) {
     title: spec.title,
     machine: 'tm4c1294',
     uart: {
-      label: uart.label ?? `UART0 (PA0 RX / PA1 TX) – Terminal ${baud} ${format}`,
+      label: uart.label ?? `UART${un} (${urx} RX / ${utx} TX) – Terminal ${baud} ${format}`,
       ...pick(uart, ['localEcho', 'crlf']),
-      host: 'sysbus.uart0.host',
+      host: `sysbus.${uartName}.host`,
       baud,
       format,
     },
@@ -576,8 +641,8 @@ function generate(spec, id, items, warnings) {
     status: { path: 'sysbus.sysctl' },
     debug: { cpu: 'sysbus.cpu' },
     signals: [
-      { name: 'uart0.tx', label: 'U0TX (PA1)', path: 'sysbus.uart0' },
-      { name: 'uart0.rx', label: 'U0RX (PA0)', path: 'sysbus.uart0' },
+      { name: `${uartName}.tx`, label: `U${un}TX (${utx})`, path: `sysbus.${uartName}` },
+      { name: `${uartName}.rx`, label: `U${un}RX (${urx})`, path: `sysbus.${uartName}` },
     ],
   };
   if (spec.description) config.description = spec.description;
@@ -659,7 +724,11 @@ function generate(spec, id, items, warnings) {
 
   // Oszilloskop: benannte Signale aus den Elementen, dann UART, dann eigene Ergänzungen/Beschriftungen
   const sc = spec.scope || {};
-  const signals = [...scopeSignals, { pin: 'PA0', label: 'U0RX (vom Terminal)' }, { pin: 'PA1', label: 'U0TX (zum Terminal)' }];
+  const signals = [
+    ...scopeSignals,
+    { pin: urx, label: `U${un}RX (vom Terminal)` },
+    { pin: utx, label: `U${un}TX (zum Terminal)` },
+  ];
   for (const s of sc.signals || []) {
     const old = signals.find((x) => x.pin === s.pin);
     if (old) old.label = s.label;
@@ -678,8 +747,8 @@ function generate(spec, id, items, warnings) {
   L.push(`// ERZEUGT aus experiments/${id}.json – nicht von Hand ändern (Prüfen: node tools/check_experiment.js).`);
   L.push('// Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen).');
   L.push('');
-  L.push('// PC-Terminal an UART0 (virtueller COM-Port, PA0/PA1); Einstellung in der Web-Konsole änderbar');
-  L.push('host: UART.UartHostTerminal @ uart0');
+  L.push(`// PC-Terminal an UART${un} (RX ${urx}, TX ${utx}${un === 0 ? ', virtueller COM-Port des Boards' : ''}); Einstellung in der Web-Konsole änderbar`);
+  L.push(`host: UART.UartHostTerminal @ ${uartName}`);
   L.push(`    baudRate: ${baud}`);
   L.push(`    format: "${format}"`);
   if (bridge > 0) {
@@ -720,10 +789,13 @@ function generate(spec, id, items, warnings) {
       if (p.up) R.push(`sysbus.${port} ExternalPullUp ${hex(p.up)}`);
       if (p.down) R.push(`sysbus.${port} ExternalPullDown ${hex(p.down)}`);
     }
+    if (!(un === 0 && urx === 'PA0' && utx === 'PA1')) {
+      R.push(`sysbus.${uartName} SetPins "${utx}" "${urx}"`);
+    }
     R.push(...rescExtra);
-    R.push('sysbus.uart0.host TerminalBaudRate $uartBaud');
-    R.push('sysbus.uart0.host Format $uartFormat');
-    R.push('sysbus.uart0.host ServeTcp 3335');
+    R.push(`sysbus.${uartName}.host TerminalBaudRate $uartBaud`);
+    R.push(`sysbus.${uartName}.host Format $uartFormat`);
+    R.push(`sysbus.${uartName}.host ServeTcp 3335`);
     R.push('start');
     return `${R.join('\n')}\n`;
   };
@@ -744,4 +816,4 @@ function describeTypes() {
   });
 }
 
-module.exports = { build, describeTypes, TYPES, PORT_PINS, checkPinName };
+module.exports = { build, describeTypes, TYPES, PORT_PINS, checkPinName, UART_RX_PINS, UART_TX_PINS, UART_PIN_FUNCTION };

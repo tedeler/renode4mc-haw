@@ -25,6 +25,10 @@
 // Pins: Mit pinPort/txPin/rxPin/pinFunction (z. B. gpioA, 1, 0, 1 für PA1 = U0TX, PA0 = U0RX)
 // prüft der UART, ob die Pins per AFSEL/DEN/PCTL wirklich ihm gehören. Sonst erscheinen die
 // Flanken nicht auf der Leitung bzw. erreichen den Empfänger nicht (mit einer Warnung).
+// Andere Pins (der Chip erlaubt je UART bestimmte, z. B. U3 an PA4/PA5 oder PJ0/PJ1; TX und RX dürfen
+// an verschiedenen Ports liegen) setzt der Versuch im Startskript:
+//   sysbus.uart3 SetPins "PJ1" "PJ0"      TX, RX (Funktion pinFunction, auf dem TM4C1294 immer 1)
+//   sysbus.uart3 Pins                     -> "TX=PJ1 RX=PJ0"
 //
 // Strenge Prüfung wie auf dem Board (Warnungen erscheinen in der Web-Konsole unter "Diagnose"):
 //  * Datenblatt 19.3.2: IBRD/FBRD gelten erst nach dem nächsten Schreiben von UARTLCRH;
@@ -47,6 +51,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure;
+using Antmicro.Renode.Exceptions;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Peripherals.Bus;
 using Antmicro.Renode.Peripherals.GPIOPort;
@@ -62,7 +67,9 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             this.sysCtl = sysCtl;
             this.clockBit = clockBit;
-            this.pinPort = pinPort;
+            this.ownMachine = machine;
+            this.txPort = txPin >= 0 ? pinPort : null;
+            this.rxPort = rxPin >= 0 ? pinPort : null;
             this.txPin = txPin;
             this.rxPin = rxPin;
             this.pinFunction = pinFunction;
@@ -73,11 +80,49 @@ namespace Antmicro.Renode.Peripherals.UART
             decoder = new UartLineDecoder(() => CurrentFormat());
             IRQ = new GPIO();
             Reset();
-            if(pinPort != null)
+            if(txPort != null) txPort.RegisterAlternateOutput(txPin, (int)pinFunction, true);
+            if(rxPort != null) rxPort.RegisterAlternateOutput(rxPin, (int)pinFunction, true);
+        }
+
+        // TX- und RX-Pin festlegen, z. B. SetPins "PJ1" "PJ0" (Port A-Q, Pin 0-7; "" = ohne Pin)
+        public void SetPins(string tx, string rx)
+        {
+            TivaGPIOPort newTxPort, newRxPort;
+            int newTx, newRx;
+            ParsePin(tx, out newTxPort, out newTx);
+            ParsePin(rx, out newRxPort, out newRx);
+            if(txPort != null) txPort.ReleaseAlternateOutput(txPin, (int)pinFunction);
+            if(rxPort != null) rxPort.ReleaseAlternateOutput(rxPin, (int)pinFunction);
+            txPort = newTxPort;
+            txPin = newTx;
+            rxPort = newRxPort;
+            rxPin = newRx;
+            if(txPort != null) txPort.RegisterAlternateOutput(txPin, (int)pinFunction, true);
+            if(rxPort != null) rxPort.RegisterAlternateOutput(rxPin, (int)pinFunction, true);
+            txPinWarned = rxPinWarned = false;
+        }
+
+        public string Pins
+        {
+            get { return "TX=" + (txPort != null ? PinName(txPort, txPin) : "-") + " RX=" + (rxPort != null ? PinName(rxPort, rxPin) : "-"); }
+        }
+
+        private void ParsePin(string name, out TivaGPIOPort port, out int pin)
+        {
+            port = null;
+            pin = -1;
+            if(string.IsNullOrEmpty(name)) return;
+            if(name.Length != 3 || name[0] != 'P' || name[2] < '0' || name[2] > '7')
             {
-                if(txPin >= 0) pinPort.RegisterAlternateOutput(txPin, (int)pinFunction, true);
-                if(rxPin >= 0) pinPort.RegisterAlternateOutput(rxPin, (int)pinFunction, true);
+                throw new RecoverableException("Pin wie \"PJ1\" erwartet: " + name);
             }
+            IPeripheral p;
+            if(!ownMachine.TryGetByName("sysbus.gpio" + name[1], out p) || !(p is TivaGPIOPort))
+            {
+                throw new RecoverableException("GPIO-Port " + name[1] + " gibt es nicht: " + name);
+            }
+            port = (TivaGPIOPort)p;
+            pin = name[2] - '0';
         }
 
         public long Size { get { return 0x1000; } }
@@ -283,7 +328,7 @@ namespace Antmicro.Renode.Peripherals.UART
         public void LineEdges(IList<SignalEdge> edges)
         {
             rxRecorder.Add(edges);
-            ToPad(rxPin, edges);
+            ToPad(rxPort, rxPin, edges);
             ConfigMatches("Empfangen");
             if(!RxPinOk())
             {
@@ -292,7 +337,7 @@ namespace Antmicro.Renode.Peripherals.UART
                     this.Log(LogLevel.Warning,
                         "UART{0}: Auf der Empfangsleitung kommen Zeichen an, aber {1} ist nicht als U{0}RX " +
                         "geschaltet (GPIOAFSEL, GPIODEN, GPIOPCTL = {2}). Der UART empfängt nichts.",
-                        clockBit, PinName(rxPin), pinFunction);
+                        clockBit, PinName(rxPort, rxPin), pinFunction);
                     rxPinWarned = true;
                 }
                 return;
@@ -396,14 +441,14 @@ namespace Antmicro.Renode.Peripherals.UART
                 {
                     this.Log(LogLevel.Warning,
                         "UART{0}: sendet, aber {1} ist nicht als U{0}TX geschaltet (GPIOAFSEL, GPIODEN, " +
-                        "GPIOPCTL = {2}). Am Pin kommt nichts an.", clockBit, PinName(txPin), pinFunction);
+                        "GPIOPCTL = {2}). Am Pin kommt nichts an.", clockBit, PinName(txPort, txPin), pinFunction);
                     txPinWarned = true;
                 }
                 return;
             }
             txPinWarned = false;
             txRecorder.Add(edges);
-            ToPad(txPin, edges);
+            ToPad(txPort, txPin, edges);
             if(line != null) line.LineEdges(edges);
         }
 
@@ -597,12 +642,12 @@ namespace Antmicro.Renode.Peripherals.UART
         }
 
         // Flanken (ns) auch als Pinpegel ausgeben (Tastkopf des Oszilloskops)
-        private void ToPad(int pin, IList<SignalEdge> edges)
+        private void ToPad(TivaGPIOPort port, int pin, IList<SignalEdge> edges)
         {
-            if(pinPort == null || pin < 0) return;
+            if(port == null || pin < 0) return;
             foreach(var e in edges)
             {
-                pinPort.AlternateOutput(pin, (int)pinFunction, e.Ns / 1000.0, e.Level);
+                port.AlternateOutput(pin, (int)pinFunction, e.Ns / 1000.0, e.Level);
             }
         }
 
@@ -649,17 +694,17 @@ namespace Antmicro.Renode.Peripherals.UART
 
         private bool TxPinOk()
         {
-            return pinPort == null || txPin < 0 || pinPort.IsPinFunction(txPin, pinFunction);
+            return txPort == null || txPin < 0 || txPort.IsPinFunction(txPin, pinFunction);
         }
 
         private bool RxPinOk()
         {
-            return pinPort == null || rxPin < 0 || pinPort.IsPinFunction(rxPin, pinFunction);
+            return rxPort == null || rxPin < 0 || rxPort.IsPinFunction(rxPin, pinFunction);
         }
 
-        private string PinName(int pin)
+        private static string PinName(TivaGPIOPort port, int pin)
         {
-            return pinPort != null ? "P" + pinPort.PortName + pin : "der Pin";
+            return port != null ? "P" + port.PortName + pin : "der Pin";
         }
 
         private int FifoDepth { get { return (lcrh & LcrhFen) != 0 ? 16 : 1; } }
@@ -762,8 +807,9 @@ namespace Antmicro.Renode.Peripherals.UART
 
         private readonly TivaSysCtl sysCtl;
         private readonly int clockBit;
-        private readonly TivaGPIOPort pinPort;
-        private readonly int txPin, rxPin;
+        private readonly IMachine ownMachine;
+        private TivaGPIOPort txPort, rxPort;
+        private int txPin, rxPin;
         private readonly uint pinFunction;
         private readonly VirtualClock clock;
         private readonly string name;
