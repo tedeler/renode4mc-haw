@@ -12,6 +12,17 @@ async function json(res) {
 
 export const fetchExperiments = () => fetch(`${API_BASE}/api/experiments`).then(json);
 
+/** Konfiguration eines Versuchs ohne Start: { experiment, terminal } */
+export const fetchExperiment = (id) => fetch(`${API_BASE}/api/experiments/${encodeURIComponent(id)}`).then(json);
+
+/** Terminal-Einstellung eines (noch nicht laufenden) Versuchs merken */
+export const saveTerminal = (experimentId, baud, format) =>
+  fetch(`${API_BASE}/api/terminal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ experiment_id: experimentId, baud, format }),
+  }).then(json);
+
 export const fetchStatus = () => fetch(`${API_BASE}/api/status`).then(json);
 
 export const stopSimulation = () => fetch(`${API_BASE}/api/stop`, { method: 'POST' }).then(json);

@@ -38,8 +38,8 @@ function useToolToggle(key) {
 }
 
 /** Verbindungs- und Versuchsstatus, angezeigt in der Kopfzeile (Platz "hdr-status" der Setup-Leiste). */
-function SessionStatus({ experiment, solution }) {
-  const { status, renodeState, lastError, clearError } = useControlSocket();
+function SessionStatus({ experiment, solution, background }) {
+  const { live, status, renodeState, lastError, clearError } = useControlSocket();
   const [el, setEl] = useState(null);
   useEffect(() => setEl(document.getElementById('hdr-status')), []);
   if (!el) return null;
@@ -53,12 +53,25 @@ function SessionStatus({ experiment, solution }) {
           Musterlösung
         </span>
       )}
-      <span className={`dot ws-${status}`} title={`Control-WebSocket: ${status}`}>
-        WS
-      </span>
-      <span className={`dot renode-${renodeState}`} title={`Renode: ${renodeState}`}>
-        Renode
-      </span>
+      {live ? (
+        <>
+          <span className={`dot ws-${status}`} title={`Control-WebSocket: ${status}`}>
+            WS
+          </span>
+          <span className={`dot renode-${renodeState}`} title={`Renode: ${renodeState}`}>
+            Renode
+          </span>
+        </>
+      ) : (
+        <span
+          className="preview-badge"
+          title={`Vorschau der Bedienelemente. Firmware (.out/.elf) wählen und Start klicken${
+            background ? ` – „${background}“ läuft noch und wird dabei beendet` : ''
+          }`}
+        >
+          Vorschau · keine Firmware{background ? ` · „${background}“ läuft noch` : ''}
+        </span>
+      )}
       {lastError && (
         <span className="panel-error" onClick={clearError} title={`${lastError} – klicken zum Schließen`}>
           ⚠ {lastError}
@@ -213,7 +226,7 @@ function usePanels(experiment, scopeOn, simOn) {
   );
 }
 
-function Panel({ experiment, solution }) {
+function Panel({ experiment, solution, background }) {
   const { status, renodeState, send } = useControlSocket();
   const running = status === 'open' && renodeState === 'running';
   const [scopeOn, toggleScope] = useToolToggle('tool.oscilloscope');
@@ -252,17 +265,21 @@ function Panel({ experiment, solution }) {
   );
   return (
     <main className="control-panel">
-      <SessionStatus experiment={experiment} solution={solution} />
+      <SessionStatus experiment={experiment} solution={solution} background={background} />
       <Workspace layoutKey={experiment.id ?? experiment.title} panels={panels} extraTools={tools} />
     </main>
   );
 }
 
-/** Control Panel: verbindet sich nach erfolgreichem Upload mit Renode (über die Backend-Bridges). */
-export default function ControlPanel({ experiment, solution = false }) {
+/**
+ * Control Panel des Versuchs. live = true: verbunden mit Renode (über die Backend-Bridges).
+ * live = false: Vorschau gleich nach der Auswahl, noch ohne Firmware (keine Verbindung);
+ * background = Titel eines anderen Versuchs, der im Backend noch läuft.
+ */
+export default function ControlPanel({ experiment, solution = false, live = true, terminal = null, background = null }) {
   return (
-    <ControlSocketProvider>
-      <Panel experiment={experiment} solution={solution} />
+    <ControlSocketProvider live={live} experimentId={experiment.id} terminal={terminal}>
+      <Panel experiment={experiment} solution={solution} background={background} />
     </ControlSocketProvider>
   );
 }

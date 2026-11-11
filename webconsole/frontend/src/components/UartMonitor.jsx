@@ -22,7 +22,7 @@ const PARITIES = [
  * erscheinen falsche Zeichen wie an der echten Hardware.
  */
 function TerminalSettings() {
-  const { send, uartConfig, status } = useControlSocket();
+  const { send, uartConfig, status, live } = useControlSocket();
   if (!uartConfig) return null;
   const { baud, format } = uartConfig;
   const set = (patch) => {
@@ -30,7 +30,8 @@ function TerminalSettings() {
     send({ type: 'uartconfig', baud: Number(next.baud), format: next.format });
   };
   const setFmt = (i, ch) => set({ format: format.slice(0, i) + ch + format.slice(i + 1) });
-  const disabled = status !== 'open';
+  // Vorschau (keine Firmware): einstellbar, gilt beim Start
+  const disabled = live && status !== 'open';
   return (
     <div className="uart-settings" title="Einstellung des Terminalprogramms am PC">
       <label>
@@ -96,14 +97,16 @@ function crToCrlf(bytes, state) {
  * neue Zeile anzeigen. Beides wie in der Terminal-Einstellung des Laborskripts (Lab 4).
  */
 export default function UartMonitor({ label, localEcho = false, crlf = false }) {
+  const { live } = useControlSocket();
   const optsRef = useRef({ localEcho, crlf });
-  optsRef.current = { localEcho, crlf };
+  optsRef.current = { localEcho, crlf, live };
   const crState = useRef({ cr: false });
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const sendRef = useRef(() => false);
 
   const { status, send } = useReconnectingWebSocket(UART_WS_URL, {
+    enabled: live,
     binaryType: 'arraybuffer',
     onOpen: () => termRef.current?.writeln('\x1b[32m[UART verbunden]\x1b[0m'),
     onMessage: (ev) => {
@@ -140,6 +143,7 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
     term.open(containerRef.current);
     fit.fit();
     termRef.current = term;
+    if (!optsRef.current.live) term.writeln('\x1b[90m[Keine Firmware geladen – das Terminal verbindet sich nach dem Start]\x1b[0m');
 
     const encoder = new TextEncoder();
     const sub = term.onData((d) => {

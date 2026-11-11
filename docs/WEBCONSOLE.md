@@ -56,6 +56,17 @@ Das Backend übersetzt deshalb zwischen beiden Welten. Das hat zwei Vorteile:
   aus der Versuchs-Konfiguration. Ein Monitor-Zugang wäre sonst ein Zugang zum Container,
   denn Renode kann Python und C# ausführen.
 
+### Vorschau nach der Auswahl
+
+Sobald ein Versuch ausgewählt ist, zeigt die Web-Konsole seine Bedienelemente – auch ohne Firmware
+(`GET /api/experiments/<id>`). In dieser **Vorschau** (Kennzeichen „Vorschau · keine Firmware“ in der
+Kopfzeile) gibt es keine WebSocket-Verbindung: LEDs und Anzeigen bleiben dunkel, Taster und Keypad
+melden „Keine Firmware geladen“. Schieberegler (Abstand, Pendelfrequenz), Oszilloskop-Kanäle und die
+Terminal-Einstellung lassen sich schon einstellen (`POST /api/terminal`); nach dem Start verbinden
+sich dieselben Widgets mit der Simulation und übernehmen diese Werte. Läuft im Backend noch ein
+anderer Versuch, zeigt die Kopfzeile das an; Start beendet ihn, Zurückwählen zeigt ihn wieder live.
+Nach **Stop** bleibt der Versuch als Vorschau stehen.
+
 ### Ablauf beim Klick auf „Start“
 
 1. Der Browser sendet `POST /upload` (`multipart/form-data`: `experiment_id`, `file`).
@@ -215,6 +226,8 @@ sysbus.gpioM.pendel GetEvents          # "EV:<t>:<Phase>:<LEDs>:<Periode>:<t,Pha
 | Methode, Pfad | Beschreibung |
 |---|---|
 | `GET /api/experiments` | Liste der Versuche `[{ id, title, solution }]` (alle gültigen `sim/experiments/*.json`; `solution` = `{ label, available }` oder `null`) |
+| `GET /api/experiments/<id>` | Konfiguration eines Versuchs ohne Start (Vorschau): `{ experiment, terminal: { baud, format } }`; 404 unbekannt, 500 ungültige Versuchsdatei |
+| `POST /api/terminal` | `{ experiment_id, baud, format }` – Terminal-Einstellung eines nicht laufenden Versuchs merken (gilt beim Start); 400 bei ungültigen Werten oder wenn der Versuch gerade läuft |
 | `GET /api/status` | `{ running, experiment, solution }` – stellt nach einem Neuladen der Seite das Bedienfeld wieder her |
 | `POST /api/solution` | JSON `{ experiment_id }`: Musterlösung des Versuchs (`sim/solutions/<Beispiel>.elf`) starten, Antwort wie `/upload` mit `solution: true` ([LABORE.md](LABORE.md)) |
 | `POST /upload` | `multipart/form-data`: `experiment_id`, `file` (`.out`/`.elf`/`.axf`, max. 16 MB). Antwort 200 `{ status: "running", experiment }`, sonst 400/500 `{ error, log? }` |

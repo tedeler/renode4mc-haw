@@ -180,6 +180,19 @@ class ControlBridge {
     console.log(`[control] WebSocket auf Port ${wsPort}`);
   }
 
+  /**
+   * Terminal-Einstellung eines Versuchs merken, der gerade NICHT läuft (Vorschau vor dem Start,
+   * POST /api/terminal). Gilt beim nächsten Start dieses Versuchs.
+   */
+  rememberTerminalSettings(id, baud, format) {
+    if (!experiments.isValidUartSettings(baud, format)) throw new Error('Ungültige Terminal-Einstellung');
+    if (this.attached && this.experiment && this.experiment.id === id) {
+      throw new Error('Der Versuch läuft – Einstellung im UART-Monitor ändern');
+    }
+    this.uartSettings.set(id, { baud, format });
+    return { baud, format };
+  }
+
   get attached() {
     return !!(this.monitor && this.monitor.connected);
   }
