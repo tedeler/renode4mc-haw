@@ -120,6 +120,32 @@ app.get('/api/experiments', (_req, res) => {
   res.json(experiments.list(cfg.simDir, cfg.experimentsSubdir));
 });
 
+/**
+ * GET /api/experiments/:id – Konfiguration eines Versuchs OHNE Start (Vorschau der Bedienelemente,
+ * solange keine Firmware geladen ist) und die gemerkte Terminal-Einstellung.
+ */
+app.get('/api/experiments/:id', (req, res) => {
+  let exp;
+  try {
+    exp = experiments.load(cfg.simDir, cfg.experimentsSubdir, req.params.id);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+  if (!exp) return res.status(404).json({ error: `Unbekannter Versuch: ${req.params.id}` });
+  res.json({ experiment: experiments.publicView(exp), terminal: control.terminalSettings(exp) });
+});
+
+/** POST /api/terminal { experiment_id, baud, format } – Terminal-Einstellung vor dem Start merken */
+app.post('/api/terminal', express.json({ limit: '1kb' }), (req, res) => {
+  const { experiment_id: id, baud, format } = req.body || {};
+  if (!experiments.isValidId(id)) return res.status(400).json({ error: 'Ungültige Versuchs-ID' });
+  try {
+    res.json(control.rememberTerminalSettings(id, Number(baud), String(format || '').toUpperCase()));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/status', (_req, res) => {
   res.json({
     running: renode.running && !!activeExperiment,

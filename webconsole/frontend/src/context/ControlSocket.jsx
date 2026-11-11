@@ -1,8 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CONTROL_WS_URL } from '../config.js';
+import { saveTerminal } from '../api.js';
 import { useReconnectingWebSocket } from '../hooks/useReconnectingWebSocket.js';
 
 const ControlSocketContext = createContext(null);
+
+/** Bedienhandlungen, die ohne laufende Simulation einen Hinweis auslösen (Abos/Anzeigen schweigen) */
+const USER_ACTIONS = new Set(['button', 'keypad', 'reset', 'pause', 'continue', 'step', 'cpuStatsReset']);
+export const NO_FIRMWARE_HINT = 'Keine Firmware geladen – Datei wählen und Start klicken';
 
 function decodeFrame(msg) {
   const bin = atob(msg.data);
@@ -44,12 +49,17 @@ function mergeDiag(list, d) {
  * Stellt den Control-WebSocket (Renode-Monitor-Bridge) allen Widgets zur Verfügung.
  * LED-Zustände liegen im React-State; Framebuffer werden an Subscriber
  * durchgereicht (ohne Re-Render des gesamten Panels).
+ *
+ * live = false: Vorschau des Versuchs ohne Firmware. Kein WebSocket; Widgets sind bedienbar
+ * (Schieberegler, Terminal-Einstellung), Bedienhandlungen wie Taster melden nur einen Hinweis.
+ * Wird live true, verbindet sich der Socket, und die Widgets senden ihren Stand (Abstand,
+ * Pendelfrequenz, Oszi-Kanäle) wie nach jedem Verbindungsaufbau.
  */
-export function ControlSocketProvider({ children }) {
+export function ControlSocketProvider({ children, live = true, experimentId = null, terminal = null }) {
   const [leds, setLeds] = useState({});
-  const [renodeState, setRenodeState] = useState('unknown');
+  const [renodeState, setRenodeState] = useState(live ? 'unknown' : 'preview');
   const [lastError, setLastError] = useState(null);
-  const [uartConfig, setUartConfig] = useState(null);
+  const [uartConfig, setUartConfig] = useState(live ? null : terminal);
   const signalListeners = useRef(new Set());
   const messageListeners = useRef(new Set());
   const frameListeners = useRef(new Set());
@@ -148,17 +158,36 @@ export function ControlSocketProvider({ children }) {
   }, []);
 
   const { status, send: sendRaw } = useReconnectingWebSocket(CONTROL_WS_URL, {
+    enabled: live,
     onMessage,
     onClose: () => setRenodeState('unknown'),
   });
 
+  // Vorschau -> Simulation: Hinweise der Vorschau löschen
+  useEffect(() => {
+    if (!live) return;
+    setLastError((e) => (e === NO_FIRMWARE_HINT ? null : e));
+    setRenodeState((s) => (s === 'preview' ? 'unknown' : s));
+  }, [live]);
+
   // Pause: das Pendel-Widget hält sofort an (nicht erst mit der nächsten Meldung der Simulation)
   const send = useCallback(
     (msg) => {
+      if (!live) {
+        // Vorschau: Terminal-Einstellung im Backend merken (gilt beim Start), sonst nur Hinweis
+        if (msg && msg.type === 'uartconfig' && experimentId) {
+          const next = { baud: msg.baud, format: msg.format };
+          setUartConfig(next);
+          saveTerminal(experimentId, next.baud, next.format).catch((e) => setLastError(e.message));
+          return true;
+        }
+        if (msg && USER_ACTIONS.has(msg.type)) setLastError(NO_FIRMWARE_HINT);
+        return false;
+      }
       if (msg && msg.type === 'pause') pendulumEventListeners.current.forEach((fn) => fn({ type: 'pausing' }));
       return sendRaw(msg);
     },
-    [sendRaw],
+    [sendRaw, live, experimentId],
   );
 
   const subscribeFrame = useCallback((fn) => {
@@ -207,6 +236,7 @@ export function ControlSocketProvider({ children }) {
 
   const value = useMemo(
     () => ({
+      live,
       status,
       renodeState,
       leds,
@@ -224,7 +254,7 @@ export function ControlSocketProvider({ children }) {
       lastError,
       clearError: () => setLastError(null),
     }),
-    [status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents,
+    [live, status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents,
       subscribeSignalStream, subscribeMessage, uartConfig, subscribeCio, subscribeScope, lastError],
   );
 

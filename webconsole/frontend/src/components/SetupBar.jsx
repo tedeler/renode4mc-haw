@@ -3,10 +3,13 @@ import { fetchExperiments, startSolution, stopSimulation, uploadElf } from '../a
 import AboutDialog from './AboutDialog.jsx';
 import hawLogo from '../assets/haw-logo.png';
 
-/** Kopfzeile: Versuchsauswahl, ELF-Upload, Start/Stop. */
-export default function SetupBar({ running, activeId, onStarted, onStopped }) {
+/**
+ * Kopfzeile: Versuchsauswahl, ELF-Upload, Start/Stop. Die Auswahl gehört der App (selectedId):
+ * Sie zeigt die Bedienelemente des gewählten Versuchs sofort, auch ohne Firmware.
+ */
+export default function SetupBar({ running, activeId, selectedId, onSelect, onListLoaded, onStarted, onStopped }) {
   const [experiments, setExperiments] = useState([]);
-  const [experimentId, setExperimentId] = useState('');
+  const experimentId = selectedId;
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -31,10 +34,10 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
     fetchExperiments()
       .then((list) => {
         setExperiments(list);
-        setExperimentId((cur) => activeId || cur || list[0]?.id || '');
+        onListLoaded(list);
       })
       .catch((e) => setMessage({ kind: 'error', text: `Versuche nicht ladbar: ${e.message}` }));
-  }, [activeId]);
+  }, [activeId, onListLoaded]);
 
   const start = async () => {
     if (!experimentId || !file) return;
@@ -108,7 +111,7 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
       <div className="setup-form">
         <label className="field">
           <span>Versuch</span>
-          <select value={experimentId} onChange={(e) => setExperimentId(e.target.value)} disabled={busy}>
+          <select value={experimentId} onChange={(e) => onSelect(e.target.value)} disabled={busy}>
             {experiments.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.title}
@@ -130,7 +133,7 @@ export default function SetupBar({ running, activeId, onStarted, onStopped }) {
 
         <div className="actions">
           <button className="btn primary" onClick={start} disabled={busy || !file || !experimentId}>
-            {busy ? 'Bitte warten …' : running ? 'Neu starten' : 'Start'}
+            {busy ? 'Bitte warten …' : running && activeId === experimentId ? 'Neu starten' : 'Start'}
           </button>
           {solution && (
             <button
