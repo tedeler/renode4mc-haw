@@ -1,0 +1,36 @@
+{
+  "title": "Example 3 – Timer: PWM und Puls (Compare), Tastendauer (Capture)",
+  "description": "4 LEDs an Port L, 4 Taster an Port M. LED1 = PWM von Timer0 (T0CCP0), LED2 = Puls von Timer1 (T1CCP0), Taste 0 an T2CCP0 (Timer2 Capture), UART0",
+  "_pins": "LED1/LED2 und Taste 0 liegen auf CCP-Pins (GPIOPCTL = 3): PL4 = T0CCP0, PL6 = T1CCP0, PM0 = T2CCP0",
+  "quantumUs": 10,
+  "uart": {
+    "baud": 115200,
+    "format": "8N1",
+    "label": "UART0 (PA0 RX / PA1 TX) – Stufe und Tastendauer"
+  },
+  "solution": {
+    "example": "example05_timer_ccp",
+    "label": "Demo (Timer0 PWM, Timer1 Puls, Timer2 Capture)"
+  },
+  "elements": [
+    { "type": "led", "id": "LED1", "label": "LED1 (PL4, T0CCP0) PWM", "color": "#22c55e", "pin": "PL4" },
+    { "type": "led", "id": "LED2", "label": "LED2 (PL6, T1CCP0) Puls", "color": "#f59e0b", "pin": "PL6" },
+    { "type": "led", "id": "LED3", "label": "LED3 (PL0) Stufe Bit 0", "color": "#3b82f6", "pin": "PL0" },
+    { "type": "led", "id": "LED4", "label": "LED4 (PL1) Stufe Bit 1", "color": "#3b82f6", "pin": "PL1" },
+    { "type": "button", "id": "T0", "label": "Taste 0: 0 % (PM0, T2CCP0)", "pin": "PM0" },
+    { "type": "button", "id": "T1", "label": "Taste 1: 25 % (PM1)", "pin": "PM1" },
+    { "type": "button", "id": "T2", "label": "Taste 2: 50 % (PM2)", "pin": "PM2" },
+    { "type": "button", "id": "T3", "label": "Taste 3: 100 % (PM3)", "pin": "PM3" }
+  ],
+  "scope": {
+    "channels": ["PL4", "PL6", "PM0", "PA1"],
+    "trigger": { "source": "PL4", "edge": "rising" },
+    "_timebaseUs": "20 ms/div: ca. 6 PWM-Perioden; für den 1-s-Puls von LED2 in der Web-Konsole 200 ms/div wählen",
+    "timebaseUs": 20000,
+    "signals": [
+      { "pin": "PL4", "label": "LED1 / T0CCP0 (PWM)" },
+      { "pin": "PL6", "label": "LED2 / T1CCP0 (Puls)" },
+      { "pin": "PM0", "label": "Taste 0 / T2CCP0 (Capture)" }
+    ]
+  }
+}

@@ -337,8 +337,13 @@ const SOLUTION_FIELDS = {
   example: { check: F.re(ID_RE, 'Name eines Beispiels (examples/<name>)'), required: true },
   label: F.str,
 };
+// Zeitbasen des Oszilloskops (1-2-5-Folge, 1 us/div .. 1 s/div) wie im Frontend (Oscilloscope.jsx)
+const SCOPE_TIMEBASES_US = [];
+for (let e = 0; e <= 6; e++) for (const m of [1, 2, 5]) if (m * 10 ** e <= 1e6) SCOPE_TIMEBASES_US.push(m * 10 ** e);
+
 const SCOPE_FIELDS = {
   channels: (v) => (Array.isArray(v) && v.length <= 4 ? null : 'Liste mit bis zu 4 Pins'),
+  timebaseUs: (v) => (SCOPE_TIMEBASES_US.includes(v) ? null : `Zeitbasis in µs/div aus 1, 2, 5, 10, 20, 50 … 1000000`),
   trigger: F.object,
   signals: (v) => (Array.isArray(v) ? null : 'Liste von { pin, label }'),
 };
@@ -738,6 +743,7 @@ function generate(spec, id, items, warnings, uartPins) {
     signals,
     channels: sc.channels ?? signals.slice(0, 4).map((s) => s.pin),
     ...(sc.trigger ? { trigger: sc.trigger } : {}),
+    ...(sc.timebaseUs ? { timebaseUs: sc.timebaseUs } : {}),
   };
   if (spec.solution) config.solution = pick(spec.solution, ['example', 'label']);
 

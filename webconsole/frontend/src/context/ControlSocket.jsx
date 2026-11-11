@@ -57,6 +57,7 @@ function mergeDiag(list, d) {
  */
 export function ControlSocketProvider({ children, live = true, experimentId = null, terminal = null }) {
   const [leds, setLeds] = useState({});
+  const [ledLevels, setLedLevels] = useState({});   // Helligkeit 0..1 bei PWM (sonst fehlt der Eintrag)
   const [renodeState, setRenodeState] = useState(live ? 'unknown' : 'preview');
   const [lastError, setLastError] = useState(null);
   const [uartConfig, setUartConfig] = useState(live ? null : terminal);
@@ -104,6 +105,7 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
       case 'hello':
         setRenodeState(msg.renode);
         setLeds(msg.leds || {});
+        setLedLevels(msg.ledLevels || {});
         if (msg.fb) emitFrame(decodeFrame(msg.fb));
         if (msg.pd) emitPendulum(decodePendulum(msg.pd));
         if (msg.uartConfig) setUartConfig(msg.uartConfig);
@@ -133,6 +135,7 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
         break;
       case 'leds':
         setLeds({ ...msg.states });
+        setLedLevels({ ...(msg.levels || {}) });
         break;
       case 'fb':
         emitFrame(decodeFrame(msg));
@@ -148,7 +151,10 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
         break;
       case 'renode':
         setRenodeState(msg.state);
-        if (msg.state === 'stopped') setLeds({});
+        if (msg.state === 'stopped') {
+          setLeds({});
+          setLedLevels({});
+        }
         break;
       case 'error':
         setLastError(msg.message);
@@ -240,6 +246,7 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
       status,
       renodeState,
       leds,
+      ledLevels,
       bcd,
       diagnostics,
       send,
@@ -254,7 +261,7 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
       lastError,
       clearError: () => setLastError(null),
     }),
-    [live, status, renodeState, leds, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents,
+    [live, status, renodeState, leds, ledLevels, bcd, diagnostics, send, subscribeFrame, subscribePendulum, subscribePendulumEvents,
       subscribeSignalStream, subscribeMessage, uartConfig, subscribeCio, subscribeScope, lastError],
   );
 

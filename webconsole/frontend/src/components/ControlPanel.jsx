@@ -83,14 +83,14 @@ function SessionStatus({ experiment, solution, background }) {
 }
 
 function Board({ experiment }) {
-  const { leds } = useControlSocket();
+  const { leds, ledLevels } = useControlSocket();
   return (
     <Widget title="Board" subtitle="LEDs & Taster" className="gpio">
       <div className="board-row">
         {experiment.leds?.length > 0 && (
           <div className="led-row">
             {experiment.leds.map((l) => (
-              <Led key={l.id} label={l.label} color={l.color} on={!!leds[l.id]} />
+              <Led key={l.id} label={l.label} color={l.color} on={!!leds[l.id]} level={ledLevels?.[l.id]} />
             ))}
           </div>
         )}

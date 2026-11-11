@@ -29,6 +29,10 @@
 // Pull-up/Pull-down; sonst offen. Alternative Funktion (AFSEL = 1, DEN = 1): Ein Peripheriemodell kann den
 // Pin mit RegisterAlternateOutput übernehmen (z. B. U0TX, Ruhepegel HIGH) und mit AlternateOutput einen
 // Bitstrom ausgeben (auch mit Zeitpunkten in der Zukunft).
+// Timer-CCP-Pins (GPIOPCTL = 3): Der Timer meldet mit SetAlternateDrive, ob er den Pin als Ausgang treibt
+// (Compare-Action, PWM) und mit welchem Pegel – der Pin wirkt dann wie ein GPIO-Ausgang (LED, Oszilloskop,
+// Gerätemodelle). Treibt er nicht (Capture), ist der Pin ein Eingang; jede Pegeländerung, die der
+// Eingangsempfänger sieht (DEN = 1), meldet das Ereignis LevelChanged (Pin, Pegel).
 //
 // Monitor (bzw. Web-Konsole):  sysbus.gpioJ OnGPIO 0 false     Pin von außen auf LOW treiben
 //                              sysbus.gpioJ ReleaseInput 0     Pin nicht mehr treiben (offen)
@@ -52,7 +56,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             this.clockBit = clockBit;
             this.portName = portName;
             this.ownMachine = machine;
-            for(int i = 0; i < 8; i++) afFunction[i] = -1;
+            for(int i = 0; i < 8; i++) alt[i] = new Dictionary<int, AltFunction>();
             // Commit-geschützte Pins (Tabelle 10-11): PC[3:0] JTAG/SWD, PD7 und PE7 (NMI)
             protectedPins = portName == "C" ? 0x0Fu : (portName == "D" || portName == "E") ? 0x80u : 0u;
             IRQ = new GPIO();
@@ -73,6 +77,9 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             other.TryGetValue(Pctl, out pctl);
             return ((afsel >> pin) & 1) != 0 && ((den >> pin) & 1) != 0 && ((pctl >> (4 * pin)) & 0xF) == function;
         }
+
+        // Pegeländerung am Eingangsempfänger eines Pins (Pin, neuer Pegel), z. B. für Timer-Capture
+        public event Action<int, bool> LevelChanged;
 
         public string PortName { get { return portName; } }
 
@@ -103,16 +110,14 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         public void RegisterAlternateOutput(int pin, int function, bool idleHigh)
         {
             if(pin < 0 || pin > 7) return;
-            afFunction[pin] = function;
-            afIdle[pin] = idleHigh;
+            alt[pin][function] = new AltFunction { Level = idleHigh, Kind = AltKind.Stream };
             UpdatePads();
         }
 
         // Pin wieder freigeben (z. B. UART auf andere Pins gelegt)
         public void ReleaseAlternateOutput(int pin, int function)
         {
-            if(pin < 0 || pin > 7 || afFunction[pin] != function) return;
-            afFunction[pin] = -1;
+            if(pin < 0 || pin > 7 || !alt[pin].Remove(function)) return;
             UpdatePads();
         }
 
@@ -120,9 +125,34 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         // Bits eines UART-Rahmens). Wirkt nur, wenn der Pin gerade für diese Funktion eingestellt ist.
         public void AlternateOutput(int pin, int function, double us, bool level)
         {
-            if(pin < 0 || pin > 7 || afFunction[pin] != function || !AlternateActive(pin)) return;
+            if(pin < 0 || pin > 7 || ActiveAlternate(pin) != function) return;
             var handler = padChanged;
             if(handler != null) handler(pin, us, level ? 1 : 0);
+        }
+
+        // Peripherie (Timer-CCP) treibt den Pin jetzt (drive = true) mit 'level' bzw. lässt ihn los
+        // (drive = false: Pin ist Eingang der Peripherie). Wirkt nur, wenn der Pin für 'function'
+        // eingestellt ist (AFSEL = 1, DEN = 1, GPIOPCTL); sonst wird der Zustand nur gemerkt.
+        // us: virtuelle Zeit des Wechsels für das Oszilloskop (< 0: jetzt).
+        public void SetAlternateDrive(int pin, int function, bool drive, bool level, double us = -1)
+        {
+            if(pin < 0 || pin > 7) return;
+            AltFunction f;
+            if(!alt[pin].TryGetValue(function, out f))
+            {
+                f = new AltFunction();
+                alt[pin][function] = f;
+            }
+            var kind = drive ? AltKind.Drive : AltKind.Input;
+            if(f.Kind == kind && f.Level == level) return;
+            uint old = ReceiverLevels();
+            f.Kind = kind;
+            f.Level = level;
+            if(ActiveAlternate(pin) != function) return;
+            UpdatePins();
+            DetectEdges(old, ReceiverLevels());
+            UpdateInterrupt();
+            UpdatePads(us);
         }
 
         // Virtuelle Zeit in us, möglichst auf den Befehl genau (CPU-Zeit wird vorher nachgeführt)
@@ -325,8 +355,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             UpdatePads();
         }
 
-        // Pinpegel neu bestimmen und Wechsel melden
-        private void UpdatePads()
+        // Pinpegel neu bestimmen und Wechsel melden (at: virtuelle Zeit in us, < 0 = jetzt)
+        private void UpdatePads(double at = -1)
         {
             var handler = padChanged;
             if(handler == null) return;
@@ -345,7 +375,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 }
             }
             if(changes == null) return;
-            double now = NowUs();
+            double now = at >= 0 ? at : NowUs();
             foreach(var c in changes) handler(c & 0xFF, now, c >> 8);
         }
 
@@ -355,21 +385,38 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             uint bit = 1u << i;
             if((OutputEnabled() & bit) != 0) return (dataLatch & bit) != 0 ? 1 : 0;
-            if(AlternateActive(i)) return afIdle[i] ? 1 : 0;
+            int fn = ActiveAlternate(i);
+            if(fn >= 0 && alt[i][fn].Kind != AltKind.Input) return alt[i][fn].Level ? 1 : 0;
             if((inputDriven & bit) != 0) return (inputValue & bit) != 0 ? 1 : 0;
             if((PullUps() & bit) != 0) return 1;
             if((PullDowns() & bit) != 0) return 0;
             return 2;
         }
 
-        private bool AlternateActive(int pin)
+        // Angemeldete alternative Funktion, auf die der Pin gerade eingestellt ist (-1: keine)
+        private int ActiveAlternate(int pin)
         {
-            if(afFunction[pin] < 0) return false;
             uint bit = 1u << pin;
-            if((afsel & bit) == 0 || (den & bit) == 0) return false;
+            if((afsel & bit) == 0 || (den & bit) == 0 || alt[pin].Count == 0) return -1;
             uint pctl;
             other.TryGetValue(Pctl, out pctl);
-            return ((pctl >> (4 * pin)) & 0xF) == afFunction[pin];
+            int fn = (int)((pctl >> (4 * pin)) & 0xF);
+            return alt[pin].ContainsKey(fn) ? fn : -1;
+        }
+
+        // Pins, die eine Peripherie gerade treibt (Bit = 1), und ihr Pegel
+        private uint AltDriven(out uint levels)
+        {
+            uint driven = 0;
+            levels = 0;
+            for(int i = 0; i < 8; i++)
+            {
+                int fn = ActiveAlternate(i);
+                if(fn < 0 || alt[i][fn].Kind != AltKind.Drive) continue;
+                driven |= 1u << i;
+                if(alt[i][fn].Level) levels |= 1u << i;
+            }
+            return driven;
         }
 
         // Pegel am Pin von außen: getrieben, sonst Pull-up/Pull-down, sonst offen (0)
@@ -384,7 +431,10 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             uint outputs = dir & ~afsel & 0xFF;
             uint levels = dataLatch & outputs;
-            levels |= PadInput() & den & ~outputs;
+            uint altLevels;
+            uint altDriven = AltDriven(out altLevels);
+            levels |= PadInput() & den & ~outputs & ~altDriven;
+            levels |= altLevels & altDriven;
             return levels & 0xFF;
         }
 
@@ -465,7 +515,9 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
 
         private void UpdatePins()
         {
-            uint newDriven = dataLatch & OutputEnabled();
+            uint altLevels;
+            AltDriven(out altLevels);
+            uint newDriven = (dataLatch & OutputEnabled()) | altLevels;
             for(int i = 0; i < 8; i++)
             {
                 bool level = ((newDriven >> i) & 1) != 0;
@@ -483,6 +535,14 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             uint changed = oldPins ^ newPins;
             if(changed == 0) return;
+            var listeners = LevelChanged;
+            if(listeners != null)
+            {
+                for(int i = 0; i < 8; i++)
+                {
+                    if((changed & (1u << i)) != 0) listeners(i, (newPins & (1u << i)) != 0);
+                }
+            }
             uint edgeSensitive = ~isLevel & 0xFF;
             uint rising = changed & newPins;
             uint falling = changed & oldPins;
@@ -556,7 +616,15 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         private readonly object padLock = new object();
         private readonly int[] padLevels = { 2, 2, 2, 2, 2, 2, 2, 2 };
         private Action<int, double, int> padChanged;
-        private readonly int[] afFunction = new int[8];
-        private readonly bool[] afIdle = new bool[8];
+        // Alternative Funktionen je Pin (GPIOPCTL-Wert -> Zustand): UART-Bitstrom oder Timer-CCP
+        private readonly Dictionary<int, AltFunction>[] alt = new Dictionary<int, AltFunction>[8];
+
+        private enum AltKind { Stream, Drive, Input }
+
+        private class AltFunction
+        {
+            public AltKind Kind;   // Stream: Ruhepegel Level, Bits über AlternateOutput; Drive: Pegel Level; Input: treibt nicht
+            public bool Level;
+        }
     }
 }

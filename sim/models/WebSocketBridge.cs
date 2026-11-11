@@ -8,6 +8,13 @@
 // vorgänge je Sekunde mitten in der Emulation ausgelöst (gemessen: Simulation 2–3× langsamer).
 // Ein Blinken innerhalb eines Intervalls geht nicht verloren: Hat eine LED seit dem letzten Senden
 // gewechselt, endet aber im alten Zustand, werden beide Wechsel gesendet.
+//
+// Helligkeit (PWM, "Dimmen"): Je LED wird die Helligkeit wie vom Auge gemittelt – Tiefpass 1. Ordnung
+// über die virtuelle Zeit, Zeitkonstante BrightnessTauMs. Schaltet eine LED schnell (zwei Wechsel im
+// Abstand von höchstens PwmHoldMs), kommt mit jedem Senden zusätzlich "LEDB<n>=<0..1000>" (Promille);
+// bleibt sie länger als PwmHoldMs stehen, einmal "LEDB<n>=-" (dann gilt wieder nur an/aus). Langsames
+// Blinken (z. B. ein 100-ms-Puls) bleibt so ein hartes An/Aus. Bei 30 Hz bleibt ein leichtes
+// Flimmern sichtbar – wie bei einer echten LED.
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -24,6 +31,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
     {
         public WebSocketBridge(IMachine machine, int port = 9000)
         {
+            this.machine = machine;
             clients = new List<NetworkStream>();
             state = new bool[8];
             listener = new TcpListener(IPAddress.Loopback, port);
@@ -38,13 +46,34 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         public void OnGPIO(int number, bool value)
         {
             if(number < 0 || number > 7) return;
+            double now = NowMs();
             lock(pending)
             {
                 if(state[number] == value) return;
+                Integrate(number, now);
                 state[number] = value;
                 changed[number] = true;
+                // PWM: zwei Wechsel kurz hintereinander (höchstens PwmHoldMs, d. h. ab ca. 12 Hz)
+                if(now - lastToggleMs[number] <= PwmHoldMs) toggling[number] = true;
+                lastToggleMs[number] = now;
                 dirty = true;
             }
+        }
+
+        // Virtuelle Zeit in ms
+        private double NowMs()
+        {
+            return machine.LocalTimeSource.ElapsedVirtualTime.TotalMilliseconds;
+        }
+
+        // Helligkeit bis 'now' nachführen (Pegel seit dem letzten Aufruf konstant); unter 'pending'
+        private void Integrate(int i, double now)
+        {
+            double dt = now - integratedMs[i];
+            if(dt <= 0) return;
+            integratedMs[i] = now;
+            double target = state[i] ? 1.0 : 0.0;
+            brightness[i] += (target - brightness[i]) * (1.0 - Math.Exp(-dt / BrightnessTauMs));
         }
 
         private void SendLoop()
@@ -54,11 +83,24 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {
                 Thread.Sleep(SendIntervalMs);
                 msgs.Clear();
+                double now = NowMs();
                 lock(pending)
                 {
-                    if(!dirty) continue;
-                    dirty = false;
                     for(int i = 0; i < 8; i++)
+                    {
+                        if(!toggling[i]) continue;
+                        Integrate(i, now);
+                        if(now - lastToggleMs[i] > PwmHoldMs)
+                        {
+                            toggling[i] = false;
+                            msgs.Add("LEDB" + i + "=-");
+                        }
+                        else
+                        {
+                            msgs.Add("LEDB" + i + "=" + (int)Math.Round(brightness[i] * 1000));
+                        }
+                    }
+                    for(int i = 0; i < 8 && dirty; i++)
                     {
                         if(!changed[i]) continue;
                         changed[i] = false;
@@ -70,7 +112,9 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                         msgs.Add(Message(i, state[i]));
                         sent[i] = state[i];
                     }
+                    dirty = false;
                 }
+                if(msgs.Count == 0) continue;
                 lock(clients)
                 {
                     foreach(var m in msgs) Broadcast(m);
@@ -86,6 +130,8 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 {
                     changed[i] = state[i];   // LEDs, die an waren, als aus melden
                     state[i] = false;
+                    brightness[i] = 0;
+                    integratedMs[i] = NowMs();
                 }
                 dirty = true;
             }
@@ -171,6 +217,13 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private readonly bool[] changed = new bool[8];
         private readonly object pending = new object();
         private bool dirty;
+        private readonly IMachine machine;
+        private readonly double[] brightness = new double[8];     // 0..1, Tiefpass über die virtuelle Zeit
+        private readonly double[] integratedMs = new double[8];   // bis hierher nachgeführt
+        private readonly double[] lastToggleMs = { -1e9, -1e9, -1e9, -1e9, -1e9, -1e9, -1e9, -1e9 };
+        private readonly bool[] toggling = new bool[8];           // LEDB wird gesendet
         private const int SendIntervalMs = 20;
+        private const double BrightnessTauMs = 50;
+        private const double PwmHoldMs = 80;
     }
 }

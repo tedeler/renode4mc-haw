@@ -59,6 +59,7 @@ einem unbenutzten Pin.
   "scope": {                               // Oszilloskop, optional
     "channels": ["PM0", "PM4", "PL0", "PL1"],  // Startbelegung CH1..CH4 (Standard: die ersten 4 Signale)
     "trigger": { "source": "PM0", "edge": "falling" },
+    "timebaseUs": 20000,                   // Start-Zeitbasis in µs/div (1-2-5-Folge, 1 … 1000000; Standard 1000)
     "signals": [ { "pin": "PB0", "label": "eigener Name" } ]  // Beschriftungen ändern/ergänzen
   }
 }
@@ -117,6 +118,26 @@ Hardware einen USB-Seriell-Adapter (das Prüfwerkzeug gibt einen Hinweis). Im Si
 "uart": { "rx": "PJ0", "tx": "PJ1", "baud": 9600, "format": "8N1" }
 ```
 
+### Timer-Pins (CCP)
+
+Ein Timer kann einen Pin selbst treiben (Compare-Action, PWM) oder Flanken an ihm messen (Capture).
+Dafür braucht es kein eigenes Element: Eine `led` bzw. ein `button` an einem CCP-Pin genügt, die
+Firmware schaltet den Pin mit GPIOAFSEL = 1, GPIODEN = 1 und GPIOPCTL = 3 auf den Timer. Mögliche Pins
+(Datenblatt Tabelle 13-2):
+
+| Timer | CCP0 (Timer A) | CCP1 (Timer B) |
+|---|---|---|
+| Timer 0 | PD0, PA0, PL4 | PD1, PA1, PL5 |
+| Timer 1 | PD2, PA2, PL6 | PD3, PA3, PL7 |
+| Timer 2 | PA4, PM0 | PA5, PM1 |
+| Timer 3 | PA6, PM2, PD4 | PA7, PM3, PD5 |
+| Timer 4 | PM4, PB0, PD6 | PM5, PB1, PD7 |
+| Timer 5 | PM6, PB2 | PM7, PB3 |
+
+Timer 6/7 haben im 128-Pin-Gehäuse keine CCP-Pins. Eine LED an einem PWM-Pin zeigt die Web-Konsole
+gedimmt (mittlere Helligkeit wie vom Auge gesehen). Beispiel: `example3` mit `examples/example05_timer_ccp`.
+Im Monitor: `sysbus.timer0 CcpPins` zeigt, welche Pins ein Timer gerade benutzt und ihren Pegel.
+
 ### Pull-Widerstände
 
 `"pull": "up"` bei einem Taster bedeutet einen Widerstand **auf der Platine**: Losgelassen liest der Pin
@@ -148,7 +169,7 @@ sind Teil des Gerätemodells und werden nicht angegeben.
 }
 ```
 
-Die vorhandenen Versuche (`example1`, `example2`, `lab1_gpio` … `lab4_uart`) sind ebenfalls Vorlagen.
+Die vorhandenen Versuche (`example1` … `example3`, `lab1_gpio` … `lab4_uart`) sind ebenfalls Vorlagen.
 Die Board-LEDs D1–D4 (PN1, PN0, PF4, PF0) und Taster USR_SW1/2 (PJ0, PJ1) sind normale `led`- bzw.
 `button`-Elemente; ein Versuch ohne sie zeigt sie nicht an.
 

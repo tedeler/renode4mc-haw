@@ -231,7 +231,7 @@ function defaultSettings(scope) {
       vdiv: 2,
       pos: 2.1 - 2 * i, // Lage der 0-V-Linie in Teilungen über der Mitte
     })),
-    timebase: 1e6, // 1 ms/div
+    timebase: scope?.timebaseUs ? scope.timebaseUs * 1000 : 1e6, // ns/div, Standard 1 ms/div (Versuch: scope.timebaseUs)
     hpos: 0.5, // Triggerpunkt in der Mitte
     trigger: {
       source: trigCh >= 0 ? `CH${trigCh + 1}` : trig.source ? 'EXT' : 'CH1',

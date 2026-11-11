@@ -89,7 +89,7 @@ Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar an
 
 | Anzeige | Quelle | Verfahren |
 |---|---|---|
-| LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`) |
+| LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`), bei PWM zusätzlich die gemittelte Helligkeit (`LEDB<n>=<Promille>`, `LEDB<n>=-` = wieder an/aus) |
 | UART0 | `sysbus.uart0.host` (PC-Terminal) → `ServeTcp 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
 | Simulations-Anzeige | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode-Log | **Polling** alle 500 ms, nur solange die Anzeige offen ist |
 | Leitungen (Oszilloskop) | `sysbus.uart0 GetEdges` | **Polling** alle 100 ms, nur solange ein Browser die Leitung abonniert hat |
@@ -274,7 +274,7 @@ Server → Browser:
 
 ```jsonc
 { "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…}, "pd": {…} }
-{ "type": "leds", "states": { "D1": true, "D2": false, … } }
+{ "type": "leds", "states": { "D1": true, "D2": false, … }, "levels": { "LED1": 0.25 } }   // levels: nur LEDs mit PWM (0..1)
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
 { "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …], "frozen": false }
@@ -585,6 +585,7 @@ node test/e2e.js ../../examples/example03_webkonsole/example03_webkonsole.out
 node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pendeldisplay.out
 node test/e2e_signals.js ../../examples/example03_webkonsole/example03_webkonsole.out
 node test/e2e_scope.js ../../sim/solutions
+node test/e2e_timer.js                                           # example3 + sim/solutions/example05_timer_ccp.elf
 node test/e2e_labs.js <Verzeichnis mit lab01.out … lab04.out>
 node test/e2e_step.js <schlaf_takt.elf>                           # test/firmware/schlaf_takt.c
 node test/e2e_cpustats.js <schlaf_takt.elf> <schlaf_takt_ohne_wfi.elf>   # zweites mit -DOHNE_WFI
@@ -614,6 +615,12 @@ Dekoder im Test liest daraus dieselben Texte wie das Terminal, Tastendruck als F
 `test/e2e_scope.js` prüft das Oszilloskop mit den Musterlösungen (`sim/solutions`): Pendel-Signal
 PL0 (Periode 120,000 ms), HC-SR04-Trigger und Echo (3790 µs bei 65 cm, 450 µs nach der Flanke),
 offener Pin, Vereinigung der Quellen zweier Browser, UART-Rahmen `'#'` 9600 7N1 nach SW1.
+
+`test/e2e_timer.js` prüft Versuch `example3` mit der Demo `example05_timer_ccp` (Timer-Compare-Action,
+Edge-Time-Capture): am Oszilloskop LED1/PL4 mit 25 % (8,333/25,000 ms) und 50 % (16,666/16,667 ms),
+bei 0 %/100 % keine Flanken, LED2/PL6 100 ms HIGH alle 1 s, gedimmte Helligkeit von LED1 (Mittel
+ca. 0,25) und harter Puls von LED2, Stufen-LEDs, Tastendauer von Taste 0 per Capture = Dauer am
+Oszilloskop (auch über 1,05 s mit Überlauf des 24-Bit-Zählers), keine Diagnose.
 
 `test/e2e_labs.js` prüft die vier Lab-Umgebungen mit ihren Musterlösungen, die Diagnose und
 `POST /api/solution` (siehe [LABORE.md](LABORE.md)).
