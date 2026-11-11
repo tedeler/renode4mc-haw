@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Renode4MC-HAW: Chip mit UART-Rechtecksignal (wie src/components/AppLogo.jsx) -->
+  <rect width="64" height="64" rx="12" fill="#0f1420"/>
+  <g transform="translate(4 4) scale(0.875)">
+    <path d="M22 4V12M22 52V60M4 22H12M52 22H60M32 4V12M32 52V60M4 32H12M52 32H60M42 4V12M42 52V60M4 42H12M52 42H60" fill="none" stroke="#8b98b4" stroke-width="3.4" stroke-linecap="round"/>
+    <rect x="12" y="12" width="40" height="40" rx="7" fill="none" stroke="#8b98b4" stroke-width="3.4"/>
+    <path d="M15 36H20V26H25V36H29V26H39V36H44V26H49" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+</svg>

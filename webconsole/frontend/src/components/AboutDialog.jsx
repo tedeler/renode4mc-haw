@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import hawLogo from '../assets/haw-logo.png';
+import AppLogo from './AppLogo.jsx';
 
 /* global __BUILD_INFO__ */
 const INFO = typeof __BUILD_INFO__ !== 'undefined' ? __BUILD_INFO__ : {};
@@ -39,7 +40,12 @@ export default function AboutDialog({ open, onClose }) {
         <div className="about-logo">
           <img src={hawLogo} alt="HAW Hamburg" />
         </div>
-        <h2 id="about-title">renode4mc-haw · Web-Konsole</h2>
+        <h2 id="about-title" className="about-title">
+          <AppLogo size={30} />
+          <span>
+            Renode4MC<span className="about-accent">-HAW</span>
+          </span>
+        </h2>
         <p className="about-sub">
           Simulator für das Mikrocontroller-Labor (TI TM4C1294) auf Basis von Renode
           <br />
