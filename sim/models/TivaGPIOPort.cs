@@ -108,6 +108,14 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             UpdatePads();
         }
 
+        // Pin wieder freigeben (z. B. UART auf andere Pins gelegt)
+        public void ReleaseAlternateOutput(int pin, int function)
+        {
+            if(pin < 0 || pin > 7 || afFunction[pin] != function) return;
+            afFunction[pin] = -1;
+            UpdatePads();
+        }
+
         // Pegel einer alternativen Funktion zur virtuellen Zeit us (darf in der Zukunft liegen, z. B. die
         // Bits eines UART-Rahmens). Wirkt nur, wenn der Pin gerade für diese Funktion eingestellt ist.
         public void AlternateOutput(int pin, int function, double us, bool level)
