@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchExperiments, startSolution, stopSimulation, uploadElf } from '../api.js';
 import AboutDialog from './AboutDialog.jsx';
+import AppLogo from './AppLogo.jsx';
 import hawLogo from '../assets/haw-logo.png';
 
 /**
@@ -89,12 +90,14 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
     <header className={`setup-bar ${open ? 'open' : 'closed'}`} ref={headerRef}>
       <AboutDialog open={about} onClose={() => setAbout(false)} />
       <div className="setup-top">
-        <div className="brand" title="renode4mc-haw · Web-Konsole">
+        <div className="brand" title="Renode4MC-HAW">
           <button type="button" className="brand-logo" onClick={() => setAbout(true)} title="Über diese Web-Konsole">
             <img src={hawLogo} alt="HAW Hamburg – Über diese Web-Konsole" />
           </button>
-          <span className="brand-long">renode4mc-haw · Web-Konsole</span>
-          <span className="brand-short">renode4mc</span>
+          <AppLogo size={22} />
+          <span className="brand-name">
+            Renode4MC<span className="brand-long">-HAW</span>
+          </span>
         </div>
         <div id="hdr-status" className="hdr-status" />
         <button

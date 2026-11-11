@@ -33,7 +33,6 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 }
 .setup-top { display: contents; }
 .brand { order: 0; font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.brand-short { display: none; }
 .brand-logo {
   flex: none; display: flex; align-items: center; padding: 3px 6px; margin: -2px 0;
   background: #fff; border: 1px solid transparent; border-radius: 4px; cursor: pointer;
@@ -41,6 +40,11 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 }
 .brand-logo:hover, .brand-logo:focus-visible { opacity: 1; border-color: var(--accent); outline: none; }
 .brand-logo img { height: 18px; width: auto; display: block; }
+.brand-name { letter-spacing: -0.01em; }
+.brand-name .brand-long { color: var(--accent); }
+.app-logo { display: block; flex: none; }
+.app-logo-chip { stroke: var(--muted); }
+.app-logo-wave { stroke: var(--accent); }
 
 /* ---------- Über-Dialog ---------- */
 .about-dialog {
@@ -51,7 +55,9 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .about-body { padding: 18px 20px 16px; }
 .about-logo { background: #fff; border-radius: 6px; padding: 12px; display: flex; justify-content: center; margin-bottom: 14px; }
 .about-logo img { height: 44px; width: auto; }
-.about-dialog h2 { margin: 0 0 4px; font-size: 17px; }
+.about-dialog h2 { margin: 0 0 4px; font-size: 20px; }
+.about-title { display: flex; align-items: center; gap: 10px; }
+.about-accent { color: var(--accent); }
 .about-sub { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
 .about-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 16px; font-size: 13px; }
 .about-facts dt { color: var(--muted); }
@@ -331,7 +337,6 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
   .setup-top > * { order: 0; }
   .hdr-status { min-width: 0; overflow: hidden; }
   .brand-long { display: none; }
-  .brand-short { display: inline; }
   .hdr-status { flex: 1; }
   .exp-title { max-width: none; }
   .session-status { gap: 8px; }
@@ -374,10 +379,6 @@ body.ws-resizing, body.ws-resizing * { cursor: col-resize !important; user-selec
   .field input[type='file']::file-selector-button { padding: 2px 8px; }
   .exp-title { max-width: 260px; }
   .brand { font-size: 14px; }
-}
-@media (min-width: 760px) and (max-width: 1500px) and (min-height: 520px) {
-  .brand-long { display: none; }
-  .brand-short { display: inline; }
 }
 @media (min-width: 760px) and (min-height: 520px) {
   .setup-form { flex: 0 1 auto; }
