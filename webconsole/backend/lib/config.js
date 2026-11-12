@@ -22,6 +22,9 @@ module.exports = Object.freeze({
   renodeBin: process.env.RENODE_BIN || 'renode',
   renodeHeadlessFlag: process.env.RENODE_HEADLESS_FLAG || '--disable-gui',
   renodeStartTimeoutMs: int(process.env.RENODE_START_TIMEOUT_MS, 60000),
+  // Renode einmal starten und für jeden Versuch nur die Maschine neu laden (RENODE_PERSISTENT=0: wie
+  // früher je Versuch ein neuer Renode-Prozess)
+  renodePersistent: process.env.RENODE_PERSISTENT !== '0',
 
   // Simulator-Verzeichnis aus dem Repository (models/, platforms/, tm4c1294.resc, experiments/).
   // Renode wird mit diesem Arbeitsverzeichnis gestartet, damit die relativen Pfade der .resc stimmen.

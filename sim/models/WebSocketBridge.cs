@@ -27,7 +27,7 @@ using Antmicro.Renode.Logging;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
-    public class WebSocketBridge : IGPIOReceiver
+    public class WebSocketBridge : IGPIOReceiver, IDisposable
     {
         public WebSocketBridge(IMachine machine, int port = 9000)
         {
@@ -41,7 +41,20 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             t.Start();
             var s = new Thread(SendLoop) { IsBackground = true, Name = "WebSocketBridge" };
             s.Start();
+            // Nicht am Systembus: Renode ruft Dispose() beim Entfernen der Maschine (mach rem) nicht
+            // selbst auf -> Port 9000 bliebe belegt und die nächste Maschine könnte ihn nicht öffnen
+            emulation = EmulationManager.Instance.CurrentEmulation;
+            emulation.MachineRemoved += OnMachineRemoved;
         }
+
+        private void OnMachineRemoved(IMachine m)
+        {
+            if(m != machine) return;
+            emulation.MachineRemoved -= OnMachineRemoved;
+            Dispose();
+        }
+
+        private readonly Emulation emulation;
 
         public void OnGPIO(int number, bool value)
         {
@@ -79,7 +92,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private void SendLoop()
         {
             var msgs = new List<string>();
-            while(true)
+            while(!disposed)
             {
                 Thread.Sleep(SendIntervalMs);
                 msgs.Clear();
@@ -209,6 +222,20 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             catch { }
         }
 
+        // Maschine entfernt (mach rem, Renode bleibt laufen): Port und Threads freigeben
+        public void Dispose()
+        {
+            disposed = true;
+            listener.Stop();
+            lock(clients)
+            {
+                foreach(var c in keepAlive) c.Close();
+                keepAlive.Clear();
+                clients.Clear();
+            }
+        }
+
+        private volatile bool disposed;
         private readonly TcpListener listener;
         private readonly List<NetworkStream> clients;
         private readonly List<TcpClient> keepAlive = new List<TcpClient>();

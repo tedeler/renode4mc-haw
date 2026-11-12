@@ -21,6 +21,8 @@ const renode = new RenodeManager({
   monitorPort: cfg.renodeMonitorPort,
   queryPort: cfg.renodeQueryPort,
   cwd: cfg.simDir,
+  persistent: cfg.renodePersistent,
+  host: cfg.renodeHost,
 });
 
 const uart = new UartBridge({
@@ -69,7 +71,8 @@ async function startExperiment(exp) {
   renode.logTail = []; // kein Log des vorherigen Laufs in der Fehlermeldung
   control.resetDiagnostics();
   const ports = [
-    { port: cfg.renodeMonitorPort, name: 'Renode-Monitor' },
+    // Dauerbetrieb: der Monitor-Port gehört dem laufenden Renode
+    ...(cfg.renodePersistent ? [] : [{ port: cfg.renodeMonitorPort, name: 'Renode-Monitor' }]),
     { port: cfg.renodeQueryPort, name: 'Renode-Abfrage-Port' },
     { port: cfg.renodeUartPort, name: 'UART-Terminal' },
   ];
@@ -78,7 +81,7 @@ async function startExperiment(exp) {
 
   control.resetLog();
   const rescPath = experiments.prepare(exp, cfg.generatedDir);
-  await renode.start(exp.id, rescPath, cfg.elfPath, control.terminalSettings(exp));
+  await renode.start(exp.id, rescPath, cfg.elfPath, control.terminalSettings(exp), exp.machine);
   const alive = () => renode.running;
   // Reihenfolge: UART-Socket existiert erst, wenn das .resc-Skript die Maschine angelegt hat
   await uart.attach(cfg.renodeStartTimeoutMs, alive);
@@ -273,6 +276,12 @@ const server = app.listen(cfg.httpPort, () => {
   console.log(`[server] Simulator: ${cfg.simDir} (Versuche in ${cfg.experimentsSubdir}/)`);
 });
 
+// Dauerbetrieb: Renode gleich starten und die Modelle übersetzen, damit schon der erste Upload schnell
+// ist (startExperiment wartet sonst darauf)
+if (cfg.renodePersistent) {
+  exclusive(() => renode.boot()).catch((e) => console.error(`[server] Renode-Vorstart fehlgeschlagen: ${e.message}`));
+}
+
 // ---------------------------------------------------------------------------
 // Shutdown
 // ---------------------------------------------------------------------------
@@ -281,7 +290,7 @@ async function shutdown(sig) {
   server.close();
   uart.close();
   control.close();
-  await renode.stop().catch(() => {});
+  await renode.kill().catch(() => {});
   process.exit(0);
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

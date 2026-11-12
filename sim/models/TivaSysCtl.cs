@@ -23,7 +23,7 @@ using Antmicro.Renode.Peripherals.CPU;
 
 namespace Antmicro.Renode.Peripherals.Miscellaneous
 {
-    public class TivaSysCtl : IDoubleWordPeripheral, IKnownSize
+    public class TivaSysCtl : IDoubleWordPeripheral, IKnownSize, IDisposable
     {
         // moscFrequency: Quarz am Hauptoszillator (EK-TM4C1294XL: 25 MHz)
         public TivaSysCtl(IMachine machine, uint moscFrequency = 25000000)
@@ -95,15 +95,18 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             while(true)
             {
                 System.Net.Sockets.TcpClient c;
+                var l = queryListener;
+                if(l == null) return;
                 try
                 {
-                    c = queryListener.AcceptTcpClient();
+                    c = l.AcceptTcpClient();
                 }
                 catch(Exception)
                 {
                     return;
                 }
                 c.NoDelay = true;
+                lock(queryClients) queryClients.Add(c);
                 new System.Threading.Thread(() => QueryLoop(c)) { IsBackground = true, Name = "TivaSysCtl query" }.Start();
             }
         }
@@ -137,9 +140,25 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             catch(Exception)
             {
             }
+            lock(queryClients) queryClients.Remove(c);
+        }
+
+        // Maschine entfernt (mach rem, Renode bleibt laufen): Abfrage-Port freigeben, damit die
+        // nächste Maschine ihn wieder öffnen kann
+        public void Dispose()
+        {
+            var l = queryListener;
+            queryListener = null;
+            if(l != null) l.Stop();
+            lock(queryClients)
+            {
+                foreach(var c in queryClients) c.Close();
+                queryClients.Clear();
+            }
         }
 
         private System.Net.Sockets.TcpListener queryListener;
+        private readonly List<System.Net.Sockets.TcpClient> queryClients = new List<System.Net.Sockets.TcpClient>();
 
         // Wie Batch, Antwort aber als Base64 von gzip: Renodes Monitor gibt lange Texte langsam aus
         // (Telnet-Ausgabe Zeichen für Zeichen, gemessen ~2/3 eines Kerns bei 10 Abfragen je Sekunde mit

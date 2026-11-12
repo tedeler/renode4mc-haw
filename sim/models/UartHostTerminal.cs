@@ -35,7 +35,7 @@ using Antmicro.Renode.Logging;
 
 namespace Antmicro.Renode.Peripherals.UART
 {
-    public class UartHostTerminal : UARTBase, IUartLineEndpoint
+    public class UartHostTerminal : UARTBase, IUartLineEndpoint, IDisposable
     {
         public UartHostTerminal(IMachine machine, uint baudRate = 115200, string format = "8N1") : base(machine)
         {
@@ -163,9 +163,11 @@ namespace Antmicro.Renode.Peripherals.UART
             while(true)
             {
                 TcpClient c;
+                var l = listener;
+                if(l == null) return;
                 try
                 {
-                    c = listener.AcceptTcpClient();
+                    c = l.AcceptTcpClient();
                 }
                 catch(Exception)
                 {
@@ -218,7 +220,8 @@ namespace Antmicro.Renode.Peripherals.UART
                 TcpClient c;
                 lock(outQueue)
                 {
-                    while(outQueue.Count == 0 || client == null) System.Threading.Monitor.Wait(outQueue);
+                    while(!disposed && (outQueue.Count == 0 || client == null)) System.Threading.Monitor.Wait(outQueue);
+                    if(disposed) return;
                     chunk.Clear();
                     while(outQueue.Count > 0) chunk.Add(outQueue.Dequeue());
                     c = client;
@@ -234,6 +237,22 @@ namespace Antmicro.Renode.Peripherals.UART
             }
         }
 
+        // Maschine entfernt (mach rem, Renode bleibt laufen): Port und Threads freigeben
+        public void Dispose()
+        {
+            var l = listener;
+            listener = null;
+            if(l != null) l.Stop();
+            lock(outQueue)
+            {
+                disposed = true;
+                if(client != null) client.Close();
+                client = null;
+                System.Threading.Monitor.PulseAll(outQueue);
+            }
+        }
+
+        private bool disposed;
         private readonly IMachine hostMachine;
         private TcpListener listener;
         private TcpClient client;

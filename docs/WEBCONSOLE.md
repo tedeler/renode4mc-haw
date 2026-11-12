@@ -75,12 +75,25 @@ Nach **Stop** bleibt der Versuch als Vorschau stehen.
    `.resc` in `GENERATED_DIR`.
 3. Die Browser-WebSockets werden mit Code `4000` geschlossen. Das Frontend verbindet sich danach
    sofort neu.
-4. Eine laufende Renode-Instanz wird beendet: SIGTERM an die Prozessgruppe, nach 4 s SIGKILL,
-   danach zusätzlich `pkill -x renode` für verwaiste Prozesse.
-5. Die Datei wird nach `/tmp/app.elf` verschoben, und Renode wird gestartet.
-6. Das Backend wartet, bis das UART-Terminal (Port 3335) und der Monitor (Port 1234) erreichbar
-   sind. Beide entstehen erst, wenn das `.resc`-Skript gelaufen ist.
+4. Die Datei wird nach `/tmp/app.elf` verschoben. Renode läuft dauerhaft (siehe unten): Über den
+   Monitor setzt das Backend mit `Clear` Maschine und Emulation zurück, setzt `$elf`, `$queryPort`
+   und gegebenenfalls `$uartBaud`/`$uartFormat` und führt `include @<id>.resc` aus.
+5. Das Backend wartet, bis das UART-Terminal (Port 3335) und der Monitor (Port 1234) erreichbar
+   sind. Das UART-Terminal entsteht erst, wenn das `.resc`-Skript gelaufen ist.
 7. Antwort **HTTP 200** mit der Versuchs-Konfiguration. Das Frontend baut das Bedienfeld auf.
+
+**Renode im Dauerbetrieb** (Standard): Das Backend startet Renode schon beim eigenen Start und
+übersetzt dabei alle C#-Modelle aus `sim/models` (~10 s, Log „bereit: … Modelle übersetzt“). Ein
+Start dauert danach ~0,3–0,5 s statt ~11 s (gemessen 12.11.2026: ~1,6 s .NET-Start, ~6,3 s Übersetzen
+der Modelle, ~1 s Maschine, ~0,7 s Beenden des alten Prozesses). Renode überspringt bereits
+übersetzte Dateien („has already been compiled“), deshalb läuft das erzeugte `.resc` unverändert.
+`Clear` statt `mach rem`, weil sonst die virtuelle Zeit der neuen Maschine beim Stand der alten
+weiterliefe und das `start` im `.resc` ignoriert würde. „Stop“ entfernt nur die Maschine.
+Renode wird neu gestartet, wenn sich eine Modelldatei geändert hat (Änderungsdatum), wenn der
+Prozess nicht mehr läuft oder wenn das Laden fehlschlägt (einmal wiederholt). Modelle mit eigenen
+Ports geben sie in `Dispose()` frei (`TivaSysCtl` Abfrage-Port, `UartHostTerminal`,
+`WebSocketBridge` – Letztere hängt nicht am Bus und meldet sich dafür bei `MachineRemoved` an).
+`RENODE_PERSISTENT=0` stellt das frühere Verhalten her (je Start ein neuer Renode-Prozess).
 
 Schlägt der Start fehl (z. B. Fehler im `.resc`), antwortet das Backend mit HTTP 500. Die letzten
 Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar angezeigt.
@@ -559,6 +572,7 @@ RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 | `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | interne Renode-Ports (3335 steht fest im erzeugten `.resc`) |
 | `RENODE_QUERY_PORT` | 1235 | Abfrage-Port (`TivaSysCtl.ServeQueries`, wird als `$queryPort` übergeben) |
 | `RENODE_START_TIMEOUT_MS` | 60000 | Wartezeit auf Renode beim Start |
+| `RENODE_PERSISTENT` | `1` | `0`: je Start ein neuer Renode-Prozess statt Dauerbetrieb |
 | `SIM_DIR` | `<repo>/sim` | Simulator-Verzeichnis (Arbeitsverzeichnis von Renode) |
 | `EXPERIMENTS_SUBDIR` | `experiments` | Versuche (`<id>.json`) relativ zu `SIM_DIR` |
 | `GENERATED_DIR` | `<tmp>/renode4mc-experiments` | hier legt das Backend die erzeugten `.repl`/`.resc` ab (beschreibbar) |
