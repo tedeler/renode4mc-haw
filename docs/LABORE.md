@@ -89,7 +89,7 @@ Fehler werden dabei nicht stillschweigend „repariert“:
 | GPIO | Offener Eingang (nichts angeschlossen, Taster losgelassen, kein PUR/PDR) liest 0 | „PJ0 ist ein offener Eingang …“ (beim Lesen bzw. beim Freigeben des Interrupts) |
 | GPIO | PDR setzen löscht PUR und umgekehrt; PC0–3, PD7, PE7 nur mit GPIOLOCK/GPIOCR änderbar | „… ist geschützt (JTAG/NMI) …“ |
 | GPIO | Interrupt freigegeben, aber `DEN = 0` | „… es kommt nie ein Interrupt“ |
-| Timer | TnR/TnV wie Tabelle 13-4 (abwärts: True Prescaler, aufwärts: lineare Erweiterung), Reset-Werte, TnILD | Konfiguration bei laufendem Timer (außer TCACT), reservierte/nicht modellierte Modi (Edge-Count, RTC, Match-Interrupt), CCP-Betriebsart ohne CCP-Pin (PCTL = 3), ILR > 16 Bit, Prescaler > 8 Bit, Start mit ILR = 0 |
+| Timer | TnR/TnV wie Tabelle 13-4 (abwärts: True Prescaler, aufwärts: lineare Erweiterung), Reset-Werte, TnILD | Konfiguration bei laufendem Timer (außer TCACT), reservierte/nicht modellierte Modi (Edge-Count, RTC), CCP-Betriebsart ohne CCP-Pin (PCTL = 3), ILR > 16 Bit, Prescaler > 8 Bit, Start mit ILR = 0 |
 | UART | IBRD/FBRD gelten erst nach dem Schreiben von LCRH; nur WLEN Datenbits; ohne AFSEL/PCTL/DEN an PA0/PA1 kein Zeichen | „UART0: sendet, aber PA1 ist nicht als U0TX geschaltet (GPIOAFSEL, GPIODEN, GPIOPCTL = 1)“ |
 | UART | Die Leitung überträgt Flanken; das PC-Terminal tastet sie mit **seiner** Einstellung ab. Passen Baudrate/Format nicht (mehr als 2,5 % daneben), kommt wie am Board Zeichensalat oder gar nichts an (z. B. 115200 an ein 9600-Terminal: zu kurze Startbits werden verworfen) | „Firmware ist auf 115108 Baud 8N1 eingestellt …, das Terminal erwartet 9600 Baud 7N1“, dazu ggf. „Terminal: Framing-Fehler …“ |
 | UART | Zeichen vom Terminal kommen im Takt der Leitung an (9600 Bit/s 7N1: ca. alle 0,94 ms), Framing-/Paritätsfehler in DR/RSR, Overrun bei vollem FIFO | „Empfangs-FIFO voll …“ |
@@ -149,8 +149,9 @@ node test/e2e_labs.js /tmp/fw/out              # ONLY=lab1,lab4,solution für ei
   mit nachgebildetem CIO-Protokoll), das Docker-Image (ohne Docker-Daemon in der Testumgebung) und
   echte Hardware.
 - `scanf()` liest im Simulator nichts (CIO-read liefert Dateiende).
-- Timer: Input Edge-Count, RTC und der Match-Interrupt sind nicht modelliert (Compare-Action, PWM
-  und Input Edge-Time an den CCP-Pins schon, siehe `example05_timer_ccp`). Das Echo misst
+- Timer: Input Edge-Count und RTC sind nicht modelliert (Compare-Action, PWM, Input Edge-Time an
+  den CCP-Pins und das Match-Ereignis TnMIE/TnMRIS in One-Shot/Periodic schon, siehe
+  `example05_timer_ccp`). Das Echo misst
   `lab03_nvic_pendel` mit einem GPIO-Interrupt an beiden Flanken und einem freilaufenden Timer;
   mit Edge-Time an einem CCP-Pin ginge es ebenso. Benutzt die Firmware einen nicht modellierten
   Modus, meldet die Diagnose es.

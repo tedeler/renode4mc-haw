@@ -67,7 +67,7 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | Cortex-M4F, NVIC, 1 MB Flash, 256 KB SRAM, Bit-Banding | ✔ |
 | SYSCTL: Clock-Gating (`RCGC*`/`PR*`), Warnung bei fehlendem Takt | ✔ (PLL/Takt-Umschaltung nicht; Takt fest 16 MHz) |
 | GPIO A–Q: Ausgänge, Eingänge, Pull-up/-down, Interrupts, DEN wie im Datenblatt, Lock/Commit, Warnungen bei Fehlkonfiguration | ✔ |
-| Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, auf-/abwärts, Prescaler, TnR/TnV, Interrupt, Warnungen; Compare-Action (TCACT), PWM und Input Edge-Time an den CCP-Pins | ✔ (Timer 6/7 an 0x400E0000/0x400E1000; kein Edge-Count/RTC/Match-Interrupt) |
+| Timer 0–7 (GPTM): periodisch/One-Shot, 32/16 Bit, auf-/abwärts, Prescaler, TnR/TnV, Interrupt, Warnungen; Compare-Action (TCACT), PWM und Input Edge-Time an den CCP-Pins | ✔ (Timer 6/7 an 0x400E0000/0x400E1000; Match-Ereignis TnMIE/TnMRIS in One-Shot/Periodic; kein Edge-Count/RTC) |
 | UART 0–7: Senden/Empfangen als Flanken mit Baudraten-Timing, FIFOs, Fehlerbits, Interrupts; IBRD/FBRD erst mit LCRH wirksam, Warnung bei falscher Baudrate/Format | ✔ (kein µDMA; UART0 mit Pin-Prüfung und PC-Terminal) |
 | Hex-Keypad 4×4, BCD-Anzeige, HC-SR04, LED-Pendel (HAW), printf → CCS-Konsole | ✔ (Lab-Umgebungen, [docs/LABORE.md](docs/LABORE.md)) |
 | I2C 0–9 als Master; Geräte SSD1306-OLED, MaxBotix MB1242 | ✔ (Example 1 der Web-Konsole) |

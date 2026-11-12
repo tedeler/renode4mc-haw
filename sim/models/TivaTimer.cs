@@ -25,13 +25,17 @@
 //    Bits 23:16 = Prescaler); vor dem ersten Start die Reset-Werte (TAR/TAV 0xFFFF.FFFF, TBR/TBV 0xFFFF)
 //  * TnILR schreiben während der Timer läuft: TnILD = 0 -> neuer Wert ab dem nächsten Takt,
 //    TnILD = 1 -> ab dem nächsten Time-out
-//  * Interrupts: IMR, RIS, MIS, ICR (Time-out und Capture-Event) -> IRQA / IRQB zum NVIC,
+//  * Match (13.3.3.1/13.3.3.2, One-Shot/Periodic): mit TnMIE = 1 setzt der Zähler beim Erreichen von
+//    GPTMTnMATCHR (16 Bit zusätzlich GPTMTnPMR) TnMRIS – ohne TnMIE nie (anders als TnTORIS).
+//    32 Bit: Wert = TAMATCHR; 16 Bit aufwärts: TnPMR:TnMATCHR (24 Bit), abwärts: TnMATCHR und
+//    Prescaler-Stand = TnPMR. Match-Wert außerhalb des Zählbereichs: kein Ereignis. TnMRSU wie bei PWM.
+//  * Interrupts: IMR, RIS, MIS, ICR (Time-out, Match und Capture-Event) -> IRQA / IRQB zum NVIC,
 //    TnCINTD unterdrückt TnTORIS
 //  * CCP-Pins nach Tabelle 13-2 (GPIOPCTL = 3), werden selbst gefunden (sysbus.gpioX). Ein Pin wirkt
 //    nur mit GPIOAFSEL = 1, GPIODEN = 1 und PCTL = 3 – sonst sieht der Pin nichts vom Timer.
 //  * Clock-Gating über RCGCTIMER (Offset 0x604)
 // Nicht modelliert (Warnung, sobald die Firmware es benutzt): Input Edge-Count (TnMR = 0x3, TnCMR = 0),
-// RTC (CFG = 0x1), Match-Interrupts (TnMIE, CnMIM), Wait-on-Trigger, Snapshot, ADC-/uDMA-Trigger, SYNC.
+// RTC (CFG = 0x1), Capture-Match (CnMIM), Wait-on-Trigger, Snapshot, ADC-/uDMA-Trigger, SYNC.
 //
 // Strenge Prüfung (Warnungen erscheinen in der Web-Konsole unter "Diagnose"):
 //  * CFG oder TnMR (außer TCACT) geändert, während ein Timer läuft (Datenblatt 13.4: vorher TnEN = 0)
@@ -164,9 +168,9 @@ namespace Antmicro.Renode.Peripherals.Timers
                 case TbmR: WriteMode(1, value); break;
                 case Ctl: WriteControl(value); break;
                 case Imr:
-                    if((value & ~(ImTatoim | ImTbtoim | ImCaeim | ImCbeim)) != 0)
+                    if((value & ~(ImTatoim | ImTbtoim | ImCaeim | ImCbeim | ImTamim | ImTbmim)) != 0)
                     {
-                        Warn("imrBits", string.Format("GPTMIMR = 0x{0:X}: modelliert sind Time-out (TnTOIM) und Capture-Event (CnEIM); Match-, Capture-Match- und RTC-Interrupts kommen nie.", value));
+                        Warn("imrBits", string.Format("GPTMIMR = 0x{0:X}: modelliert sind Time-out (TnTOIM), Match (TnMIM) und Capture-Event (CnEIM); Capture-Match- und RTC-Interrupts kommen nie.", value));
                     }
                     imr = value & ImrMask;
                     break;
@@ -257,7 +261,10 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 Warn("tcact" + half, string.Format("GPTMT{0}MR: TCACT wirkt nur in One-Shot/Periodic mit T{0}AMS = 0 (nicht in PWM/Capture).", n));
             }
-            if((value & MrMie) != 0) Warn("mie" + half, string.Format("GPTMT{0}MR: Match-Interrupt (T{0}MIE) ist im Simulator nicht modelliert.", n));
+            if((value & MrMie) != 0 && (ams || mode == 3))
+            {
+                Warn("mie" + half, string.Format("GPTMT{0}MR: T{0}MIE wirkt nur in One-Shot/Periodic (nicht in PWM/Capture); im Simulator ignoriert.", n));
+            }
             if((value & (MrWot | MrSnaps)) != 0)
             {
                 Warn("mrx" + half, string.Format("GPTMT{0}MR = 0x{1:X}: Wait-on-Trigger und Snapshot sind nicht modelliert.", n, value));
@@ -329,7 +336,8 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 match[half] = value;
             }
-            bool running = timers[half].Enabled && run[half] == Kind.Pwm;
+            bool counting = run[half] == Kind.OneShot || run[half] == Kind.Periodic;
+            bool running = timers[half].Enabled && (run[half] == Kind.Pwm || counting);
             if(running && (mr[half] & MrMrsu) != 0)
             {
                 pendingMatch[half] = true;           // TnMRSU = 1: ab dem nächsten Time-out
@@ -338,7 +346,9 @@ namespace Antmicro.Renode.Peripherals.Timers
             matchEff[half] = match[half];
             pmrEff[half] = pmr[half];
             pendingMatch[half] = false;
-            if(running) PwmMatchChanged(half);       // TnMRSU = 0: ab dem nächsten Takt
+            if(!running) return;
+            if(run[half] == Kind.Pwm) PwmMatchChanged(half);   // TnMRSU = 0: ab dem nächsten Takt
+            else CountMatchChanged(half);
         }
 
         // TnILR/TnPR geschrieben: läuft der Timer, gilt der Wert ab dem nächsten Takt (TnILD = 0)
@@ -534,7 +544,7 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 case Kind.OneShot:
                 case Kind.Periodic:
-                    Arm(half, 0, 0, Ticks(half, curIlr[half], curPr[half]));
+                    StartCountPeriod(half, now);
                     if(CompareActive(half)) ImmediateAction(half, now);
                     break;
                 case Kind.EdgeTime:
@@ -570,7 +580,17 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 case Kind.OneShot:
                 case Kind.Periodic:
-                    OnTimeout(half, at);
+                    if(seg[half] == 0)
+                    {
+                        // Zähler = Match: TnMRIS, weiter bis zum Time-out
+                        SetMatch(half);
+                        ulong m = segOff[half] + segLen[half];
+                        Arm(half, 1, m, Ticks(half, curIlr[half], curPr[half]) - m);
+                    }
+                    else
+                    {
+                        OnTimeout(half, at);
+                    }
                     break;
                 case Kind.EdgeTime:
                     // Zähler wird neu geladen (modulo 2^24); kein Interrupt
@@ -625,13 +645,79 @@ namespace Antmicro.Renode.Peripherals.Timers
                 timers[half].Enabled = false;
                 stopped[half] = true;
             }
-            else if(pendingLoad[half])
+            else
             {
-                pendingLoad[half] = false;           // TnILD = 1: neuer Startwert ab jetzt
-                curIlr[half] = ilr[half];
-                curPr[half] = pr[half];
-                Arm(half, 0, 0, Ticks(half, curIlr[half], curPr[half]));
+                if(pendingLoad[half])
+                {
+                    pendingLoad[half] = false;       // TnILD = 1: neuer Startwert ab jetzt
+                    curIlr[half] = ilr[half];
+                    curPr[half] = pr[half];
+                }
+                if(pendingMatch[half])
+                {
+                    pendingMatch[half] = false;      // TnMRSU = 1: neuer Match-Wert ab jetzt
+                    matchEff[half] = match[half];
+                    pmrEff[half] = pmr[half];
+                }
+                StartCountPeriod(half, at);
             }
+        }
+
+        // ---- One-Shot / Periodic: Match ----------------------------------------------------------
+
+        // Takt der Periode (0 .. Periode-1), in dem der Zähler den Match-Wert erreicht; -1 = nie
+        // (TnMIE = 0 oder Match-Wert außerhalb des Zählbereichs)
+        private long MatchTick(int half)
+        {
+            if((mr[half] & MrMie) == 0) return -1;
+            ulong ticks = Ticks(half, curIlr[half], curPr[half]);
+            ulong e;
+            if(cfg != 4)
+            {
+                ulong m = matchEff[half], load = curIlr[half];
+                if(m > load) return -1;
+                e = Up(half) ? m : load - m;
+            }
+            else if(Up(half))
+            {
+                e = Match24(half);                   // lineare Erweiterung: TnPMR:TnMATCHR
+            }
+            else
+            {
+                // True Prescaler: Zähler = TnMATCHR und Prescaler-Stand = TnPMR
+                ulong m = matchEff[half] & 0xFFFF, pm = pmrEff[half] & 0xFF;
+                ulong load = curIlr[half] & 0xFFFF, pre = curPr[half] & 0xFF;
+                if(m > load || pm > pre) return -1;
+                e = (load - m) * (pre + 1) + (pre - pm);
+            }
+            return e < ticks ? (long)e : -1;
+        }
+
+        private void SetMatch(int half)
+        {
+            ris |= half == 0 ? RisTamris : RisTbmris;
+        }
+
+        // Neue Periode One-Shot/Periodic: Abschnitt 0 bis zum Match, Abschnitt 1 bis zum Time-out
+        private void StartCountPeriod(int half, double at)
+        {
+            segStartUs[half] = at;
+            ulong ticks = Ticks(half, curIlr[half], curPr[half]);
+            long e = MatchTick(half);
+            if(e == 0) SetMatch(half);               // Match-Wert = Startwert
+            if(e > 0) Arm(half, 0, 0, (ulong)e);
+            else Arm(half, 1, 0, ticks);
+        }
+
+        // Match-Wert bei laufendem One-Shot/Periodic geändert (TnMRSU = 0): gilt ab dem nächsten Takt
+        private void CountMatchChanged(int half)
+        {
+            ulong ticks = Ticks(half, curIlr[half], curPr[half]);
+            ulong now = Elapsed(half);
+            long e = MatchTick(half);
+            segStartUs[half] = NowUs();
+            if(e > (long)now) Arm(half, 0, now, (ulong)e - now);
+            else Arm(half, 1, now, ticks - now);    // schon vorbei bzw. nie: erst wieder nächste Periode
         }
 
         // ---- PWM -------------------------------------------------------------------------------
@@ -886,8 +972,10 @@ namespace Antmicro.Renode.Peripherals.Timers
         private const uint MrMask = 0xFFFF;                                  // TnMR .. TCACT (Bits 15:0)
         private const uint CfgMask = 0x7;                                    // TIMER_CFG_M
         private const uint TnmrMask = 0x3, TnmrOneShot = 0x1, TnmrPeriodic = 0x2, TnmrCapture = 0x3;
-        private const uint RisTatoris = 1u << 0, RisCaeris = 1u << 2, RisTbtoris = 1u << 8, RisCberis = 1u << 10;
-        private const uint ImTatoim = 1u << 0, ImCaeim = 1u << 2, ImTbtoim = 1u << 8, ImCbeim = 1u << 10;
+        private const uint RisTatoris = 1u << 0, RisCaeris = 1u << 2, RisTamris = 1u << 4,
+                           RisTbtoris = 1u << 8, RisCberis = 1u << 10, RisTbmris = 1u << 11;
+        private const uint ImTatoim = 1u << 0, ImCaeim = 1u << 2, ImTamim = 1u << 4,
+                           ImTbtoim = 1u << 8, ImCbeim = 1u << 10, ImTbmim = 1u << 11;
         // Time-out-, Capture-, Match- und RTC-Bits von A und B (DMA/Wake-up nicht modelliert)
         private const uint ImrMask = 0x0F1F;
 
@@ -904,7 +992,8 @@ namespace Antmicro.Renode.Peripherals.Timers
         private uint[] captured;                  // Edge-Time: Zählerstand der letzten Flanke
         private bool[] pendingLoad, pendingMatch, started, stopped, ccpState;
         private Kind[] run;
-        private int[] seg;                        // PWM: 0 = HIGH-Abschnitt, 1 = Rest der Periode
+        private int[] seg;                        // PWM: 0 = HIGH-Abschnitt, 1 = Rest der Periode;
+                                                  // One-Shot/Periodic: 0 = bis zum Match, 1 = bis zum Time-out
         private ulong[] segOff, segLen;           // Abschnitt in Takten ab Periodenbeginn
         private double[] segStartUs;              // virtuelle Zeit des Abschnittsbeginns
         private List<CcpPin>[] ccp;
