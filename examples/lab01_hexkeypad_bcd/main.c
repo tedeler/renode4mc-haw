@@ -1,7 +1,7 @@
 /*
  * Lab 01 - Hex-Keypad und BCD-Anzeige (MCL Lab Session 1, Teil 2: GPIO)
  * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
- *
+    *
  * Läuft im Simulator (Web-Konsole, Versuch "lab1_gpio") und auf dem Board mit dem
  * Hex-Keypad und der 7-Segment-Anzeige des HAW-IT-Labors.
  *
@@ -9,7 +9,7 @@
  *   ------------------------ ---------------------------------- -------------------------------------
  *   Hex-Keypad 4x4           X1..X4 = PM0..PM3 (Ausgang)        Spalten nacheinander auf 0 setzen
  *                            Y1..Y4 = PM4..PM7 (Eingang,        gedrückte Taste: Y = 0 in ihrer Spalte
- *                            Pull-up auf dem Keypad)
+*                            Pull-up auf dem Keypad09
  *   BCD-Anzeige 4 Ziffern    D0..D7 = PK0..PK7 (Ausgang)        zwei Ziffern je Modul (8421-BCD)
  *                            EN rechts = PL0, EN links = PL1    EN = 1: Modul übernimmt D0..D7
  *   CCS-Konsole              printf()                           gedrückte Taste, Fehlermeldung
@@ -40,7 +40,7 @@
  * GPIO_PORTx_DATA_BITS_R[m]: Zugriff nur auf die Pins in Maske m (Adressmaskierung, Bits 9:2).
  * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Wartezeiten).
  * ------------------------------------------------------------------------------------------- */
-#define PORTS               (SYSCTL_RCGCGPIO_R9 | SYSCTL_RCGCGPIO_R10 | SYSCTL_RCGCGPIO_R11) /* K, L, M */
+    #define PORTS               (SYSCTL_RCGCGPIO_R9 | SYSCTL_RCGCGPIO_R10 | SYSCTL_RCGCGPIO_R11) /* K, L, M */
 #define PORTS_BEREIT        (SYSCTL_PRGPIO_R9 | SYSCTL_PRGPIO_R10 | SYSCTL_PRGPIO_R11)
 
 /* Pins */
@@ -81,7 +81,7 @@ static void wait(unsigned int steps)
 static void ports_init(void)
 {
     SYSCTL_RCGCGPIO_R |= PORTS;
-    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT)
+//    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT)
     {
     }
     /* Keypad: X Ausgang (Ruhe = 1), Y Eingang. Der Pull-up sitzt auf dem Keypad; der interne
@@ -141,11 +141,41 @@ static void bcd_anzeigen(uint16_t ziffern)
     bcd_schreiben(BCD_EN_LINKS, (uint8_t)(ziffern >> 8));
 }
 
+static void uart_putc(char c)
+{
+    while (UART0_FR_R & UART_FR_TXFF) {}
+    UART0_DR_R = (uint8_t)c;
+}
+
+
 int main(void)
 {
     ports_init();
     bcd_anzeigen(0x0000u);
     printf("Lab 1: Hex-Keypad an PM0..PM7, BCD-Anzeige an PK0..PK7 / PL0..PL1\n");
+
+    SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
+    while ((SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0) {}
+    UART0_CTL_R &= ~UART_CTL_UARTEN;               /* zum Konfigurieren ausschalten */
+    UART0_IBRD_R = 102;                            /* 16 MHz / (16 * 9600) = 104,17 */
+    UART0_FBRD_R = 11;                             /* 0,17 * 64 = 10,7 -> 11 */
+    UART0_LCRH_R = UART_LCRH_WLEN_7;               /* 7N1 ohne FIFO; übernimmt auch IBRD/FBRD */
+    UART0_CTL_R |= UART_CTL_RXE | UART_CTL_TXE | UART_CTL_UARTEN;
+
+    SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R0;
+    while ((SYSCTL_PRGPIO_R & SYSCTL_PRGPIO_R0) == 0) {}
+    GPIO_PORTA_AHB_DEN_R |= 0x03;             /* PA1:0 digital */
+    GPIO_PORTA_AHB_AFSEL_R |= 0x03;           /* PA1:0 alternative Funktion */
+    GPIO_PORTA_AHB_PCTL_R = 0x000000011;
+
+
+    uart_putc('H');
+    uart_putc('a');
+    uart_putc('l');
+    uart_putc('l');
+    uart_putc('o');
+
+
 
     /* Zustand: 0 = keine Taste, 1 = eine Taste (letzteTaste), 2 = mehrere Tasten */
     uint32_t zustand = 0, kandidat = 0, gleich = 0;
