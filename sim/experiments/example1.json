@@ -1,6 +1,6 @@
 {
-  "title": "Example 1 – EK-TM4C1294XL: GPIO, UART, OLED, Ultraschall, Keypad",
-  "description": "LEDs D1–D4, Taster USR_SW1/2, UART0, OLED SSD1306 und Ultraschall MB1242 an I2C0, 4×3-Keypad an Port K",
+  "title": "Simple Elemente",
+  "description": "",
   "uart": {
     "baud": 115200,
     "format": "8N1",
@@ -42,66 +42,31 @@
       "id": "SW1",
       "label": "USR_SW1 (PJ0)",
       "pin": "PJ0",
-      "activeLow": true
+      "activeLow": true,
+      "pull": "up"
     },
     {
       "type": "button",
       "id": "SW2",
       "label": "USR_SW2 (PJ1)",
       "pin": "PJ1",
-      "activeLow": true
+      "activeLow": true,
+      "pull": "up"
     },
     {
-      "type": "oled",
-      "label": "SSD1306 an I2C0 (PB2/PB3), 0x3C",
-      "bus": "i2c0",
-      "address": "0x3C",
-      "width": 128,
-      "height": 64
-    },
-    {
-      "type": "mb1242",
-      "label": "MB1242 an I2C0, 0x70",
-      "bus": "i2c0",
-      "address": "0x70",
+      "type": "hcsr04",
+      "title": "Ultraschall HC-SR04",
+      "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo",
+      "initial": 65,
       "min": 0,
-      "max": 400,
-      "unit": "cm"
-    },
-    {
-      "type": "keypad",
-      "layout": [
-        [
-          "1",
-          "2",
-          "3"
-        ],
-        [
-          "4",
-          "5",
-          "6"
-        ],
-        [
-          "7",
-          "8",
-          "9"
-        ],
-        [
-          "*",
-          "0",
-          "#"
-        ]
-      ],
+      "max": 350,
+      "unit": "cm",
       "pins": {
-        "R0": "PK0",
-        "R1": "PK1",
-        "R2": "PK2",
-        "R3": "PK3",
-        "C0": "PK4",
-        "C1": "PK5",
-        "C2": "PK6"
+        "TRIG": "PD0",
+        "ECHO": "PD1"
       }
     }
+
   ],
   "scope": {
     "channels": [
