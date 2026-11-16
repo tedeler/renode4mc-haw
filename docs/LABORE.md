@@ -2,7 +2,8 @@
 
 Für jeden Versuch des Mikrocontroller-Praktikums gibt es in der [Web-Konsole](WEBCONSOLE.md) eine
 eigene Umgebung mit der Peripherie aus den Laborunterlagen. Dazu gehört je eine Musterlösung zum
-Vergleich. Example 1 und 2 der Web-Konsole sowie die Beispiele `example01`–`example04` sind unverändert.
+Vergleich. Die übrigen Versuche der Web-Konsole (`example1`–`example3`) und die Beispiele
+`example01`–`example05` sind davon unabhängig.
 
 | Umgebung (`sim/experiments/`) | Laborunterlage | Peripherie | Musterlösung (`examples/`) |
 |---|---|---|---|

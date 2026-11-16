@@ -90,7 +90,11 @@ GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // wieder alle Zeile
    cd ~/praktikum/renode4mc-haw/webconsole
    docker compose up --build
    ```
-3. http://localhost:3000 öffnen, **Example 1** wählen, `example03_webkonsole.out` auswählen, **Start**.
+3. Einen Versuch mit OLED, MB1242 und Keypad anlegen – die fertige Datei `sim/experiments/webkonsole.json`
+   steht in der [Anleitung, Abschnitt 3](../../docs/ANLEITUNG.md#3-neuen-versuch-hinzufügen). Der
+   mitgelieferte Versuch „Simple Elemente“ (`example1`) hat nur LEDs, Taster, UART und einen HC-SR04;
+   dort fehlen OLED, Sensor und Keypad (wie bei `ucsim`, siehe unten).
+4. http://localhost:3000 öffnen, diesen Versuch wählen, `example03_webkonsole.out` auswählen, **Start**.
 
 Was Sie sehen sollten:
 
@@ -133,8 +137,9 @@ Den UART sehen Sie z. B. mit `picocom -b 115200 /dev/ttyACM0`.
 
 ## 6. Hinweise zum Simulator
 
-- UART und I2C übertragen ohne Zeitverzögerung. Busy-Abfragen sind trotzdem nötig, weil das
-  Programm sonst auf der Hardware nicht läuft.
+- Der UART sendet zeitrichtig mit der eingestellten Baudrate (`TXFF`/`BUSY` wie auf dem Board). I2C
+  überträgt ohne Busverzögerung; Busy-Abfragen sind trotzdem nötig, weil das Programm sonst auf der
+  Hardware nicht läuft.
 - Der Ultraschallsensor liefert sofort den eingestellten Wert. Die echte Messung dauert ca. 80 ms,
   deshalb liest das Programm erst beim nächsten 100-ms-Takt.
 - Details zu den Modellen: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), Abschnitt 2.

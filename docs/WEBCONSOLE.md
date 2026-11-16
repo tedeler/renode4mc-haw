@@ -3,8 +3,8 @@
 Die Web-Konsole ist eine zweite Bedienoberfläche für den Simulator in `sim/`. Statt `ucsim` auf dem
 eigenen Rechner läuft alles in **einem Docker-Container**: Studierende öffnen eine Webseite,
 wählen einen Versuch, laden die von CCS gebaute `.out`-Datei hoch und bedienen die simulierte
-Hardware im Browser. Dazu gehören LEDs, Taster, ein UART-Terminal, ein OLED-Display, ein
-Ultraschallsensor, ein Keypad und ein Pendeldisplay.
+Hardware im Browser. Welche Bedienelemente es gibt, legt der Versuch fest: LEDs, Taster, ein
+UART-Terminal, OLED-Display, Ultraschallsensoren, Keypads, 7-Segment-Anzeige, Pendeldisplay.
 
 Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit CCS bzw. `make`
 (siehe [TOOLCHAIN.md](TOOLCHAIN.md)). Der Container nimmt nur das fertige ELF entgegen. Er ist
@@ -14,9 +14,12 @@ Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit C
  CCS / make ──▶ programm.out ──Upload──▶ Web-Konsole (Docker) ──▶ Renode (sim/) ──▶ Browser-Bedienfeld
 ```
 
-Kurzanleitung zum Starten: [`webconsole/README.md`](../webconsole/README.md).
-Beispielprogramme: [Example 03](../examples/example03_webkonsole/README.md) nutzt alle Bedienelemente von
-Example 1, [Example 04](../examples/example04_pendeldisplay/README.md) das Pendeldisplay von Example 2.
+Einstieg Schritt für Schritt: [ANLEITUNG.md](ANLEITUNG.md); Kurzanleitung zum Starten:
+[`webconsole/README.md`](../webconsole/README.md).
+Beispielprogramme: [Example 04](../examples/example04_pendeldisplay/README.md) nutzt das Pendeldisplay
+von Example 2, [Example 05](../examples/example05_timer_ccp/README.md) die Timer-Pins von Example 3.
+[Example 03](../examples/example03_webkonsole/README.md) braucht OLED, MB1242 und Keypad, die heute kein
+mitgelieferter Versuch enthält (Versuchsdatei dafür: [ANLEITUNG.md, Abschnitt 3](ANLEITUNG.md#3-neuen-versuch-hinzufügen)).
 
 ---
 
@@ -80,7 +83,7 @@ Nach **Stop** bleibt der Versuch als Vorschau stehen.
    und gegebenenfalls `$uartBaud`/`$uartFormat` und führt `include @<id>.resc` aus.
 5. Das Backend wartet, bis das UART-Terminal (Port 3335) und der Monitor (Port 1234) erreichbar
    sind. Das UART-Terminal entsteht erst, wenn das `.resc`-Skript gelaufen ist.
-7. Antwort **HTTP 200** mit der Versuchs-Konfiguration. Das Frontend baut das Bedienfeld auf.
+6. Antwort **HTTP 200** mit der Versuchs-Konfiguration. Das Frontend baut das Bedienfeld auf.
 
 **Renode im Dauerbetrieb** (Standard): Das Backend startet Renode schon beim eigenen Start und
 übersetzt dabei alle C#-Modelle aus `sim/models` (~10 s, Log „bereit: … Modelle übersetzt“). Ein
@@ -140,21 +143,32 @@ eingereiht.
 
 ---
 
-## 2. Simulierte Hardware von Example 1
+## 2. Simulierte Hardware
 
 Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, GPIO A–Q, Timer,
-**UART 0–7, I2C 0–9**). Die Bausteine von Example 1 beschreibt `sim/experiments/example1.json`.
+**UART 0–7, I2C 0–9**). Welche Geräte zusätzlich angeschlossen sind, beschreibt die Versuchsdatei
+`sim/experiments/<id>.json` ([EXPERIMENTS.md](EXPERIMENTS.md)).
+
+### Example 1 („Simple Elemente“)
+
+`sim/experiments/example1.json`:
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
 | LEDs D1, D2, D3, D4 | PN1, PN0, PF4, PF0 | `TivaGPIOPort` → `wsBridge` | Anzeige |
-| Taster USR_SW1, USR_SW2 | PJ0, PJ1 (gedrückt = LOW, Pull-up nötig) | `TivaGPIOPort` (Eingang) | Knopf: gedrückt halten = LOW |
+| Taster USR_SW1, USR_SW2 | PJ0, PJ1 (gedrückt = LOW, Pull-up auf der Platine: `"pull": "up"`) | `TivaGPIOPort` (Eingang) | Knopf: gedrückt halten = LOW |
 | UART0 | PA0 RX, PA1 TX | `TivaUART` | Terminal (xterm.js), Eingaben gehen an RX; Baudrate/Format des Terminals wählbar |
-| PC-Terminal | an UART0 | `UartHostTerminal` | Einstellung unter dem Terminal (Baud, Daten, Parität, Stopp) |
-| I2C0 | PB2 SCL, PB3 SDA | `TivaI2C` (Master) | – |
-| OLED SSD1306 128×64 | I2C0, 0x3C | `SSD1306I2C` | Canvas, 4-fach vergrößert |
-| Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
-| Keypad 4×3 | Zeilen PK0–PK3 (Ausgang), Spalten PK4–PK6 (Eingang, Pull-down) | `KeypadMatrix` | Tastenfeld |
+| PC-Terminal | an UART0, 115200 8N1 | `UartHostTerminal` | Einstellung unter dem Terminal (Baud, Daten, Parität, Stopp) |
+| Ultraschall HC-SR04 | Trigger PD0 (Ausgang), Echo PD1 (Eingang) | `HcSr04` | Schieberegler 0–350 cm (Start 65 cm; außerhalb 3–300 cm kein Echo) |
+
+Weitere Geräte für eigene Versuche (Elementtypen in [EXPERIMENTS.md](EXPERIMENTS.md)):
+
+| Baustein | Pins / Adresse (Standard) | Modell | Bedienung im Browser |
+|---|---|---|---|
+| I2C-Master | I2C0: PB2 SCL, PB3 SDA | `TivaI2C` | – |
+| OLED SSD1306 128×64 (`oled`) | I2C0, 0x3C | `SSD1306I2C` | Canvas, 4-fach vergrößert |
+| Ultraschall MB1242 (`mb1242`) | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
+| Keypad 4×3 (`keypad`) | Zeilen = MCU-Ausgänge, Spalten = MCU-Eingänge (Pull-down im Modell) | `KeypadMatrix` | Tastenfeld |
 
 ### Die neuen Modelle (`sim/models/`)
 
@@ -180,7 +194,7 @@ zu treiben, sieht keinen Tastendruck. Das ist didaktisch gewollt.
 ### Example 2: Pendeldisplay
 
 `sim/experiments/example2.json` ergänzt die Basisplattform um ein Pendeldisplay und den
-Ultraschallsensor. LEDs D1–D4, Taster und UART0 sind dieselben wie in Example 1.
+Ultraschallsensor MB1242. LEDs D1–D4 und UART0 sind dieselben wie in Example 1; Taster hat Example 2 nicht.
 
 | Baustein | Pins / Adresse | Modell | Bedienung im Browser |
 |---|---|---|---|
@@ -211,15 +225,18 @@ Renode auf 10 µs (`"quantumUs": 10`, erzeugt `emulation SetGlobalQuantum "0.000
 ### Monitor-Befehle (zum Ausprobieren ohne Browser)
 
 Renode lässt sich auch direkt starten: `node tools/check_experiment.js --out /tmp/v example1`, dann `cd sim` und
-`renode --console -e "\$elf=@../examples/example03_webkonsole/example03_webkonsole.out; s @/tmp/v/example1.resc"`.
+`renode --console -e "\$elf=@../examples/example01_blinky/example01_blinky.out; s @/tmp/v/example1.resc"`.
 Danach `nc localhost 3335` für den UART. Im Monitor:
 
 ```
 sysbus.gpioJ OnGPIO 0 false            # USR_SW1 drücken (LOW)
 sysbus.gpioJ OnGPIO 0 true             # loslassen
+sysbus.gpioD.hcsr04 Distance 42        # HC-SR04: Abstand 42 cm
+
+# Versuch mit OLED, MB1242 und Keypad (z. B. webkonsole aus ANLEITUNG.md, Abschnitt 3):
 sysbus.gpioK.keypad SetKey 1 1 true    # Keypad: Zeile 1, Spalte 1 ("5") drücken
 sysbus.gpioK.keypad SetKey 1 1 false
-sysbus.i2c0.sensor Distance 42         # Abstand 42 cm
+sysbus.i2c0.sensor Distance 42         # MB1242: Abstand 42 cm
 sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
 
 # Example 2 (s @/tmp/v/example2.resc):
@@ -501,7 +518,8 @@ node tools/check_experiment.js mein_versuch.json   # prüfen (wie das Backend), 
 node tools/check_experiment.js --types             # Elementtypen und Anschlüsse
 ```
 
-Format, Elementtypen, Prüfregeln und ein Beispiel: [EXPERIMENTS.md](EXPERIMENTS.md).
+Format, Elementtypen, Prüfregeln und ein Beispiel: [EXPERIMENTS.md](EXPERIMENTS.md). Der ganze Ablauf
+Schritt für Schritt (auch im Docker-Betrieb und mit Musterlösung): [ANLEITUNG.md, Abschnitt 3](ANLEITUNG.md#3-neuen-versuch-hinzufügen).
 
 Ungültige Versuche werden nicht angezeigt, und der Grund steht im Server-Log. Renode-Pfade, Ports und
 Pins der Taster werden nie an den Browser geschickt.
@@ -591,6 +609,12 @@ mappen Sie die Web-Konsole auf andere Host-Ports.
 `webconsole/backend/test/e2e.js` prüft die ganze Kette mit echter Renode-Instanz und der
 Example-03-Firmware: Upload, UART-Ausgabe und -Echo, Sensor → UART und LED D1, Keypad „5“ per Matrix,
 USR_SW1 → LED D3, OLED-Frame.
+
+> **Achtung:** `e2e.js` lädt Versuch `example1` und prüft OLED, MB1242 und Keypad an Port K – den
+> früheren Ausbau. Seit `example1` „Simple Elemente“ ist (Abschnitt 2), fehlen diese Geräte dort;
+> der Test passt erst wieder, wenn er einen Versuch mit diesen Geräten lädt (z. B. `webkonsole` aus
+> [ANLEITUNG.md](ANLEITUNG.md#31-datei-anlegen)). `e2e_signals.js` startet ebenfalls `example1` mit der
+> Example-03-Firmware, prüft aber nur UART-Flanken; nach der Änderung nicht erneut ausgeführt.
 
 ```bash
 cd webconsole/backend
@@ -690,8 +714,8 @@ Messen: `node test/perf_tempo.js <firmware.elf> [0|1 Anzeige] [Sekunden] [Versuc
 - **Taster ohne Prellen;** Entprell-Code lässt sich im Simulator nicht prüfen.
 - **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät
   gelesen.
-- Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js`,
-  `test/e2e_example2.js` und die
+- Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js` (mit dem
+  früheren Ausbau von `example1`), `test/e2e_example2.js` und die
   Bedienung im Browser, auch mit dem Verzeichnis-Layout des Images (`/opt/renode`,
   `SIM_DIR=/opt/renode4mc/sim`, Benutzer ohne Root-Rechte). Das Docker-Image selbst konnte in der
   Entwicklungsumgebung **nicht gebaut** werden (kein Zugriff auf Docker Hub) – beim ersten
