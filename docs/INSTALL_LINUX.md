@@ -183,7 +183,7 @@ das haben wir nicht getestet.
 
 | Meldung / Problem | Lösung |
 |---|---|
-| `tiarmclang nicht gefunden unter …` | `make` sucht CCS unter `~/ti/ccs2040/ccs` und `~/tmp/ti/ccs2040/ccs`. Anderer Ort: `make CCS_ROOT=/pfad/zu/ccs` |
+| `tiarmclang nicht gefunden …` / `make` baut `.elf` statt `.out` | `make` sucht `tiarmclang` im PATH und unter `~/ti`, `~/tmp/ti`, `/opt/ti`, `/Applications/ti` (neueste Version); ohne Treffer nimmt es `arm-none-eabi-gcc`. Was gefunden wird: `make toolchain`. Anderer Ort: `make CCS_ROOT=/pfad/zu/ccs` oder `make TIARMCLANG=/pfad/tiarmclang` |
 | `renode nicht gefunden` | Schritt 6 wiederholen oder `export RENODE=…` |
 | Browser zeigt „Nicht verbunden“ | `ucsim` läuft nicht (mehr); Terminal prüfen |
 | CCS: „Could not open device“ / Board nicht gefunden | udev-Regel (Schritt 5), anderes Kabel, Port „DEBUG“ benutzen |

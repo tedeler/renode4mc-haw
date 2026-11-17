@@ -9,7 +9,7 @@
   "quantumUs": 10,
   "solution": {
     "example": "lab01_hexkeypad_bcd",
-    "label": "Musterlösung (examples/lab01_hexkeypad_bcd)"
+    "label": "Musterlösung"
   },
   "elements": [
     {

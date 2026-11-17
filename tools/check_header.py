@@ -11,7 +11,7 @@ Geprüft wird:
      und belegen keine Adresse der Basisplattform doppelt
   2. sim/models/*.cs: Register-Offsets und Bitkonstanten der Modelle (benannte Konstanten)
   3. common/startup_tm4c1294.c: jeder INT_-Eintrag der Headerdatei hat seinen Handler am richtigen Platz
-  4. alle .c/.h in examples/ und common/ (außer tm4c1294ncpdt.h): keine selbst definierten Adressen
+  4. alle .c/.h in examples/, common/ und – falls ausgecheckt – solutions/labs/ (außer tm4c1294ncpdt.h): keine selbst definierten Adressen
      und keine Register-/Bitkonstanten, die der Header schon hat
 Ausgabe: FEHLER (Abweichung), HINWEIS (nicht modelliert/nicht angeschlossen), Rückgabewert 1 bei Fehlern.
 """
@@ -342,10 +342,11 @@ for name in tabelle:
 # ------------------------------------------------------------------------------------------------
 # 4. Keine Adressen im Code
 # ------------------------------------------------------------------------------------------------
-# alle C-Quellen und eigenen Header in common/ und examples/ (auch Projekte mit mehreren Dateien);
+# alle C-Quellen und eigenen Header in common/, examples/ und den Labor-Musterlösungen im privaten
+# Submodul solutions/ (nur wenn ausgecheckt; auch Projekte mit mehreren Dateien);
 # ausgenommen ist nur der TI-Header selbst
 dateien = []
-for wurzel in (os.path.join(ROOT, 'common'), os.path.join(ROOT, 'examples')):
+for wurzel in (os.path.join(ROOT, 'common'), os.path.join(ROOT, 'examples'), os.path.join(ROOT, 'solutions', 'labs')):
     for verz, _, namen in sorted(os.walk(wurzel)):
         for name in sorted(namen):
             if name.endswith(('.c', '.h')) and name != 'tm4c1294ncpdt.h':

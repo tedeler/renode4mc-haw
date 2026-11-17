@@ -9,7 +9,7 @@
   "quantumUs": 10,
   "solution": {
     "example": "lab02_led_pendel",
-    "label": "Musterlösung (examples/lab02_led_pendel)"
+    "label": "Musterlösung"
   },
   "elements": [
     {

@@ -95,9 +95,10 @@ cd ../backend && npm install
 RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start      # -> http://localhost:3000
 ```
 
-Für die Musterlösungen (Knopf „Musterlösung“) braucht es zusätzlich `arm-none-eabi-gcc`
-(Debian/Ubuntu: `sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi`), dann einmal
-`tools/build-solutions.sh` im Repository aufrufen. Ohne sie bleibt der Knopf ausgegraut.
+Die Musterlösungen der Labore (Knopf „Musterlösung“) liegen fertig in `sim/solutions/`. Für die
+Demo von Example 05 braucht es zusätzlich `arm-none-eabi-gcc` (Debian/Ubuntu:
+`sudo apt install gcc-arm-none-eabi libnewlib-arm-none-eabi`), dann einmal
+`tools/build-solutions.sh` im Repository aufrufen. Ohne sie bleibt dort der Knopf ausgegraut.
 
 Mit `npm run dev` im Frontend läuft Vite mit Hot-Reload auf Port 5173 und leitet `/upload` und
 `/api` an das Backend weiter. Alle Umgebungsvariablen: [WEBCONSOLE.md, Abschnitt 5](WEBCONSOLE.md#5-betrieb).
@@ -114,6 +115,7 @@ Kurzprobe, wenn alles installiert ist:
 ```bash
 cd ~/praktikum/renode4mc-haw/examples/example01_blinky
 make                              # baut example01_blinky.out mit tiarmclang aus CCS
+make toolchain                    # zeigt, welcher Compiler gefunden wurde (ohne TI: gcc -> .elf)
 ucsim example01_blinky.out        # einfacher Simulator: D1/D2 blinken im Browser
 ```
 
@@ -126,9 +128,12 @@ ucsim example01_blinky.out        # einfacher Simulator: D1/D2 blinken im Browse
 Die Web-Konsole nimmt jede ELF-Datei für den TM4C1294 an:
 
 - **CCS:** Projekt bauen, die Datei liegt in `Debug/<projekt>.out`.
-- **make:** `make` im Ordner des Beispiels erzeugt `<beispiel>.out`.
-- **gcc:** möglich, siehe `tools/build-solutions.sh` (Startdatei `common/startup_tm4c1294.c`,
-  Linker-Skript `tools/gcc/link.ld`, `tools/gcc/crt.c`).
+- **make:** `make` im Ordner des Beispiels erzeugt `<beispiel>.out` mit TI Arm Clang. Den Compiler
+  sucht `tools/tm4c.mk` selbst (PATH, `~/ti`, `~/tmp/ti`, `/opt/ti`, `/Applications/ti`); ohne TI
+  nimmt es `arm-none-eabi-gcc` und erzeugt `<beispiel>.elf`. `make toolchain` zeigt, was gefunden
+  wurde, `make TOOLCHAIN=gcc` erzwingt gcc.
+- **gcc:** Startdatei `common/startup_tm4c1294.c`, Linker-Skript `tools/gcc/link.ld`,
+  `tools/gcc/crt.c` und `tools/gcc/cio_gcc.c` (printf), siehe `tools/tm4c.mk`.
 
 Dieselbe Datei läuft im Simulator und auf dem Board.
 
@@ -299,11 +304,16 @@ Oszilloskop sehen Sie, ob an den Pins tatsächlich etwas passiert.
 
 ### 3.5 Musterlösung hinzufügen (optional)
 
-1. Ordner `examples/<name>/` mit `main.c` (und weiteren `.c`-Dateien) anlegen. Für CCS und `make`
-   die `.projectspec` und das `Makefile` eines vorhandenen Beispiels kopieren und umbenennen.
-2. `<name>` in die Liste `SOLUTIONS` in `tools/build-solutions.sh` eintragen. Das Skript baut alle
-   `.c`-Dateien des Ordners mit gcc nach `sim/solutions/<name>.elf`; das Docker-Image ruft es beim
-   Bauen selbst auf.
+1. Öffentliche Musterlösung (Demo): Ordner `examples/<name>/` mit `main.c` (und weiteren
+   `.c`-Dateien) anlegen, für CCS und `make` die `.projectspec` und das `Makefile` eines vorhandenen
+   Beispiels kopieren und umbenennen, `<name>` in die Liste `EXAMPLES` in `tools/build-solutions.sh`
+   eintragen.
+   Geheime Musterlösung (Labor): im privaten Submodul `solutions/labs/<name>/code/` anlegen
+   (Vorlage: ein vorhandenes Labor); `tools/build-solutions.sh` findet sie dort von selbst. Die
+   erzeugte `sim/solutions/<name>.elf` zusammen mit dem Submodul-Stand einchecken
+   ([LABORE.md](LABORE.md#musterlösungen)).
+2. Das Skript baut mit gcc nach `sim/solutions/<name>.elf`; das Docker-Image ruft es beim Bauen
+   selbst auf.
 3. In der Versuchsdatei:
 
    ```json

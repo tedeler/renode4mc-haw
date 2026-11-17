@@ -33,8 +33,9 @@ Schritt für Schritt (Web-Konsole mit Docker, lokale Installation, Bedienung, ei
 6. [Example 05 – Timer mit CCP-Pins](examples/example05_timer_ccp/README.md) (PWM und Puls im
    16-Bit-Compare-Mode, Tastendauer per Capture, UART, Oszilloskop) – Web-Konsole, Example 3
 7. **Praktikumsversuche Lab 1–4** mit eigener Simulator-Umgebung, Musterlösung und strenger Prüfung
-   der Register: [docs/LABORE.md](docs/LABORE.md) – Beispiele `lab01_hexkeypad_bcd`,
-   `lab02_led_pendel`, `lab03_nvic_pendel`, `lab04_uart_leds`
+   der Register: [docs/LABORE.md](docs/LABORE.md). Die Musterlösungen `lab01_hexkeypad_bcd` …
+   `lab04_uart_leds` liegen als fertige ELF-Dateien bei (Knopf „Musterlösung“), ihre Quellen nur im
+   privaten Submodul `solutions/` ([Musterlösungen](docs/LABORE.md#musterlösungen))
 
 Kurzform, wenn alles installiert ist:
 
@@ -53,8 +54,10 @@ cd webconsole && docker compose up --build      # dann http://localhost:3000
 | Pfad | Inhalt |
 |---|---|
 | `examples/example01_blinky` … `examples/example05_timer_ccp` | Beispiele mit `main.c`, CCS-`.projectspec`, `Makefile`, README |
-| `examples/lab01_hexkeypad_bcd` … `examples/lab04_uart_leds` | Musterlösungen der Praktikumsversuche Lab 1–4 ([docs/LABORE.md](docs/LABORE.md)) |
-| `tools/build-solutions.sh`, `tools/gcc/` | Musterlösungen mit gcc für die Web-Konsole bauen (`sim/solutions/`) |
+| `solutions/` | privates Submodul [haw-mc-labsolutions](https://github.com/tedeler/haw-mc-labsolutions): Quellen der Musterlösungen Lab 1–4 und Laborbeschreibungen, nur für Lehrende; ohne Zugriff leer ([docs/LABORE.md](docs/LABORE.md#musterlösungen)) |
+| `sim/solutions/` | Musterlösungen als fertige ELF-Dateien für die Web-Konsole (Lab 1–4 eingecheckt, Example 05 wird gebaut) |
+| `tools/build-solutions.sh`, `tools/gcc/` | Musterlösungen mit gcc für die Web-Konsole bauen (`sim/solutions/`); Labor-Lösungen nur, wenn `solutions/` ausgecheckt ist |
+| `tools/tm4c.mk` | gemeinsame `make`-Regeln: sucht TI Arm Clang (CCS), sonst arm-none-eabi-gcc; `make toolchain` zeigt das Ergebnis |
 | `common/` | Startup-Code mit vollständiger Vektortabelle, Linker-Skript (Flash/SRAM des TM4C1294) – **identisch für Board und Simulator** |
 | `sim/` | Simulator: `ucsim` (Startskript), Plattform `.repl`, C#-Modelle (SYSCTL, GPIO, Timer, UART, I2C, WebSocket-Brücke, OLED, Ultraschall, Keypad, Pendeldisplay), LED-Anzeige `visualizer/ek-tm4c1294xl.html`, Versuche für die Web-Konsole `experiments/` (je eine JSON-Datei mit Bedienelementen und Pins, [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)) |
 | `webconsole/` | Web-Konsole: Node.js-Backend, React-Frontend, `Dockerfile`, `docker-compose.yml` |

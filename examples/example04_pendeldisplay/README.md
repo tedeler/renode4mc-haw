@@ -115,8 +115,8 @@ int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);   // Takte bis dahin
    cd ~/praktikum/renode4mc-haw/examples/example04_pendeldisplay
    make
    ```
-   `make` sucht CCS unter `~/ti/ccs2040/ccs` und `~/tmp/ti/ccs2040/ccs`. Liegt es woanders,
-   geben Sie den Pfad an, z. B. `make CCS_ROOT=/opt/ti/ccs`.
+   `make` sucht CCS unter `~/ti`, `~/tmp/ti`, `/opt/ti` und `/Applications/ti` (sonst gcc, siehe
+   `make toolchain`). Liegt es woanders, geben Sie den Pfad an, z. B. `make CCS_ROOT=/opt/ti/ccs`.
 2. Web-Konsole starten:
    ```bash
    cd ~/praktikum/renode4mc-haw/webconsole

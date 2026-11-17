@@ -177,7 +177,7 @@ Die Board-LEDs D1–D4 (PN1, PN0, PF4, PF0) und Taster USR_SW1/2 (PJ0, PJ1) sind
 
 ```bash
 node tools/check_experiment.js --out /tmp/v lab1_gpio
-cd sim && renode --console -e "\$elf=@../examples/lab01_hexkeypad_bcd/lab01_hexkeypad_bcd.out; s @/tmp/v/lab1_gpio.resc"
+cd sim && renode --console -e "\$elf=@../sim/solutions/lab01_hexkeypad_bcd.elf; s @/tmp/v/lab1_gpio.resc"
 ```
 
 ## Neuen Gerätetyp hinzufügen

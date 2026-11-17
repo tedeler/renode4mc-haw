@@ -6,3 +6,6 @@ build/
 node_modules/
 webconsole/frontend/dist/
 webconsole/backend/public/
+# Labor-Musterlösungen: fertige ELFs (ohne Debug-Infos) werden eingecheckt, die Quellen liegen im
+# privaten Submodul solutions/ (tools/build-solutions.sh)
+!sim/solutions/lab*.elf

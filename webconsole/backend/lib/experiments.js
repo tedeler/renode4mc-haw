@@ -97,7 +97,7 @@ function validate(cfg, file) {
       `${file} scope.trigger: { source: "PL0", edge: "rising" | "falling" }`);
   }
   if (cfg.solution) {
-    assert(isValidId(cfg.solution.example), `${file} solution.example: Name eines Beispiels (examples/<name>)`);
+    assert(isValidId(cfg.solution.example), `${file} solution.example: Name der Musterlösung (examples/<name> bzw. sim/solutions/<name>.elf)`);
   }
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
@@ -174,7 +174,7 @@ function list(simDir, sub) {
 function solutionInfo(cfg) {
   if (!cfg || !cfg.solution) return null;
   return {
-    label: cfg.solution.label || `Musterlösung (examples/${cfg.solution.example})`,
+    label: cfg.solution.label || 'Musterlösung',
     available: !!cfg.solutionPath && fs.existsSync(cfg.solutionPath),
   };
 }

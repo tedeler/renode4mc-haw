@@ -50,16 +50,17 @@ RUN case "${TARGETARCH:-amd64}" in \
  && tar xf /tmp/renode.tar.gz -C /opt/renode --strip-components=1 \
  && rm /tmp/renode.tar.gz
 
-# ---------- Stage 3b: Musterlösungen (examples/lab01..lab04) mit arm-none-eabi-gcc bauen -------------
+# ---------- Stage 3b: Musterlösungen für "Musterlösung starten" ---------------------------------
+# tools/build-solutions.sh baut example05 aus examples/ und – nur wenn das private Submodul solutions/
+# ausgecheckt ist (Lehrende) – die Labor-Musterlösungen aus den Quellen. Ohne Submodul (Studierende,
+# Forks) gelten die fertigen ELFs aus sim/solutions/. Der Build-Kontext wird nur per Bind-Mount
+# gelesen: Quellen der Musterlösungen landen in keiner Image-Schicht, nur die ELF-Dateien in /out.
 FROM ${NODE_IMAGE} AS solutions
 RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi \
+ && apt-get install -y --no-install-recommends gcc-arm-none-eabi binutils-arm-none-eabi libnewlib-arm-none-eabi \
  && rm -rf /var/lib/apt/lists/*
-WORKDIR /src
-COPY common ./common
-COPY examples ./examples
-COPY tools ./tools
-RUN OUT=/out sh tools/build-solutions.sh
+RUN --mount=type=bind,target=/ctx \
+    OUT=/out sh /ctx/tools/build-solutions.sh
 
 # ---------- Stage 4: Runtime ---------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime

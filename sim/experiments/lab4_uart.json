@@ -11,7 +11,7 @@
   "quantumUs": 10,
   "solution": {
     "example": "lab04_uart_leds",
-    "label": "Musterlösung (examples/lab04_uart_leds)"
+    "label": "Musterlösung"
   },
   "elements": [
     {

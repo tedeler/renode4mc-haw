@@ -88,8 +88,13 @@ function checkRepository(data, result) {
   }
   const ex = data.solution && data.solution.example;
   if (ex && typeof ex === 'string') {
-    if (!fs.existsSync(path.join(ROOT, 'examples', ex))) errors.push(`solution.example: examples/${ex} gibt es nicht`);
-    else if (!fs.existsSync(path.join(SIM, 'solutions', `${ex}.elf`))) {
+    // Quellen: examples/<name> (öffentlich) oder solutions/labs/<name>/code (privates Submodul, nur
+    // bei Lehrenden ausgecheckt). Ohne Quellen genügt die fertige sim/solutions/<name>.elf.
+    const src = [path.join(ROOT, 'examples', ex), path.join(ROOT, 'solutions', 'labs', ex, 'code')].some((d) => fs.existsSync(d));
+    const elf = fs.existsSync(path.join(SIM, 'solutions', `${ex}.elf`));
+    if (!src && !elf) {
+      errors.push(`solution.example: weder Quellen (examples/${ex}, solutions/labs/${ex}/code) noch sim/solutions/${ex}.elf`);
+    } else if (!elf) {
       warnings.push(`Musterlösung sim/solutions/${ex}.elf ist nicht gebaut (tools/build-solutions.sh) – Knopf "Musterlösung starten" bleibt aus`);
     }
   }

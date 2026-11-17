@@ -102,7 +102,7 @@ Im Renode-Monitor zeigt `sysbus.timer0 CcpPins`, welche CCP-Pins ein Timer gerad
 ## 4. Bauen
 
 ```bash
-make          # tiarmclang aus CCS (siehe Makefile), Ergebnis example05_timer_ccp.out
+make          # tiarmclang aus CCS, Ergebnis example05_timer_ccp.out (ohne CCS: gcc -> .elf)
 make sim      # im Simulator starten
 ```
 

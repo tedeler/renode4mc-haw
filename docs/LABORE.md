@@ -100,19 +100,45 @@ Taster in der Web-Konsole: Gedrückt verbindet den Pin mit GND. Losgelassen ist 
 nur ein Pull-up der Firmware hält ihn dann auf 1. Das gilt jetzt in allen Versuchen. Die Beispiele
 example03/example04 setzen den Pull-up und laufen unverändert.
 
-## Musterlösungen bauen
+## Musterlösungen
 
-Die Musterlösungen sind die Beispiele `examples/lab01`–`lab04`. Für CCS und das Board baut man sie
-wie die anderen Beispiele (`make` mit tiarmclang oder `.projectspec` importieren). Die Web-Konsole
-lädt gcc-Builds aus `sim/solutions/<Beispiel>.elf`:
+Die Quellen der Musterlösungen Lab 1–4 liegen im **privaten** Repository
+[haw-mc-labsolutions](https://github.com/tedeler/haw-mc-labsolutions), eingebunden als Submodul
+`solutions/` (je Labor `solutions/labs/<labor>/code/`, dazu die Laborbeschreibung in `doc/`). Wer
+keinen Zugriff hat (Studierende, Forks), bekommt ein leeres `solutions/` – ohne Fehlermeldung, weil
+das Submodul in `.gitmodules` mit `update = none` eingetragen ist. Die Web-Konsole funktioniert
+trotzdem vollständig: Die Musterlösungen liegen als fertige ELF-Dateien in `sim/solutions/`
+(eingecheckt, ohne Debug-Infos, Symbole für die Simulations-Ansicht bleiben erhalten).
+
+**Lehrende** holen das Submodul ausdrücklich:
+
+```bash
+git submodule update --init --checkout solutions
+git config submodule.solutions.update checkout    # künftig mit "git submodule update" mitziehen
+```
+
+Für CCS und das Board baut man eine Lösung wie die Beispiele: `make` in `solutions/labs/<labor>/code`
+(TI Arm Clang, sonst gcc, siehe `tools/tm4c.mk`) oder `tools/ccs-import.sh solutions/labs/<labor>/code`.
+Die Web-Konsole lädt gcc-Builds aus `sim/solutions/<Beispiel>.elf`:
 
 ```bash
 tools/build-solutions.sh                               # arm-none-eabi-gcc aus dem PATH
 CC=/pfad/arm-none-eabi-gcc tools/build-solutions.sh
 ```
 
-Das Docker-Image baut sie selbst (Stufe `solutions` im `webconsole/Dockerfile`, Debian-Paket
-`gcc-arm-none-eabi`). Statt des TI-Laufzeitsystems nutzt der gcc-Build newlib. `tools/gcc/cio_gcc.c`
+Das Skript baut immer `example05_timer_ccp` aus `examples/` und die Labor-Lösungen nur, wenn ihre
+Quellen in `solutions/` liegen; dann ersetzt es die ELF-Dateien in `sim/solutions/`. Nach einer
+Änderung an einer Lösung gehören ELF-Dateien und neuer Submodul-Stand in denselben Commit:
+
+```bash
+(cd solutions && git switch main && git pull)          # bzw. dort ändern, committen, pushen
+tools/build-solutions.sh
+git add solutions sim/solutions && git commit -m "Musterlösungen aktualisiert"
+```
+
+Das Docker-Image macht dasselbe (Stufe `solutions` im `webconsole/Dockerfile`, Debian-Paket
+`gcc-arm-none-eabi`): mit ausgechecktem Submodul aus den Quellen, sonst mit den fertigen ELFs. Die
+Quellen werden dabei nur per Bind-Mount gelesen und landen in keiner Image-Schicht. Statt des TI-Laufzeitsystems nutzt der gcc-Build newlib. `tools/gcc/cio_gcc.c`
 schickt `printf()` dabei über dasselbe CIO-Protokoll, die Ausgabe erscheint also ebenfalls in der
 CCS-Konsole. Welche Musterlösung zu welchem Versuch gehört, steht in der Versuchs-JSON:
 `"solution": { "example": "lab01_hexkeypad_bcd", "label": "…" }`.

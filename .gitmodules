@@ -1,0 +1,4 @@
+[submodule "solutions"]
+	path = solutions
+	url = ../haw-mc-labsolutions.git
+	update = none

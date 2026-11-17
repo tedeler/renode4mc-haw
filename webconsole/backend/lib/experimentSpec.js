@@ -334,7 +334,7 @@ const UART_FIELDS = {
   crlf: F.bool,
 };
 const SOLUTION_FIELDS = {
-  example: { check: F.re(ID_RE, 'Name eines Beispiels (examples/<name>)'), required: true },
+  example: { check: F.re(ID_RE, 'Name der Musterlösung (examples/<name> bzw. sim/solutions/<name>.elf)'), required: true },
   label: F.str,
 };
 // Zeitbasen des Oszilloskops (1-2-5-Folge, 1 us/div .. 1 s/div) wie im Frontend (Oscilloscope.jsx)
