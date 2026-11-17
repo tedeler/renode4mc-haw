@@ -112,8 +112,8 @@ function compare(pd, text) {
   await Promise.all([u, c].map((ws) => new Promise((r) => ws.once('open', r))));
   const send = (m) => c.send(JSON.stringify(m));
 
-  check('UART: Startmeldung', await waitFor(() => /Example 04 Pendeldisplay/.test(uart)));
-  check('UART: Pendelperiode 100,0 ms gemessen', await waitFor(() => /Pendelperiode: 100,0 ms/.test(uart)));
+  check('UART: Startmeldung', await waitFor(() => /Example 04 Pendulum display/.test(uart)));
+  check('UART: Pendelperiode 100.0 ms gemessen', await waitFor(() => /Pendulum period: 100\.0 ms/.test(uart)));
 
   async function checkImage(text, what) {
     let r = { ok: 0, bad: [] };
@@ -127,7 +127,7 @@ function compare(pd, text) {
 
   for (const cm of [42, 123, 7]) {
     send({ type: 'sensor', value: cm });
-    check(`Sensor ${cm} cm -> UART`, await waitFor(() => new RegExp(`Abstand: ${cm} cm`).test(uart)));
+    check(`Sensor ${cm} cm -> UART`, await waitFor(() => new RegExp(`Distance: ${cm} cm`).test(uart)));
     await checkImage(`${cm}CM`, '');
   }
 
@@ -137,8 +137,8 @@ function compare(pd, text) {
     Number.isInteger(pd.leds), `${phases.length} Frames`);
 
   // gemeldete Periode in ms (Komma), Toleranz 0,1 ms (Messung über eine halbe Schwingung)
-  const reported = (text) => (text.match(/Pendelperiode: ([\d,]+) ms/g) || [])
-    .map((m) => Number(m.replace(/[^\d,]/g, '').replace(',', '.')));
+  const reported = (text) => (text.match(/Pendulum period: ([\d.]+) ms/g) || [])
+    .map((m) => Number(m.replace(/[^\d.]/g, '')));
   // Ereignisse für die Wiedergabe: Zeit steigt, Phase passt zur Zeit, LED-Wechsel kommen an
   events.length = 0;
   await sleep(1500);
@@ -157,14 +157,14 @@ function compare(pd, text) {
       `${events.length} Ereignisse, max. Phasenfehler ${maxErr.toFixed(5)}`);
   }
 
-  for (const [hz, ms] of [[15, '66,7'], [1, '1000,0'], [20, '50,0'], [10, '100,0']]) {
+  for (const [hz, ms] of [[15, '66.7'], [1, '1000.0'], [20, '50.0'], [10, '100.0']]) {
     const mark = uart.length;
     send({ type: 'pendulum', frequency: hz });
     check(`Frequenz ${hz} Hz -> Modell`, await waitFor(() => pd && Math.abs(1e6 / pd.periodUs - hz) < 0.01, 3000),
       pd ? `${(1e6 / pd.periodUs).toFixed(2)} Hz` : '');
     check(`Frequenz ${hz} Hz -> Firmware misst ${ms} ms`,
-      await waitFor(() => reported(uart.slice(mark)).some((v) => Math.abs(v - Number(ms.replace(',', '.'))) <= 0.1001), 5000),
-      (uart.slice(mark).match(/Pendelperiode: [\d,]+ ms/g) || []).join(' | '));
+      await waitFor(() => reported(uart.slice(mark)).some((v) => Math.abs(v - Number(ms)) <= 0.1001), 5000),
+      (uart.slice(mark).match(/Pendulum period: [\d.]+ ms/g) || []).join(' | '));
     await sleep(Math.max(1000, 2500 / hz)); // Bild ein paar Schwünge lang mit der neuen Periode zeichnen lassen
     await checkImage('7CM', ` bei ${hz} Hz`);
   }

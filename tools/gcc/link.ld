@@ -1,5 +1,5 @@
-/* Linker-Skript für die gcc-Builds der Musterlösungen (tools/build-solutions.sh), entspricht
- * common/tm4c1294.cmd: Flash 1 MB ab 0x0, SRAM 256 KB ab 0x20000000, Stack am Ende des SRAM. */
+/* Linker script for the gcc builds of the reference solutions (tools/build-solutions.sh), equivalent to
+ * common/tm4c1294.cmd: flash 1 MB from 0x0, SRAM 256 KB from 0x20000000, stack at the end of SRAM. */
 MEMORY { FLASH (rx) : ORIGIN = 0x0, LENGTH = 1024K  SRAM (rwx) : ORIGIN = 0x20000000, LENGTH = 256K }
 SECTIONS {
   .text : { KEEP(*(.intvecs)) *(.text*) *(.rodata*) . = ALIGN(4); } > FLASH

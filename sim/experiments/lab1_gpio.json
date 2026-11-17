@@ -1,6 +1,6 @@
 {
-  "title": "Lab 1 – GPIO: Hex-Keypad und BCD-Anzeige (MCL Lab Session 1)",
-  "description": "MCL Lab Session 1: Hex-Keypad an Port M, BCD-Anzeige an Port K/L, LEDs D1–D4, Taster, UART0, printf",
+  "title": "Lab 1 – GPIO: hex keypad and BCD display (MCL Lab Session 1)",
+  "description": "MCL Lab Session 1: hex keypad on port M, BCD display on ports K/L, LEDs D1–D4, push buttons, UART0, printf",
   "uart": {
     "baud": 115200,
     "format": "8N1",
@@ -9,13 +9,13 @@
   "quantumUs": 10,
   "solution": {
     "example": "lab01_hexkeypad_bcd",
-    "label": "Musterlösung"
+    "label": "Reference solution"
   },
   "elements": [
     {
       "type": "hexkeypad",
-      "title": "Hex-Keypad 4×4 (aktiv LOW)",
-      "label": "Spalten X1–X4 = PM0–PM3 (Ausgänge), Zeilen Y1–Y4 = PM4–PM7 (Eingänge mit Pull-up). Gedrückte Taste: Y = 0, wenn ihr X = 0.",
+      "title": "Hex keypad 4×4 (active LOW)",
+      "label": "Columns X1–X4 = PM0–PM3 (outputs), rows Y1–Y4 = PM4–PM7 (inputs with pull-up). Pressed key: Y = 0 while its X = 0.",
       "riseTimeUs": 20,
       "pins": {
         "X1": "PM0",
@@ -30,7 +30,7 @@
     },
     {
       "type": "bcd",
-      "label": "D0–D7 = PK0–PK7, EN rechts (Ziffern 1/0) = PL0, EN links (Ziffern 3/2) = PL1, EN aktiv HIGH",
+      "label": "D0–D7 = PK0–PK7, EN right (digits 1/0) = PL0, EN left (digits 3/2) = PL1, EN active HIGH",
       "pins": {
         "D0": "PK0",
         "D1": "PK1",
@@ -88,7 +88,7 @@
     },
     {
       "type": "cio",
-      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+      "label": "printf() as in the CCS console (TI run-time library, C$$IO$$)"
     }
   ],
   "scope": {

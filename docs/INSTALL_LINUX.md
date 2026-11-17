@@ -1,80 +1,81 @@
-# Installation unter Linux
+# Installation on Linux
 
-Diese Anleitung richtet alles ein, was Sie für das Mikrocontroller-Praktikum brauchen:
+This guide sets up everything you need for the microcontroller lab:
 
-| Was | Wofür |
+| What | For |
 |---|---|
-| **Code Composer Studio (CCS)** | Programmieren, Übersetzen, Programm auf das Board laden, Debuggen |
-| **Renode + `ucsim`** | Simulator: Programm ohne Board ausführen, LEDs im Browser anzeigen |
-| **udev-Regel** | Erlaubt Ihnen den USB-Zugriff auf das Board (ohne `sudo`) |
+| **Code Composer Studio (CCS)** | writing and compiling programs, loading them onto the board, debugging |
+| **Renode + `ucsim`** | simulator: run a program without a board, show the LEDs in the browser |
+| **udev rule** | gives you USB access to the board (without `sudo`) |
 
-Die Beispiele greifen **direkt auf die Register** zu (Datenblatt statt Bibliothek) – TivaWare/driverlib
-wird **nicht** benötigt.
+The examples access the **registers directly** (data sheet instead of a library) – TivaWare/driverlib
+is **not** needed.
 
-Getestet mit: CCS 20.4 (Linux x64), Renode 1.17.0, Ubuntu/Debian-artiges Linux.
-Rechnen Sie mit ca. 1 h und rund 6 GB freiem Plattenplatz. Die Anleitung geht davon aus, dass Sie
-alles in Ihrem Home-Verzeichnis unter `~/ti` installieren – das braucht keine Administratorrechte
-(nur Schritt 5 benötigt `sudo`).
+Tested with: CCS 20.4 (Linux x64), Renode 1.17.0, Ubuntu/Debian-like Linux.
+Plan for about 1 hour and about 6 GB of free disk space. This guide assumes that you install
+everything in your home directory under `~/ti` – this needs no administrator rights
+(only step 5 needs `sudo`).
 
-> Alle Befehle werden in einem **Terminal** eingegeben und lassen sich aus den Codeblöcken direkt kopieren.
+> All commands are typed in a **terminal**; you can copy them directly from the code blocks.
 
 ---
 
-## 1. Benötigte Pakete
+## 1. Required packages
 
 ```bash
 sudo apt update
 sudo apt install git make curl libusb-1.0-0 libgtk-3-0 gdb-multiarch xdg-utils
 ```
 
-`gdb-multiarch` wird nur für das Debuggen im Simulator gebraucht (Schritt 8). Auf anderen
-Distributionen heißen die Pakete ähnlich (Fedora: `dnf install git make curl libusb gtk3 gdb`).
+`gdb-multiarch` is only needed for debugging in the simulator (step 8). On other distributions
+the packages have similar names (Fedora: `dnf install git make curl libusb gtk3 gdb`).
 
-## 2. Dieses Repository holen
+## 2. Getting this repository
 
 ```bash
-mkdir -p ~/praktikum && cd ~/praktikum
+mkdir -p ~/lab && cd ~/lab
 git clone https://github.com/tedeler/renode4mc-haw.git
 cd renode4mc-haw
 ```
 
 
-## 3. Code Composer Studio installieren
+## 3. Installing Code Composer Studio
 
-1. Auf <https://www.ti.com/tool/CCSTUDIO> den **Linux-Installer** (`CCS…_linux-x64.tar.gz`) laden
-   (kostenloser TI-Account nötig).
-2. Entpacken und Installer starten:
+1. Download the **Linux installer** (`CCS…_linux-x64.tar.gz`) from <https://www.ti.com/tool/CCSTUDIO>
+   (a free TI account is required).
+2. Unpack it and start the installer:
    ```bash
    cd ~/Downloads
    tar xf CCS*_linux-x64.tar.gz
    cd CCS*_linux-x64
-   ./ccs_setup_*.run          # Name kann abweichen; im Ordner nachsehen mit: ls
+   ./ccs_setup_*.run          # the name may differ; check in the folder with: ls
    ```
-3. **Installationsordner:** `~/ti` (Vorschlag des Installers übernehmen oder `~/ti` eintragen).
-   Danach liegt CCS in `~/ti/ccs2040` (Zahl = Version, bei Ihnen evtl. anders).
-4. Bei „Select Components“ genügt **Tiva C Series Arm Cortex-M4 MCUs** (spart Platz).
-5. Bei „Debug Probes“ den **Stellaris/Tiva ICDI** (bzw. „TI XDS/ICDI“) angehakt lassen.
+3. **Installation folder:** `~/ti` (accept the installer's suggestion or enter `~/ti`).
+   CCS is then in `~/ti/ccs2040` (the number is the version and may be different for you).
+4. Under "Select Components", **Tiva C Series Arm Cortex-M4 MCUs** is enough (saves space).
+5. Under "Debug Probes", leave **Stellaris/Tiva ICDI** (or "TI XDS/ICDI") ticked.
 
-Die Programmiersprache C wird von **TI Arm Clang** übersetzt; er ist in CCS enthalten
-## 4. Datenblatt besorgen (statt TivaWare)
+The C code is compiled by **TI Arm Clang**; it is included in CCS.
 
-Im Praktikum programmieren Sie **ohne Bibliothek** direkt über die Register. Dafür brauchen Sie das
-Datenblatt: <https://www.ti.com/product/TM4C1294NCPDT> → *Technical documents* →
-„Tiva TM4C1294NCPDT Microcontroller Data Sheet“ (PDF). Die Beispiele benutzen dafür die
-Registernamen und Bitkonstanten aus der TI-Headerdatei `common/tm4c1294ncpdt.h` (keine eigenen
-Adressen); deren Bedeutung schlagen Sie im Datenblatt nach. Zusätzlich hilfreich: das Board-Handbuch „EK-TM4C1294XL User's Guide“.
+## 4. Getting the data sheet (instead of TivaWare)
 
-## 5. USB-Zugriff auf das Board (udev-Regel)
+In the lab you program **without a library**, directly via the registers. For this you need the
+data sheet: <https://www.ti.com/product/TM4C1294NCPDT> → *Technical documents* →
+"Tiva TM4C1294NCPDT Microcontroller Data Sheet" (PDF). The examples use the register names and bit
+constants from the TI header file `common/tm4c1294ncpdt.h` (no addresses of their own); you look up
+what they mean in the data sheet. Also useful: the board manual "EK-TM4C1294XL User's Guide".
 
-Ohne diese Regel darf nur `root` mit dem Board sprechen. Ein Debug-Fehler wie
-„Could not open device“ deutet darauf hin.
+## 5. USB access to the board (udev rule)
+
+Without this rule only `root` may talk to the board. A debug error such as
+"Could not open device" points to this.
 
 ```bash
 cd ~/ti/ccs2040/ccs/install_scripts
 sudo ./ti_permissions_install.sh
 ```
 
-Alternativ (nur für das EK-TM4C1294XL; Datei `99-tiva-launchpad.rules`):
+Alternative (only for the EK-TM4C1294XL; file `99-tiva-launchpad.rules`):
 
 ```bash
 echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="00fd", MODE="0666"' \
@@ -82,10 +83,10 @@ echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="1cbe", ATTRS{idProduct}=="00fd", MODE=
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-Board neu einstecken. **Kontrolle:** `lsusb | grep -i 1cbe` zeigt dann eine Zeile
-„Texas Instruments … In-Circuit Debug Interface“.
+Unplug the board and plug it in again. **Check:** `lsusb | grep -i 1cbe` then shows a line
+"Texas Instruments … In-Circuit Debug Interface".
 
-## 6. Renode (der Simulator) installieren
+## 6. Installing Renode (the simulator)
 
 ```bash
 cd ~
@@ -96,100 +97,98 @@ rm renode.tar.gz
 ~/renode/renode --version
 ```
 
-Die letzte Zeile muss `Renode, version 1.17.0 …` ausgeben. (Auf ARM-Rechnern: die Datei
-`linux-arm64-portable` verwenden.) Die „portable“-Version bringt alles Nötige mit (Mono/.NET).
+The last line must print `Renode, version 1.17.0 …`. (On ARM computers use the file
+`linux-arm64-portable`.) The "portable" version contains everything it needs (Mono/.NET).
 
-## 7. `ucsim` einrichten
+## 7. Setting up `ucsim`
 
-`ucsim` ist das Startskript des Simulators (Datei `sim/ucsim` in diesem Repository).
+`ucsim` is the start script of the simulator (file `sim/ucsim` in this repository).
 
 ```bash
 mkdir -p ~/bin
-ln -sf ~/praktikum/renode4mc-haw/sim/ucsim ~/bin/ucsim
+ln -sf ~/lab/renode4mc-haw/sim/ucsim ~/bin/ucsim
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-`ucsim` findet Renode automatisch unter `~/renode/renode`. Liegt Renode woanders, setzen Sie
-`export RENODE=/pfad/zu/renode`.
+`ucsim` finds Renode automatically in `~/renode/renode`. If Renode is somewhere else, set
+`export RENODE=/path/to/renode`.
 
-## 8. Alles prüfen (5 Minuten)
+## 8. Checking everything (5 minutes)
 
-**a) Simulator:** Ein fertiges Beispielprogramm bauen und simulieren (Details in
+**a) Simulator:** build and simulate a finished example program (details in
 `examples/example01_blinky/README.md`):
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/example01_blinky
+cd ~/lab/renode4mc-haw/examples/example01_blinky
 make
 ucsim example01_blinky.out
 ```
 
-Der Browser öffnet die LED-Anzeige; **D1 und D2 blinken abwechselnd**. Beenden: `Strg+C`.
+The browser opens the LED page; **D1 and D2 blink alternately**. Stop with `Ctrl+C`.
 
-**b) CCS:** Starten Sie `~/ti/ccs2040/ccs/theia/ccstudio` bzw. das CCS-Symbol im Startmenü. Beim ersten
-Start fragt CCS nach einem Workspace-Ordner – den Vorschlag übernehmen.
+**b) CCS:** start `~/ti/ccs2040/ccs/theia/ccstudio` or the CCS icon in the start menu. On the first
+start CCS asks for a workspace folder – accept the suggestion.
 
-**c) Board:** Das EK-TM4C1294XL per USB-Kabel am Port **„DEBUG“** anschließen (nicht „USER“).
-`lsusb` muss das Gerät zeigen (Schritt 5).
+**c) Board:** connect the EK-TM4C1294XL with a USB cable to the port **"DEBUG"** (not "USER").
+`lsusb` must show the device (step 5).
 
-Wenn a)–c) funktionieren, ist die Installation fertig. Weiter mit
+If a)–c) work, the installation is complete. Continue with
 [Example 01 – Blinky](../examples/example01_blinky/README.md).
 
 ---
 
-## 9. Eine `.out`-Datei manuell auf das Board laden (ohne CCS)
+## 9. Loading an `.out` file onto the board manually (without CCS)
 
-Die vom Compiler erzeugte `.out`-Datei (ELF-Format) kann auch im Terminal in den Flash des Boards
-geschrieben werden – nützlich, wenn man ein fertiges Programm nur ausprobieren will, oder wenn CCS
-nicht zur Hand ist. Dafür gibt es das Programm **OpenOCD**, das den On-Board-Debugger (ICDI) anspricht.
+The `.out` file created by the compiler (ELF format) can also be written into the flash memory of
+the board from the terminal – useful if you just want to try out a finished program, or if CCS is
+not at hand. For this there is the program **OpenOCD**, which talks to the on-board debugger (ICDI).
 
-Einmalig installieren (die udev-Regel aus Schritt 5 ist Voraussetzung):
+Install it once (the udev rule from step 5 is required):
 
 ```bash
 sudo apt install openocd
 ```
 
-Board am Port **DEBUG** anschließen, dann im Ordner mit der `.out`-Datei:
+Connect the board to the **DEBUG** port, then in the folder with the `.out` file:
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/example01_blinky
+cd ~/lab/renode4mc-haw/examples/example01_blinky
 make
 openocd -f board/ti_ek-tm4c1294xl.cfg -c "program example01_blinky.out verify reset exit"
 ```
 
-Die Ausgabe muss `** Programming Finished **`, `** Verified OK **` und `** Resetting Target **`
-enthalten. Danach läuft das Programm, und D1/D2 blinken. Die Meldung `Error: SRST error`
-ist bei diesem Board harmlos. Das Programm bleibt im Flash, bis es überschrieben wird (auch nach dem
-Abstecken des USB-Kabels).
+The output must contain `** Programming Finished **`, `** Verified OK **` and `** Resetting Target **`.
+After that the program runs and D1/D2 blink. The message `Error: SRST error` is harmless with this
+board. The program stays in flash until it is overwritten (also after unplugging the USB cable).
 
-| Meldung / Problem | Lösung |
+| Message / problem | Solution |
 |---|---|
-| `Error: no device found` / `LIBUSB_ERROR_ACCESS` | udev-Regel fehlt (Schritt 5), Kabel am Port „DEBUG“? |
-| `Error: Can't find board/ti_ek-tm4c1294xl.cfg` | OpenOCD zu alt; Datei `ek-tm4c1294xl.cfg` probieren oder OpenOCD aktualisieren |
-| `Address already in use` (Port 3333) | Es läuft schon ein OpenOCD, ein CCS-Debug oder `ucsim --debug`; beenden |
+| `Error: no device found` / `LIBUSB_ERROR_ACCESS` | udev rule missing (step 5)? Cable in the port "DEBUG"? |
+| `Error: Can't find board/ti_ek-tm4c1294xl.cfg` | OpenOCD too old; try the file `ek-tm4c1294xl.cfg` or update OpenOCD |
+| `Address already in use` (port 3333) | OpenOCD, a CCS debug session or `ucsim --debug` is already running; stop it |
 
-Wichtig: Der Flash-Inhalt ist im Simulator und auf dem Board derselbe – Sie laden dieselbe
-`.out`-Datei, die Sie auch mit `ucsim` simulieren.
+Important: the flash contents are the same in the simulator and on the board – you load the same
+`.out` file that you also simulate with `ucsim`.
 
-*Test-Stand:* Mit einem EK-TM4C1294XL und OpenOCD 0.12.0 (Ubuntu) getestet: Programmieren, Verifizieren
-und Starten von `example01_blinky.out` funktionieren. Das Blinken der LEDs wurde nicht optisch
-kontrolliert, sondern über den Programmzähler (läuft in der Warteschleife). Ein
-TI-eigenes Werkzeug mit gleicher Funktion ist der **UniFlash** (GUI, ti.com/tool/UNIFLASH);
-das haben wir nicht getestet.
+*Test status:* tested with an EK-TM4C1294XL and OpenOCD 0.12.0 (Ubuntu): programming, verifying
+and starting `example01_blinky.out` work. The blinking of the LEDs was not checked visually but via
+the program counter (it runs in the busy-wait loop). A TI tool with the same function is
+**UniFlash** (GUI, ti.com/tool/UNIFLASH); we have not tested it.
 
 ---
 
-## Häufige Probleme
+## Common problems
 
-| Meldung / Problem | Lösung |
+| Message / problem | Solution |
 |---|---|
-| `tiarmclang nicht gefunden …` / `make` baut `.elf` statt `.out` | `make` sucht `tiarmclang` im PATH und unter `~/ti`, `~/tmp/ti`, `/opt/ti`, `/Applications/ti` (neueste Version); ohne Treffer nimmt es `arm-none-eabi-gcc`. Was gefunden wird: `make toolchain`. Anderer Ort: `make CCS_ROOT=/pfad/zu/ccs` oder `make TIARMCLANG=/pfad/tiarmclang` |
-| `renode nicht gefunden` | Schritt 6 wiederholen oder `export RENODE=…` |
-| Browser zeigt „Nicht verbunden“ | `ucsim` läuft nicht (mehr); Terminal prüfen |
-| CCS: „Could not open device“ / Board nicht gefunden | udev-Regel (Schritt 5), anderes Kabel, Port „DEBUG“ benutzen |
-| Simulator-Warnung „Zugriff … ohne Takt“ | Im Programm fehlt das Einschalten des Takts (`SYSCTL_RCGCGPIO \|= …`) – genau der Fehler, der auf dem Board einen HardFault auslösen würde |
+| `tiarmclang not found …` / `make` builds `.elf` instead of `.out` | `make` looks for `tiarmclang` in PATH and in `~/ti`, `~/tmp/ti`, `/opt/ti`, `/Applications/ti` (newest version); if nothing is found it uses `arm-none-eabi-gcc`. What is found: `make toolchain`. Different location: `make CCS_ROOT=/path/to/ccs` or `make TIARMCLANG=/path/tiarmclang` |
+| `renode not found` | repeat step 6 or `export RENODE=…` |
+| the browser shows "Not connected" | `ucsim` is not running (any more); check the terminal |
+| CCS: "Could not open device" / board not found | udev rule (step 5), another cable, use the port "DEBUG" |
+| simulator warning "access … without clock" | the program does not switch on the clock (`SYSCTL_RCGCGPIO_R \|= …`) – exactly the mistake that would cause a HardFault on the board |
 
-> **Hinweis zum Test-Stand:** Die Installation von CCS/Renode, das Bauen mit CCS (ohne
-> Oberfläche) und die Simulation wurden getestet. Das Programmieren und Debuggen des echten
-> Boards und die Klickfolgen der CCS-Oberfläche in dieser Anleitung wurden von uns noch nicht am
-> realen Gerät geprüft – bei Abweichungen bitte melden.
+> **Note on the test status:** installing CCS/Renode, building with CCS (without the user
+> interface) and the simulation were tested. Programming and debugging the real board and the
+> click sequences of the CCS user interface in this guide have not yet been checked by us on the
+> real device – please report any differences.

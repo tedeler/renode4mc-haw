@@ -66,7 +66,7 @@ export default function Keypad({ layout = DEFAULT_LAYOUT, rowPins, colPins, rowN
   };
 
   const subtitle =
-    label ?? (rowPins && colPins ? `Zeilen ${rowPins.join('/')} · Spalten ${colPins.join('/')}` : undefined);
+    label ?? (rowPins && colPins ? `rows ${rowPins.join('/')} · columns ${colPins.join('/')}` : undefined);
   const tag = (x) => (x.name ? `${x.name} ${x.pin}` : x.pin);
 
   return (
@@ -80,7 +80,7 @@ export default function Keypad({ layout = DEFAULT_LAYOUT, rowPins, colPins, rowN
                 key={key}
                 type="button"
                 className={`key ${active === key ? 'pressed' : ''}`}
-                title={`Zeile ${m.row.index} (${tag(m.row)}) · Spalte ${m.col.index} (${tag(m.col)})`}
+                title={`row ${m.row.index} (${tag(m.row)}) · column ${m.col.index} (${tag(m.col)})`}
                 onPointerDown={(e) => {
                   e.preventDefault();
                   e.currentTarget.setPointerCapture?.(e.pointerId);

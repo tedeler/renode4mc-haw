@@ -1,6 +1,6 @@
 {
-  "title": "Lab 3 – NVIC: LED-Pendel und HC-SR04 mit Interrupts",
-  "description": "LED-Pendel an Port M (PM7 = oberste LED), Signal R/L an PL0, HC-SR04 an PD0/PD1, LEDs, Taster, UART0, printf",
+  "title": "Lab 3 – NVIC: LED pendulum and HC-SR04 with interrupts",
+  "description": "LED pendulum on port M (PM7 = topmost LED), signal R/L on PL0, HC-SR04 on PD0/PD1, LEDs, push buttons, UART0, printf",
   "uart": {
     "baud": 115200,
     "format": "8N1",
@@ -9,12 +9,12 @@
   "quantumUs": 10,
   "solution": {
     "example": "lab03_nvic_pendel",
-    "label": "Musterlösung"
+    "label": "Reference solution"
   },
   "elements": [
     {
       "type": "pendulum",
-      "label": "8 LEDs an PM0–PM7 (PM7 = LED 7 oben), Signal R/L an PL0: steigende Flanke = linker, fallende = rechter Umkehrpunkt · Start mit 8,3 Hz wie das echte Pendel und 1 s Nachleuchten",
+      "label": "8 LEDs on PM0–PM7 (PM7 = LED 7 at the top), signal R/L on PL0: rising edge = left, falling edge = right turning point · starts at 8.3 Hz like the real pendulum, with 1 s afterglow",
       "frequency": 8.3,
       "minFrequency": 1,
       "maxFrequency": 15,
@@ -22,7 +22,7 @@
       "syncMode": "direction",
       "periodUs": 120000,
       "columns": 120,
-      "_pins": "LED0 ist die oberste LED (Spitze). Beim HAW-Pendel ist das PM7.",
+      "_pins": "LED0 is the topmost LED (tip). On the HAW pendulum this is PM7.",
       "pins": {
         "LED0": "PM7",
         "LED1": "PM6",
@@ -48,8 +48,8 @@
     },
     {
       "type": "hcsr04",
-      "title": "Ultraschall HC-SR04",
-      "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo",
+      "title": "Ultrasonic sensor HC-SR04",
+      "label": "Trigger PD0, echo PD1 · range 3–300 cm, otherwise 200 ms echo",
       "initial": 65,
       "min": 0,
       "max": 350,
@@ -103,7 +103,7 @@
     },
     {
       "type": "cio",
-      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+      "label": "printf() as in the CCS console (TI run-time library, C$$IO$$)"
     }
   ],
   "scope": {

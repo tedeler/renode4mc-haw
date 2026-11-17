@@ -1,185 +1,186 @@
-# Example 01 – Blinky: LEDs blinken lassen
+# Example 01 – Blinky: making LEDs blink
 
-**Ziel:** Ihr erstes Mikrocontroller-Programm. Die LEDs **D1** und **D2** des Boards blinken
-abwechselnd im Halbsekundentakt – zuerst im **Simulator**, dann auf dem **echten Board**.
+**Goal:** your first microcontroller program. The LEDs **D1** and **D2** of the board blink
+alternately every half second – first in the **simulator**, then on the **real board**.
 
-**Vorher:** [Installation unter Linux](../../docs/INSTALL_LINUX.md) abgeschlossen.
+**Before you start:** [Installation on Linux](../../docs/INSTALL_LINUX.md) is complete.
 
 | | |
 |---|---|
-| Board | EK-TM4C1294XL (Mikrocontroller TM4C1294NCPDT, ARM Cortex-M4F) |
-| LEDs | D1 = Pin **PN1**, D2 = Pin **PN0** (Port N, Pin 1 bzw. 0) |
-| Takt | 16 MHz (der Takt direkt nach dem Einschalten; wir ändern ihn nicht) |
-| Dateien | `main.c` (Programm), `example01_blinky.projectspec` (CCS-Projekt), `Makefile` (Terminal-Build) |
+| Board | EK-TM4C1294XL (microcontroller TM4C1294NCPDT, ARM Cortex-M4F) |
+| LEDs | D1 = pin **PN1**, D2 = pin **PN0** (port N, pin 1 and 0) |
+| Clock | 16 MHz (the clock directly after power-on; we do not change it) |
+| Files | `main.c` (program), `example01_blinky.projectspec` (CCS project), `Makefile` (build in the terminal) |
 
 ---
 
-## 1. Was Sie lernen
+## 1. What you learn
 
-- Ein Mikrocontroller-Pin ist ein Anschluss, den das Programm über **Register** steuert. Ein Register
-  ist ein 32-Bit-Wert an einer festen Adresse; Schreiben auf diese Adresse stellt Hardware um.
-- Bevor man ein Peripherie-Modul (z. B. einen GPIO-Port) benutzt, muss man seinen **Takt
-  einschalten** („Clock Gating“, Register `RCGCGPIO`). Ohne Takt löst jeder Zugriff einen Fehler aus.
-- Pins müssen als **Ausgang** (`DIR`) und **digital** (`DEN`) konfiguriert werden, bevor man sie schreibt (`DATA`).
-- **Bitoperationen** (`|=`, `&= ~`, `^=`) ändern einzelne Bits, ohne die anderen anzufassen.
-- Mit einer **Warteschleife** verzögert man den Ablauf – die CPU ist dabei
-  voll beschäftigt (das verbessert Example 02 mit einem Timer).
+- A microcontroller pin is a connection that the program controls via **registers**. A register
+  is a 32-bit value at a fixed address; writing to this address changes the hardware.
+- Before you use a peripheral module (e.g. a GPIO port), you must **switch on its clock**
+  ("clock gating", register `RCGCGPIO`). Without a clock, every access causes a fault.
+- Pins must be configured as **output** (`DIR`) and **digital** (`DEN`) before you write to them (`DATA`).
+- **Bit operations** (`|=`, `&= ~`, `^=`) change individual bits without touching the others.
+- With a **busy-wait loop** you delay the program – the CPU is fully busy while waiting
+  (Example 02 improves this with a timer).
 
-## 2. Das Programm verstehen (`main.c`)
+## 2. Understanding the program (`main.c`)
 
-Es wird **keine Bibliothek** verwendet, aber die Headerdatei **`tm4c1294ncpdt.h`** von TI
-(liegt in `common/`, wird mit `#include "tm4c1294ncpdt.h"` eingebunden). Sie enthält
-- für jedes Register ein Makro `<MODUL>_<REGISTER>_R`, das man wie eine Variable liest und schreibt –
-  dahinter steht die Adresse aus dem Datenblatt (**Basisadresse + Offset**), z. B.
-  `GPIO_PORTN_DIR_R` = Adresse `0x40064400`;
-- für Bits und Feldwerte Konstanten wie `SYSCTL_RCGCGPIO_R12` (= Bit 12) oder `TIMER_CTL_TAEN`.
+**No library** is used, only the header file **`tm4c1294ncpdt.h`** from TI
+(in `common/`, included with `#include "tm4c1294ncpdt.h"`). It contains
+- for every register a macro `<MODULE>_<REGISTER>_R` that you read and write like a variable –
+  behind it is the address from the data sheet (**base address + offset**), e.g.
+  `GPIO_PORTN_DIR_R` = address `0x40064400`;
+- for bits and field values constants such as `SYSCTL_RCGCGPIO_R12` (= bit 12) or `TIMER_CTL_TAEN`.
 
-Im Programm steht deshalb **keine Adresse** – Tippfehler in Adressen sind so ausgeschlossen.
+That is why the program contains **no addresses** – so typing errors in addresses are impossible.
 
-| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+| Register (data sheet) | Name in `tm4c1294ncpdt.h` | Address | Effect here |
 |---|---|---|---|
-| `RCGCGPIO` | `SYSCTL_RCGCGPIO_R` | `0x400FE608` | Bit 12 (`SYSCTL_RCGCGPIO_R12`) = 1: Port N bekommt Takt (Bit *n* = Port *n*, A = 0 … N = 12) |
-| `PRGPIO` | `SYSCTL_PRGPIO_R` | `0x400FEA08` | Bit 12 (`SYSCTL_PRGPIO_R12`) = 1: Port N ist bereit |
-| `GPIODIR` (Port N) | `GPIO_PORTN_DIR_R` | `0x40064400` | Bit = 1: Pin ist Ausgang |
-| `GPIODEN` (Port N) | `GPIO_PORTN_DEN_R` | `0x4006451C` | Bit = 1: Pin digital aktiv |
-| `GPIODATA` (Port N) | `GPIO_PORTN_DATA_R` | `0x400643FC` | Pegel der Pins (Bit 0 = PN0, Bit 1 = PN1) |
+| `RCGCGPIO` | `SYSCTL_RCGCGPIO_R` | `0x400FE608` | bit 12 (`SYSCTL_RCGCGPIO_R12`) = 1: port N gets its clock (bit *n* = port *n*, A = 0 … N = 12) |
+| `PRGPIO` | `SYSCTL_PRGPIO_R` | `0x400FEA08` | bit 12 (`SYSCTL_PRGPIO_R12`) = 1: port N is ready |
+| `GPIODIR` (port N) | `GPIO_PORTN_DIR_R` | `0x40064400` | bit = 1: the pin is an output |
+| `GPIODEN` (port N) | `GPIO_PORTN_DEN_R` | `0x4006451C` | bit = 1: the pin is digitally enabled |
+| `GPIODATA` (port N) | `GPIO_PORTN_DATA_R` | `0x400643FC` | levels of the pins (bit 0 = PN0, bit 1 = PN1) |
 
 ```c
-SYSCTL_RCGCGPIO_R |= PORT_N;                      // 1. Takt für Port N an (Bit 12 setzen)
-while ((SYSCTL_PRGPIO_R & PORT_N_BEREIT) == 0) {} // 2. warten, bis Port bereit
-GPIO_PORTN_DIR_R |= PIN0 | PIN1;                  // 3. PN0, PN1 = Ausgänge
-GPIO_PORTN_DEN_R |= PIN0 | PIN1;                  //    und digital
-GPIO_PORTN_DATA_R = PIN1;                         // Start: D1 an, D2 aus
+SYSCTL_RCGCGPIO_R |= PORT_N;                      // 1. clock for port N on (set bit 12)
+while ((SYSCTL_PRGPIO_R & PORT_N_READY) == 0) {}  // 2. wait until the port is ready
+GPIO_PORTN_DIR_R |= PIN0 | PIN1;                  // 3. PN0, PN1 = outputs
+GPIO_PORTN_DEN_R |= PIN0 | PIN1;                  //    and digital
+GPIO_PORTN_DATA_R = PIN1;                         // start: D1 on, D2 off
 while (1) {
-    warten(HALBE_SEKUNDE);                        // 4. ca. 0,5 s warten
-    GPIO_PORTN_DATA_R ^= PIN0 | PIN1;             // 5. beide LEDs umschalten (XOR)
+    delay(HALF_SECOND);                           // 4. wait about 0.5 s
+    GPIO_PORTN_DATA_R ^= PIN0 | PIN1;             // 5. toggle both LEDs (XOR)
 }
 ```
 
-**Achtung, Namen der Ports A–J:** Beim TM4C1294 liegen alle GPIO-Ports am schnellen AHB-Bus. Die
-Headerdatei nennt die Ports A bis J deshalb `GPIO_PORTA_AHB_..._R` … `GPIO_PORTJ_AHB_..._R`, die
-Ports K bis Q dagegen ohne Zusatz (`GPIO_PORTN_DIR_R`).
+**Caution, names of ports A–J:** on the TM4C1294 all GPIO ports are connected to the fast AHB bus.
+That is why the header file calls ports A to J `GPIO_PORTA_AHB_..._R` … `GPIO_PORTJ_AHB_..._R`,
+while ports K to Q have no suffix (`GPIO_PORTN_DIR_R`).
 
-Die Wartezeit ist eine leere Zählschleife (`volatile`, damit der Compiler sie nicht entfernt). Ein
-Durchlauf braucht etwa 12 Takte, bei 16 MHz sind `HALBE_SEKUNDE` ≈ 700 000 Durchläufe knapp eine halbe Sekunde.
-Die genaue Zeit hängt vom Compiler und von der Optimierung ab – deshalb nimmt man in Example 02 einen Timer.
+The delay is an empty counting loop (`volatile`, so that the compiler does not remove it). One pass
+takes about 12 clock cycles; at 16 MHz, `HALF_SECOND` ≈ 700 000 passes are just under half a second.
+The exact time depends on the compiler and the optimisation – that is why Example 02 uses a timer.
 
 ---
 
-## 3. Variante A: Im Simulator (ohne Board)
+## 3. Option A: in the simulator (without a board)
 
-Der Simulator führt **dieselbe `.out`-Datei** aus wie das Board.
+The simulator runs **the same `.out` file** as the board.
 
-### 3.1 Übersetzen
+### 3.1 Compiling
 
-Im Terminal:
+In the terminal:
 
 ```bash
-cd ~/praktikum/renode4mc-haw/examples/example01_blinky
+cd ~/lab/renode4mc-haw/examples/example01_blinky
 make
 ```
 
-Ergebnis: Datei `example01_blinky.out`. Fehlermeldung „tiarmclang nicht gefunden“ → Abschnitt
-*Häufige Probleme* in der Installationsanleitung.
+Result: the file `example01_blinky.out`. Error message "tiarmclang not found" → section
+*Common problems* in the installation guide.
 
-*Alternativ* können Sie die `.out`-Datei in CCS bauen (Abschnitt 4) und diese simulieren.
+*Alternatively* you can build the `.out` file in CCS (section 4) and simulate that one.
 
-### 3.2 Simulator starten
+### 3.2 Starting the simulator
 
 ```bash
 ucsim example01_blinky.out
 ```
 
-Es öffnet sich die Seite **„EK-TM4C1294XL – LEDs“** im Browser (falls nicht: Datei
-`sim/visualizer/ek-tm4c1294xl.html` selbst im Browser öffnen). Unten steht „Verbunden mit
-Simulator“, und **D1 und D2 blinken abwechselnd**. Mit `Strg+C` im Terminal beenden.
+The page **"EK-TM4C1294XL – LEDs"** opens in the browser (if not: open the file
+`sim/visualizer/ek-tm4c1294xl.html` in the browser yourself). At the bottom it says "Connected to
+the simulator", and **D1 and D2 blink alternately**. Stop with `Ctrl+C` in the terminal.
 
-Die vier LEDs der Anzeige entsprechen den vier User-LEDs des Boards (D1 PN1, D2 PN0, D3 PF4, D4 PF0).
+The four LEDs on the page correspond to the four user LEDs of the board (D1 PN1, D2 PN0, D3 PF4, D4 PF0).
 
-### 3.3 Selbst ausprobieren
+### 3.3 Try it yourself
 
-- Ändern Sie `HALBE_SEKUNDE` auf `70000u` (ca. 0,05 s), `make`, `ucsim` neu starten.
-- Entfernen Sie testweise die Zeile `SYSCTL_RCGCGPIO_R |= PORT_N;` und simulieren Sie erneut: Im
-  Terminal erscheint die Warnung *„GPIO Port N: Zugriff … ohne Takt!“*, die LEDs bleiben aus. Auf dem
-  Board würde das Programm im HardFault landen – ein sehr häufiger Anfängerfehler.
+- Change `HALF_SECOND` to `70000u` (about 0.05 s), run `make`, restart `ucsim`.
+- As a test, remove the line `SYSCTL_RCGCGPIO_R |= PORT_N;` and simulate again: the terminal shows
+  the warning *"GPIO port N: access … without clock!"*, and the LEDs stay off. On the board the
+  program would end up in the HardFault handler – a very common beginner's mistake.
 
 ---
 
-## 4. Variante B: Auf dem echten Board mit CCS
+## 4. Option B: on the real board with CCS
 
-### 4.1 Projekt in CCS importieren
+### 4.1 Importing the project into CCS
 
-1. CCS starten (`~/ti/ccs2040/ccs/theia/ccstudio`).
-2. Menü **File → Import Projects…** (bzw. in der Ansicht „CCS Project Explorer“ → *Import*), den
-   Typ **CCS Projects** wählen und die Datei
-   `~/praktikum/renode4mc-haw/examples/example01_blinky/example01_blinky.projectspec` auswählen.
-3. Das Projekt braucht keine weiteren Einstellungen (keine Bibliothek, keine Pfadvariablen).
+1. Start CCS (`~/ti/ccs2040/ccs/theia/ccstudio`).
+2. Menu **File → Import Projects…** (or in the view "CCS Project Explorer" → *Import*), choose the
+   type **CCS Projects** and select the file
+   `~/lab/renode4mc-haw/examples/example01_blinky/example01_blinky.projectspec`.
+3. The project needs no further settings (no library, no path variables).
 
-**Wenn die Oberfläche nicht wie beschrieben reagiert**, importieren Sie im Terminal – das
-funktioniert ohne Klicken und ist von uns getestet:
+**If the user interface does not react as described**, import it in the terminal – this works
+without clicking and has been tested by us:
 
 ```bash
-cd ~/praktikum/renode4mc-haw
+cd ~/lab/renode4mc-haw
 tools/ccs-import.sh examples/example01_blinky
 ```
 
-Das Projekt liegt danach im Workspace `~/ccs_workspace`; in CCS starten Sie mit
-`-data`/„Switch Workspace“ auf diesen Ordner.
+The project is then in the workspace `~/ccs_workspace`; in CCS, use
+`-data`/"Switch Workspace" to open this folder.
 
-### 4.2 Bauen
+### 4.2 Building
 
-Rechtsklick auf das Projekt **example01_blinky → Build Project** (Hammer-Symbol). In der Konsole muss
-am Ende `Finished building target: "example01_blinky.out"` und **0 errors** stehen.
+Right-click on the project **example01_blinky → Build Project** (hammer icon). At the end, the
+console must show `Finished building target: "example01_blinky.out"` and **0 errors**.
 
-### 4.3 Board anschließen und Programm laden
+### 4.3 Connecting the board and loading the program
 
-1. Board mit dem USB-Kabel an Port **DEBUG** anschließen (nicht USER). Die Power-LED leuchtet.
-2. Menü **Run → Debug** (oder Käfer-Symbol). CCS lädt das Programm über die Debug-Verbindung
-   „Stellaris ICDI“ und hält am Anfang von `main` an.
-3. **Run → Resume** (grüner Pfeil/`F8`): D1 und D2 blinken abwechselnd.
-4. Zum Beenden **Terminate** (rotes Quadrat).
+1. Connect the board with the USB cable to the port **DEBUG** (not USER). The power LED lights up.
+2. Menu **Run → Debug** (or the bug icon). CCS loads the program via the debug connection
+   "Stellaris ICDI" and stops at the beginning of `main`.
+3. **Run → Resume** (green arrow/`F8`): D1 and D2 blink alternately.
+4. To finish: **Terminate** (red square).
 
-Das Programm liegt danach im Flash des Boards: Nach Aus- und Einstecken des USB-Kabels startet es
-von selbst wieder.
+The program is then stored in the flash of the board: after unplugging and plugging in the USB
+cable it starts again by itself.
 
-### 4.4 Alternative: `.out`-Datei im Terminal auf das Board laden (ohne CCS)
+### 4.4 Alternative: loading the `.out` file onto the board from the terminal (without CCS)
 
 ```bash
 openocd -f board/ti_ek-tm4c1294xl.cfg -c "program example01_blinky.out verify reset exit"
 ```
 
-(`sudo apt install openocd`, Details in [Installationsanleitung, Schritt 9](../../docs/INSTALL_LINUX.md).)
+(`sudo apt install openocd`, details in the [installation guide, step 9](../../docs/INSTALL_LINUX.md).)
+
 ---
 
-## 5. Im Simulator debuggen (Zusatz)
+## 5. Debugging in the simulator (extra)
 
-Sie können den Ablauf Schritt für Schritt verfolgen:
+You can follow the program step by step:
 
 ```bash
-ucsim --debug example01_blinky.out      # Terminal 1: Simulator wartet auf den Debugger
-gdb-multiarch example01_blinky.out      # Terminal 2
+ucsim --debug example01_blinky.out      # terminal 1: the simulator waits for the debugger
+gdb-multiarch example01_blinky.out      # terminal 2
 (gdb) target remote localhost:3333
 (gdb) break main
 (gdb) continue
-(gdb) next                            # Zeile für Zeile
+(gdb) next                            # line by line
 (gdb) quit
 ```
 
-Das Debuggen mit der CCS-Oberfläche gegen den Simulator ist in `docs/TOOLCHAIN.md` beschrieben
-(noch nicht fertig integriert).
+Debugging with the CCS user interface against the simulator is described in `docs/TOOLCHAIN.md`
+(not fully integrated yet).
 
 ---
 
-## 6. Wie genau ist der Simulator?
+## 6. How accurate is the simulator?
 
-- Das **Zeitverhalten** von Warteschleifen ist ungefähr (±30 %), nicht taktgenau.
-- Modelliert sind: Clock-Gating (SYSCTL), GPIO (Ports A–Q), Timer 0–7, Interrupts (SysTick ist im Prozessormodell enthalten, aber noch nicht gesondert getestet).
-  UART und ADC folgen (siehe `docs/ROADMAP.md`).
+- The **timing** of busy-wait loops is approximate (±30 %), not cycle-accurate.
+- Modelled are: clock gating (SYSCTL), GPIO (ports A–Q), timers 0–7, UART, I2C, interrupts (SysTick
+  is part of the processor model but has not been tested separately yet). ADC follows (see `docs/ROADMAP.md`).
 
-## 7. Aufgaben
+## 7. Exercises
 
-1. Lassen Sie **D3 (PF4)** und **D4 (PF0)** zusätzlich blinken (Port F = Bit 5 in `RCGCGPIO`,
-   also `SYSCTL_RCGCGPIO_R5`; Register `GPIO_PORTF_AHB_DIR_R`, `…_DEN_R`, `…_DATA_R` – in
-   `tm4c1294ncpdt.h` nachschlagen). Welche Zeile fehlt, wenn die LEDs dunkel bleiben?
-2. Erzeugen Sie ein **Lauflicht** über alle vier LEDs.
-3. Messen Sie mit einer Stoppuhr, wie genau 0,5 s auf dem Board sind. Warum weicht der Wert ab?
+1. Make **D3 (PF4)** and **D4 (PF0)** blink as well (port F = bit 5 in `RCGCGPIO`,
+   i.e. `SYSCTL_RCGCGPIO_R5`; registers `GPIO_PORTF_AHB_DIR_R`, `…_DEN_R`, `…_DATA_R` – look them up
+   in `tm4c1294ncpdt.h`). Which line is missing if the LEDs stay dark?
+2. Create a **running light** over all four LEDs.
+3. Measure with a stopwatch how accurate the 0.5 s are on the board. Why does the value differ?

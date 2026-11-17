@@ -1,186 +1,184 @@
-# Example 04 – Pendeldisplay: UART, Ultraschall und POV-Anzeige
+# Example 04 – Pendulum display: UART, ultrasonic sensor and POV display
 
-**Ziel:** Ein **Pendel mit 8 LEDs** schwingt 10-mal pro Sekunde. Schaltet die Firmware die LEDs
-genau im richtigen Moment, sieht das Auge ein stehendes Bild („persistence of vision“, POV).
-Auf dem Pendel erscheint der Abstand, den der **Ultraschallsensor** misst, z. B. `123CM`. Der
-Abstand wird außerdem über **UART0** ausgegeben. Erst im **Simulator** (Web-Konsole), dann auf
-dem **Board** mit Zusatz-Hardware.
+**Goal:** a **pendulum with 8 LEDs** swings 10 times per second. If the firmware switches the LEDs
+at exactly the right moment, the eye sees a stationary image ("persistence of vision", POV).
+The pendulum shows the distance measured by the **ultrasonic sensor**, e.g. `123CM`. The distance
+is also printed via **UART0**. First in the **simulator** (web console), then on the **board** with
+additional hardware.
 
-**Vorher:** [Example 02](../example02_timer_blink/README.md) (Timer, Interrupt) und
-[Example 03](../example03_webkonsole/README.md) (UART, I2C, Ultraschallsensor).
+**Before you start:** [Example 02](../example02_timer_blink/README.md) (timer, interrupt) and
+[Example 03](../example03_webkonsole/README.md) (UART, I2C, ultrasonic sensor).
 
 | | |
 |---|---|
-| Board | EK-TM4C1294XL (TM4C1294NCPDT), Takt 16 MHz (unverändert) |
-| Pendel-LEDs | PM0–PM7 (Ausgang); stehendes Pendel mit Drehpunkt unten: PM0 = LED oben an der Spitze, PM7 = unterste LED |
-| Pendel-Signal | PL0 (Eingang): **HIGH = Pendel rechts von der Mitte**, LOW = links; Interrupt bei beiden Flanken |
-| Pendel | 10 Schwingungen pro Sekunde (Periode T = 100 ms); in der Web-Konsole 0,1–20 Hz einstellbar |
-| UART0 | PA0 RX / PA1 TX, 115200 Baud, 8N1 (virtueller COM-Port des Boards) |
+| Board | EK-TM4C1294XL (TM4C1294NCPDT), clock 16 MHz (unchanged) |
+| Pendulum LEDs | PM0–PM7 (outputs); upright pendulum with the pivot at the bottom: PM0 = LED at the top at the tip, PM7 = lowest LED |
+| Pendulum signal | PL0 (input): **HIGH = pendulum right of the centre**, LOW = left; interrupt on both edges |
+| Pendulum | 10 oscillations per second (period T = 100 ms); adjustable from 0.1 to 20 Hz in the web console |
+| UART0 | PA0 RX / PA1 TX, 115200 baud, 8N1 (virtual COM port of the board) |
 | I2C0 | PB2 SCL / PB3 SDA, 100 kHz |
-| Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
-| LED D2 | PN0, Herzschlag 1 Hz |
-| Timer | Timer0A 100 ms (Sensor), Timer1A Einmal-Timer (Spalten), Timer2A freilaufend (Zeitbasis) |
-| Dateien | `main.c`, `example04_pendeldisplay.projectspec`, `Makefile` |
+| Ultrasonic sensor | MaxBotix MB1242 (I2CXL-MaxSonar), I2C address 0x70 |
+| LED D2 | PN0, heartbeat 1 Hz |
+| Timers | Timer0A 100 ms (sensor), Timer1A one-shot timer (columns), Timer2A free-running (time base) |
+| Files | `main.c`, `example04_pendeldisplay.projectspec`, `Makefile` |
 
 ---
 
-## 1. Was Sie lernen
+## 1. What you learn
 
-- **Zeitkritische Ausgabe mit Timern:** Ein **Einmal-Timer** löst zum Beginn jeder Bildspalte
-  einen Interrupt aus. Ein zweiter, **freilaufender** Timer dient als Uhr.
-- **Absolute statt relativer Zeitpunkte:** Startet man den nächsten Timer immer relativ zum
-  letzten Interrupt, addieren sich die Verzögerungen der Interrupt-Routine. Hier wird jeder
-  Spaltenbeginn absolut auf der Uhr berechnet.
-- **Synchronisation auf ein externes Signal:** Die Flanken an PL0 markieren den Durchgang des
-  Pendels durch die Mitte. Der Abstand zweier aufeinanderfolgender Flanken ist eine halbe
-  Periode; daraus misst die Firmware laufend die Periode und passt den Zeitplan an.
-- **Nichtlineare Bewegung:** Das Pendel ist in der Mitte schnell und an den Umkehrpunkten
-  langsam. Gleich breite Spalten brauchen deshalb unterschiedlich lange Zeiten (Tabelle mit
-  `asin`, in Ganzzahlen vorberechnet).
-- **Bild als Bytes:** Eine Bildspalte ist ein Byte auf Port M (Bit n = LED n). Der 5×7-Zeichensatz
-  aus Example 03 passt direkt.
+- **Time-critical output with timers:** a **one-shot timer** triggers an interrupt at the start of
+  every image column. A second, **free-running** timer serves as a clock.
+- **Absolute instead of relative points in time:** if you always start the next timer relative to
+  the last interrupt, the delays of the interrupt routine add up. Here the start of every column
+  is computed absolutely on the clock.
+- **Synchronisation to an external signal:** the edges on PL0 mark the moment when the pendulum
+  passes the centre. The time between two consecutive edges is half a period; from this the
+  firmware keeps measuring the period and adapts the schedule.
+- **Non-linear motion:** the pendulum is fast in the centre and slow at the turning points.
+  Columns of equal width therefore need different durations (a table with `asin`, pre-computed as
+  integers).
+- **Image as bytes:** one image column is one byte on port M (bit n = LED n). The 5×7 font from
+  Example 03 fits directly.
 
-## 2. Das Prinzip
+## 2. The principle
 
-Die Auslenkung des Pendels folgt einer Sinusschwingung:
+The deflection of the pendulum follows a sine oscillation:
 
 ```
-x(t) = sin(2·π·t / T)        x = −1: ganz links,  x = 0: Mitte,  x = +1: ganz rechts
+x(t) = sin(2·π·t / T)        x = −1: far left,  x = 0: centre,  x = +1: far right
 
-Zeit t        0         25 ms        50 ms        75 ms        100 ms
-Auslenkung    Mitte  →  ganz rechts → Mitte    →  ganz links → Mitte
-Bewegung      nach rechts (0 … 25 ms), nach links (25 … 75 ms), nach rechts (75 … 100 ms)
+time t        0         25 ms        50 ms        75 ms        100 ms
+deflection    centre  → far right  → centre    →  far left   → centre
+motion        to the right (0 … 25 ms), to the left (25 … 75 ms), to the right (75 … 100 ms)
 PL0           ↑ HIGH ──────────────── ↓ LOW ─────────────────  ↑ HIGH
 ```
 
-Die steigende Flanke an PL0 bedeutet also „Pendel läuft nach rechts durch die Mitte“, die
-fallende Flanke „Pendel läuft nach links durch die Mitte“.
+So the rising edge on PL0 means "the pendulum passes the centre moving to the right", the
+falling edge "the pendulum passes the centre moving to the left".
 
-Das Bild hat **40 Spalten**. Sie verteilen sich gleichmäßig über die inneren 90 % des
-Schwenkbereichs (`x` von −0,9 bis +0,9). Ganz außen ist das Pendel so langsam, dass die Spalten
-zu breit würden. Spalte k beginnt bei `x(k) = −0,9 + 1,8·k/40`, also zur Zeit
+The image has **40 columns**. They are spread evenly over the inner 90 % of the swing range
+(`x` from −0.9 to +0.9). At the very outside the pendulum is so slow that the columns would
+become too wide. Column k starts at `x(k) = −0.9 + 1.8·k/40`, i.e. at the time
 
 ```
-t(k) = asin(x(k)) / (2·π) · T          (gemessen ab dem Durchgang durch die Mitte)
+t(k) = asin(x(k)) / (2·π) · T          (measured from the moment the pendulum passes the centre)
 ```
 
-Für T = 100 ms dauert ein Bild von `t(0) = −17,8 ms` bis `t(40) = +17,8 ms`. Die Spalten in der
-Mitte sind 0,72 ms lang, die äußersten 1,5 ms.
+For T = 100 ms one image lasts from `t(0) = −17.8 ms` to `t(40) = +17.8 ms`. The columns in the
+centre last 0.72 ms, the outermost ones 1.5 ms.
 
-**Wichtig:** Die Flanke an PL0 liegt **mitten** im Bild. Die Firmware plant deshalb immer den
-**nächsten** Durchgang durch die Mitte. Er liegt eine halbe Periode nach der letzten Flanke, in
-der Gegenrichtung:
+**Important:** the edge on PL0 lies **in the middle** of the image. That is why the firmware always
+schedules the **next** pass through the centre. It comes half a period after the last edge, in the
+opposite direction:
 
-- PL0 HIGH (Pendel rechts) → der nächste Durchgang geht nach **links**: Spalten 39 … 0.
-- PL0 LOW (Pendel links) → der nächste Durchgang geht nach **rechts**: Spalten 0 … 39.
+- PL0 HIGH (pendulum right) → the next pass goes to the **left**: columns 39 … 0.
+- PL0 LOW (pendulum left) → the next pass goes to the **right**: columns 0 … 39.
 
-Das Bild wird also bei jedem Schwung gezeichnet, 20-mal pro Sekunde.
+So the image is drawn on every swing, 20 times per second.
 
-## 3. Das Programm verstehen (`main.c`)
+## 3. Understanding the program (`main.c`)
 
-| Teil | Aufgabe |
+| Part | Task |
 |---|---|
-| `spaltenZeit_q16[]` | `t(k)/T` in Einheiten von 1/65536 der Periode (mit Python vorberechnet, Befehl im Kommentar) |
-| `zeitplan_berechnen()` | rechnet die Tabelle mit der gemessenen Periode in Timer-Takte um (`spaltenTakte[]`) |
-| `GPIOL_Handler()` | Flanke an PL0: Zeitpunkt merken, Periode = 2 × Abstand zur vorigen Flanke |
-| `schwung_planen()` | nächsten Durchgang durch die Mitte berechnen (`mitte`), Richtung festlegen, Timer1A auf Spalte 0 |
-| `spaltentimer_auf(k)` | Timer1A so stellen, dass er bei `mitte + t(k)` auslöst |
-| `TIMER1A_Handler()` | Spalte auf Port M ausgeben, Timer auf die nächste Spalte; nach Spalte 39 LEDs aus, nächsten Schwung planen |
-| `bild_text()` | Text zentriert ins Bild schreiben (5×7-Zeichensatz, Bit 0 = oben) |
-| Hauptschleife | alle 200 ms Sensor messen, bei Änderung Bild und UART aktualisieren |
+| `columnTime_q16[]` | `t(k)/T` in units of 1/65536 of the period (pre-computed with Python, command in the comment) |
+| `compute_schedule()` | converts the table into timer ticks using the measured period (`columnTicks[]`) |
+| `GPIOL_Handler()` | edge on PL0: remember the time, period = 2 × time since the previous edge |
+| `plan_swing()` | compute the next pass through the centre (`center`), set the direction, set Timer1A to column 0 |
+| `set_column_timer(k)` | set Timer1A so that it triggers at `center + t(k)` |
+| `TIMER1A_Handler()` | output the column on port M, set the timer to the next column; after column 39 switch the LEDs off and schedule the next swing |
+| `image_text()` | write text centred into the image (5×7 font, bit 0 = top) |
+| main loop | measure the sensor every 200 ms; on a change, update the image and the UART |
 
-| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+| Register (data sheet) | Name in `tm4c1294ncpdt.h` | Address | Effect here |
 |---|---|---|---|
-| `GPIOIBE` (Port L) | `GPIO_PORTL_IBE_R` | `0x40062408` | Bit 0: Interrupt bei **beiden** Flanken von PL0 |
-| `GPIODATA` (Port M) | `GPIO_PORTM_DATA_R` | `0x400633FC` | alle 8 Bits auf einmal: eine Bildspalte |
-| `GPTMTAMR` (Timer1) | `TIMER1_TAMR_R` | `0x40031004` | `TIMER_TAMR_TAMR_1_SHOT`: Einmal-Modus |
-| `GPTMTAILR` (Timer1) | `TIMER1_TAILR_R` | `0x40031028` | Wartezeit bis zur nächsten Spalte (Takte − 1) |
-| `GPTMCTL` (Timer1) | `TIMER1_CTL_R` | `0x4003100C` | `TIMER_CTL_TAEN`: Start; im Einmal-Modus schaltet der Timer sich danach ab |
-| `GPTMTAV` (Timer2) | `TIMER2_TAV_R` | `0x40032050` | aktueller Stand der freilaufenden Uhr (zählt **abwärts**) |
+| `GPIOIBE` (port L) | `GPIO_PORTL_IBE_R` | `0x40062408` | bit 0: interrupt on **both** edges of PL0 |
+| `GPIODATA` (port M) | `GPIO_PORTM_DATA_R` | `0x400633FC` | all 8 bits at once: one image column |
+| `GPTMTAMR` (Timer1) | `TIMER1_TAMR_R` | `0x40031004` | `TIMER_TAMR_TAMR_1_SHOT`: one-shot mode |
+| `GPTMTAILR` (Timer1) | `TIMER1_TAILR_R` | `0x40031028` | waiting time until the next column (ticks − 1) |
+| `GPTMCTL` (Timer1) | `TIMER1_CTL_R` | `0x4003100C` | `TIMER_CTL_TAEN`: start; in one-shot mode the timer switches itself off afterwards |
+| `GPTMTAV` (Timer2) | `TIMER2_TAV_R` | `0x40032050` | current value of the free-running clock (counts **down**) |
 
-Alle Namen kommen aus `tm4c1294ncpdt.h` (siehe Example 01); im Programm steht keine Adresse.
+All names come from `tm4c1294ncpdt.h` (see Example 01); the program contains no addresses.
 
-Die Uhr (Timer2) zählt abwärts. „Später“ heißt deshalb „kleinerer Zählerstand“. Mit
-vorzeichenlosen 32-Bit-Zahlen stimmt die Differenz `früher − später` auch über den Überlauf hinweg:
+The clock (Timer2) counts down. "Later" therefore means "smaller counter value". With unsigned
+32-bit numbers the difference `earlier − later` is correct even across the overflow:
 
 ```c
-uint32_t ziel  = mitte - (uint32_t)spaltenTakte[k];          // Zeitpunkt der Spalte k
-int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);   // Takte bis dahin
+uint32_t dest = center - (uint32_t)columnTicks[k];        // point in time of column k
+int32_t wait  = (int32_t)(TIMER2_TAV_R - dest);           // ticks until then
 ```
 
-## 4. Variante A: Im Simulator (Web-Konsole)
+## 4. Option A: in the simulator (web console)
 
-1. Bauen: in CCS (Import wie in Example 01, `example04_pendeldisplay.projectspec`) oder
+1. Build: in CCS (import as in Example 01, `example04_pendeldisplay.projectspec`) or
    ```bash
-   cd ~/praktikum/renode4mc-haw/examples/example04_pendeldisplay
+   cd ~/lab/renode4mc-haw/examples/example04_pendeldisplay
    make
    ```
-   `make` sucht CCS unter `~/ti`, `~/tmp/ti`, `/opt/ti` und `/Applications/ti` (sonst gcc, siehe
-   `make toolchain`). Liegt es woanders, geben Sie den Pfad an, z. B. `make CCS_ROOT=/opt/ti/ccs`.
-2. Web-Konsole starten:
+   `make` looks for CCS in `~/ti`, `~/tmp/ti`, `/opt/ti` and `/Applications/ti` (otherwise gcc, see
+   `make toolchain`). If it is somewhere else, give the path, e.g. `make CCS_ROOT=/opt/ti/ccs`.
+2. Start the web console:
    ```bash
-   cd ~/praktikum/renode4mc-haw/webconsole
+   cd ~/lab/renode4mc-haw/webconsole
    docker compose up --build
    ```
-3. http://localhost:3000 öffnen, **Example 2** wählen, `example04_pendeldisplay.out` auswählen, **Start**.
+3. Open http://localhost:3000, choose **Example 2**, select `example04_pendeldisplay.out`, **Start**.
 
-Was Sie sehen sollten:
+What you should see:
 
-- Im **Terminal**: `renode4mc-haw - Example 04 Pendeldisplay`, `Abstand: 100 cm`,
-  `Pendelperiode: 100,0 ms`.
-- Auf dem **Pendeldisplay**: der schwingende Stab (Drehpunkt unten). Jede leuchtende LED
-  hinterlässt eine Leuchtspur, die nach der eingestellten **Nachleuchtdauer** verschwindet
-  (Standard 10 ms: nur ein kurzes Stück Spur hinter dem Stab). Stellen Sie das Nachleuchten auf
-  etwa 100 ms – so träge ist ungefähr das Auge –, dann steht `100CM` als Kreisbogen. Die
-  Ansicht „Standbild“ zeigt den jeweils letzten Schwung ohne Abklingen. Die Anzeige läuft
-  0,2 s hinter der Simulation her.
-- **D2** blinkt mit 1 Hz.
-- **Schieberegler** des Sensors: Terminal und Pendel zeigen den neuen Abstand.
-- **Pendelfrequenz** (Schieberegler am Pendel, 0,1–20 Hz): Das Terminal meldet die neu gemessene
-  Periode, z. B. `Pendelperiode: 66,7 ms` bei 15 Hz, und das Bild bleibt stehen. Bei kleinen
-  Frequenzen (z. B. 0,5 Hz) sieht man, wie der Stab schwingt und die LEDs Spalte für Spalte
-  umschalten; ein stehendes Bild entsteht dann nicht mehr – wie beim echten Pendel. Die letzte Ziffer der gemessenen Periode kann um 0,1 ms schwanken.
-- Die Auswahl unter dem Pendel zeigt **beide Schwünge** (wie das Auge) oder nur einen. Zeichnet
-  die Firmware nur in einer Richtung oder passen beide Richtungen nicht übereinander, sehen Sie
-  das hier sofort.
+- In the **terminal**: `renode4mc-haw - Example 04 Pendulum display`, `Distance: 100 cm`,
+  `Pendulum period: 100.0 ms`.
+- On the **pendulum display**: the swinging rod (pivot at the bottom). Every LED that is on leaves
+  a light trail that disappears after the set **afterglow time** (default 1 s: the whole image is
+  visible at once). Set the afterglow to about 100 ms – that is roughly how slow the eye is – and
+  `100CM` is still shown as an arc; with 10 ms you only see a short piece of trail behind the rod.
+  The view "Still image" shows the last swing in each direction without fading. The display runs
+  about 0.3 s behind the simulation.
+- **D2** blinks at 1 Hz.
+- **Slider** of the sensor: terminal and pendulum show the new distance.
+- **Pendulum frequency** (slider at the pendulum, 0.1–20 Hz): the terminal reports the newly measured
+  period, e.g. `Pendulum period: 66.7 ms` at 15 Hz, and the image stays still. At low frequencies
+  (e.g. 0.5 Hz) you can see how the rod swings and the LEDs switch column by column; then there is no
+  stationary image any more – just as with the real pendulum. The last digit of the measured period
+  can vary by 0.1 ms.
+- The selection below the pendulum shows **both swings** (like the eye) or only one. If the firmware
+  only draws in one direction, or if the two directions do not match, you see it here immediately.
 
-### Selbst ausprobieren
+### Try it yourself
 
-- Stellen Sie `zeitplan_berechnen(t)` im `GPIOL_Handler()` still (auskommentieren) und ändern Sie
-  die Pendelfrequenz. Was passiert mit dem Bild bei 5 Hz, was bei 20 Hz? Warum?
+- Disable `compute_schedule(t)` in `GPIOL_Handler()` (comment it out) and change the pendulum
+  frequency. What happens to the image at 5 Hz, and what at 20 Hz? Why?
+- Replace the `asin` table by columns of equal duration (`t(k)` linear in k). What does the text
+  look like now?
+- In `plan_swing()`, comment out the line with `toLeft = …` (always output left → right). What
+  happens on the swing back?
 
-- Ersetzen Sie die `asin`-Tabelle durch gleich lange Spalten (`t(k)` linear in k). Wie sieht der
-  Text jetzt aus?
-- Kommentieren Sie in `schwung_planen()` die Zeile mit `nachLinks = …` aus (immer
-  links → rechts ausgeben). Was passiert beim Rückschwung?
+## 5. Option B: on the board
 
-## 5. Variante B: Auf dem Board
+In addition to the EK-TM4C1294XL you need: a pendulum with 8 LEDs (each with a series resistor,
+e.g. 330 Ω at 3.3 V; for more current via transistors or a driver chip), a sensor for the pass
+through the centre (fork light barrier or Hall sensor; connect the output so that PL0 is HIGH
+while the pendulum is on the right) and the MB1242 sensor as in Example 03.
 
-Zusätzlich zum EK-TM4C1294XL nötig: ein Pendel mit 8 LEDs (je mit Vorwiderstand, z. B. 330 Ω
-an 3,3 V; bei mehr Strom über Transistoren oder einen Treiber-Baustein), ein Sensor für den
-Durchgang durch die Mitte (Gabellichtschranke oder Hallsensor; Ausgang so beschalten, dass PL0
-HIGH ist, solange das Pendel rechts steht) und der MB1242-Sensor wie in Example 03.
+> **Note:** a real pendulum does not swing at exactly 10 Hz and loses amplitude. That is why the
+> firmware keeps measuring the period. If the amplitude differs, the image becomes narrower or
+> wider; the table is valid for one fixed amplitude.
 
-> **Hinweis:** Ein echtes Pendel schwingt nicht genau mit 10 Hz und verliert Amplitude. Die
-> Firmware misst die Periode deshalb laufend. Weicht die Amplitude ab, wird das Bild schmaler oder
-> breiter; die Tabelle gilt für eine feste Amplitude.
+## 6. Exercises
 
-## 6. Aufgaben
+1. Below 50 cm, show `NEAR` instead of the number (extend the font by `N`, `E`, `A`, `R`).
+2. Let the text scroll from right to left every 0.2 s (scrolling text).
+3. Measure with Timer2 how long `TIMER1A_Handler()` takes, and print the largest value via UART.
+4. Draw a bar whose length corresponds to the distance (0–400 cm → 0–40 columns).
 
-1. Zeigen Sie unter 50 cm statt der Zahl `NAH` an (Zeichensatz um `N`, `A`, `H` erweitern).
-2. Lassen Sie den Text im Takt von 0,2 s von rechts nach links durchlaufen (Laufschrift).
-3. Messen Sie mit Timer2, wie lange `TIMER1A_Handler()` dauert, und geben Sie den größten Wert per
-   UART aus.
-4. Zeichnen Sie einen Balken, dessen Länge dem Abstand entspricht (0–400 cm → 0–40 Spalten).
+## 7. Notes on the simulator
 
-## 7. Hinweise zum Simulator
-
-- Das Pendelmodell (`sim/models/PendulumDisplay.cs`) rechnet in **virtueller Zeit**. Das Bild
-  stimmt also auch dann, wenn der Rechner die Simulation langsamer ausführt.
-- Example 2 stellt Renode auf 10-µs-Zeitscheiben (`emulation SetGlobalQuantum`), damit die
-  LED-Wechsel genau genug erfasst werden.
-- Eine neue Pendelfrequenz gilt ab dem nächsten Durchgang durch die Mitte. Ein echtes Pendel
-  ändert seine Frequenz nicht sprunghaft; hier dient der Regler zum Testen der Periodenmessung.
-- Das Modell zeigt pro Schwungrichtung den **letzten** Schwung. Helligkeitsverläufe, Nachglühen
-  der LEDs und Dämpfung des Pendels werden nicht nachgebildet.
-- Details zum Modell: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), Abschnitt 2.
+- The pendulum model (`sim/models/PendulumDisplay.cs`) computes in **virtual time**. So the image
+  is correct even if the computer runs the simulation more slowly.
+- Example 2 sets Renode to 10 µs time slices (`emulation SetGlobalQuantum`), so that the LED
+  changes are captured precisely enough.
+- A new pendulum frequency takes effect from the next pass through the centre. A real pendulum
+  does not change its frequency abruptly; here the slider is used to test the period measurement.
+- The model shows the **last** swing per swing direction. Brightness curves, afterglow of the
+  LEDs and damping of the pendulum are not modelled.
+- Details about the model: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), section 2.

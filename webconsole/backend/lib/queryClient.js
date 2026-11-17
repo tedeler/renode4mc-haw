@@ -40,7 +40,7 @@ class QueryClient {
         this.sock.on('error', () => {});
         this.sock.on('close', () => {
           this.sock = null;
-          if (this.pending) this.pending.reject(new Error('Abfrage-Port geschlossen'));
+          if (this.pending) this.pending.reject(new Error('Query port closed'));
           this.pending = null;
         });
         return;
@@ -49,7 +49,7 @@ class QueryClient {
         await new Promise((r) => setTimeout(r, 200));
       }
     }
-    throw new Error(`Abfrage-Port ${this.port} nicht erreichbar: ${lastErr ? lastErr.message : 'Timeout'}`);
+    throw new Error(`Query port ${this.port} not reachable: ${lastErr ? lastErr.message : 'timeout'}`);
   }
 
   _onData(d) {
@@ -66,8 +66,8 @@ class QueryClient {
   /** Eine Anfrage (Base64 der Befehlsliste) -> Antwortzeile */
   request(b64) {
     return new Promise((resolve, reject) => {
-      if (!this.sock) return reject(new Error('Abfrage-Port nicht verbunden'));
-      if (this.pending) return reject(new Error('Abfrage läuft schon'));
+      if (!this.sock) return reject(new Error('Query port not connected'));
+      if (this.pending) return reject(new Error('A query is already running'));
       this.pending = { resolve, reject };
       this.sock.write(`${b64}\n`);
     });

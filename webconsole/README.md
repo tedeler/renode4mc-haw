@@ -1,96 +1,96 @@
-# Web-Konsole (Docker)
+# Web console (Docker)
 
-Mit der Web-Konsole simulieren Sie den TM4C1294 im Browser. Sie laden die von CCS gebaute
-`.out`-Datei hoch und bedienen die Hardware auf einer Webseite: je nach Versuch LEDs, Taster,
-UART-Terminal, OLED-Display, Ultraschallsensoren, Keypads, 7-Segment-Anzeige und Pendeldisplay.
-Renode, die Modelle aus `sim/` und die Oberfläche laufen zusammen in einem Container. Einen
-Compiler gibt es dort nicht.
+With the web console you simulate the TM4C1294 in the browser. You upload the `.out` file built
+by CCS and operate the hardware on a web page: depending on the experiment LEDs, push buttons,
+UART terminal, OLED display, ultrasonic sensors, keypads, 7-segment display and pendulum display.
+Renode, the models from `sim/` and the user interface run together in one container. There is no
+compiler in it.
 
-Einstieg Schritt für Schritt (Installation, Bedienung, eigene Versuche): **[docs/ANLEITUNG.md](../docs/ANLEITUNG.md)**
-Ausführliche Beschreibung (Architektur, Protokolle, Betrieb, Tests): **[docs/WEBCONSOLE.md](../docs/WEBCONSOLE.md)**
+Step-by-step introduction (installation, operation, your own experiments): **[docs/GUIDE.md](../docs/GUIDE.md)**
+Detailed description (architecture, protocols, operation, tests): **[docs/WEBCONSOLE.md](../docs/WEBCONSOLE.md)**
 
-## Starten
+## Starting
 
 ```bash
 cd webconsole
 docker compose up --build
 ```
 
-Dann im Browser **http://localhost:3000** öffnen.
+Then open **http://localhost:3000** in the browser.
 
-1. **Versuch** wählen (z. B. „Simple Elemente“). Die Bedienelemente erscheinen sofort als Vorschau.
-2. **Firmware** wählen: die `.out`-Datei aus CCS (`Debug/<projekt>.out`) oder aus `make`.
-3. **Start** klicken. Das Bedienfeld verbindet sich mit der Simulation (unter 1 s, nach dem
-   Container-Start einmalig ca. 10 s zum Übersetzen der Modelle), und die Ausgabe von UART0 läuft
-   im Terminal.
+1. Choose an **experiment** (e.g. "Simple elements"). The controls appear immediately as a preview.
+2. Choose the **firmware**: the `.out` file from CCS (`Debug/<project>.out`) or from `make`.
+3. Click **Start**. The control panel connects to the simulation (in less than 1 s; after the
+   container has started, once about 10 s to compile the models), and the output of UART0 appears
+   in the terminal.
 
-Zum Ausprobieren: [Example 04 – Pendeldisplay](../examples/example04_pendeldisplay/README.md) mit
-Versuch „Example 2“, [Example 05 – Timer mit CCP-Pins](../examples/example05_timer_ccp/README.md) mit
-„Example 3“, die Musterlösungen der Labs mit „Lab 1“ … „Lab 4“ (Knopf **Musterlösung**).
-[Example 03 – Web-Konsole](../examples/example03_webkonsole/README.md) braucht OLED, MB1242 und Keypad;
-den passenden Versuch zeigt [docs/ANLEITUNG.md, Abschnitt 3](../docs/ANLEITUNG.md#3-neuen-versuch-hinzufügen).
+To try it out: [Example 04 – Pendulum display](../examples/example04_pendeldisplay/README.md) with
+experiment "Example 2", [Example 05 – Timer with CCP pins](../examples/example05_timer_ccp/README.md) with
+"Example 3", the reference solutions of the labs with "Lab 1" … "Lab 4" (button **Reference solution**).
+[Example 03 – Web console](../examples/example03_webkonsole/README.md) needs an OLED, an MB1242 and a keypad;
+[docs/GUIDE.md, section 3](../docs/GUIDE.md#3-adding-a-new-experiment) shows the matching experiment.
 
-| Bedienelement | Wirkung in der Simulation |
+| Control | Effect in the simulation |
 |---|---|
-| Taster (z. B. USR_SW1/USR_SW2) | gedrückt halten → Pin = LOW (bei `activeLow`) |
-| Keypad | verbindet Zeile und Spalte der Matrix wie die echte Elektrik |
-| Schieberegler | Messwert des Ultraschallsensors (HC-SR04 oder MB1242) in cm |
-| Reset | Reset-Taster des Boards: der Mikrocontroller startet neu, Firmware und Geräte außerhalb des Chips bleiben |
-| Simulation | blendet die Simulations-Anzeige ein: Firmware, CPU-Zustand, Simulationszeit und Tempo, UART-Einstellungen; Debugger (Pause, Einzelschritt, Weiter), CPU-Register mit Disassembly, Speicher (Adresse oder Symbol), Peripherie-Register mit Namen aus tm4c1294ncpdt.h, Meldungen von Renode |
-| Terminal | Tastatureingaben gehen an UART0 RX, Ausgaben von UART0 TX erscheinen hier. Darunter die Einstellung des Terminals (Baud, Datenbits, Parität, Stoppbits) wie in Tera Term – passt sie nicht zur Firmware, erscheinen falsche Zeichen |
-| LEDs, OLED | zeigen den Pegel der LED-Pins (z. B. D1–D4 = PN1/PN0/PF4/PF0) bzw. das Bild des SSD1306 |
-| Oszilloskop | 〰 Oszi: Pegel von bis zu 4 Pins des Versuchs mit Trigger und Zeitbasis |
-| Pendeldisplay (Example 2) | schwingender Stab (Drehpunkt unten) mit den 8 LEDs an PM0–PM7 und ihrer abklingenden Leuchtspur; Regler für Pendelfrequenz (0,1–20 Hz) und Nachleuchtdauer (1 ms – 1 s); Auswahl: beide Schwünge, eine Richtung oder Standbild |
+| push buttons (e.g. USR_SW1/USR_SW2) | keep pressed → pin = LOW (with `activeLow`) |
+| keypad | connects row and column of the matrix like the real wiring |
+| slider | measured value of the ultrasonic sensor (HC-SR04 or MB1242) in cm |
+| Reset | reset button of the board: the microcontroller restarts, the firmware and the devices outside the chip stay as they are |
+| Simulation | shows the simulation panel: firmware, CPU state, simulated time and speed, UART settings; debugger (pause, single step, continue), CPU registers with disassembly, memory (address or symbol), peripheral registers with names from tm4c1294ncpdt.h, messages from Renode |
+| terminal | keyboard input goes to UART0 RX, output of UART0 TX appears here. Below it the terminal settings (baud, data bits, parity, stop bits) as in Tera Term – if they do not match the firmware, wrong characters appear |
+| LEDs, OLED | show the level of the LED pins (e.g. D1–D4 = PN1/PN0/PF4/PF0) or the image of the SSD1306 |
+| oscilloscope | 〰 Scope: levels of up to 4 pins of the experiment with trigger and time base |
+| pendulum display (Example 2) | swinging rod (pivot at the bottom) with the 8 LEDs on PM0–PM7 and their fading light trail; sliders for the pendulum frequency (0.1–20 Hz) and afterglow time (1 ms – 1 s); choice: both swings, one direction or still image |
 
-## Ordner
+## Folders
 
 ```
 webconsole/
-├── Dockerfile            mehrstufig: Frontend bauen, Backend-Pakete, Renode 1.17.0, Runtime
-├── docker-compose.yml    Build-Kontext = Repository (sim/ wird ins Image kopiert)
-├── backend/              Node.js/Express (Entrypoint server.js)
+├── Dockerfile            multi-stage: build frontend, backend packages, Renode 1.17.0, runtime
+├── docker-compose.yml    build context = repository (sim/ is copied into the image)
+├── backend/              Node.js/Express (entry point server.js)
 │   ├── server.js         HTTP: SPA, POST /upload, /api/*
 │   ├── lib/
-│   │   ├── config.js         Umgebungsvariablen
-│   │   ├── experiments.js    Versuche (sim/experiments/<id>.json) laden, .repl/.resc ablegen
-│   │   ├── experimentSpec.js Versuchsdatei prüfen, Renode-Plattform und Startskript erzeugen
-│   │   ├── renodeManager.js  Renode-Child-Prozess starten/beenden, Log weiterleiten
-│   │   ├── monitorClient.js  Telnet-Client für den Renode-Monitor (Befehlswarteschlange)
-│   │   ├── uartBridge.js     UART-TCP ⇄ WebSocket :3333
-│   │   └── controlBridge.js  Monitor/LED-Bridge ⇄ WebSocket :3334 (JSON)
-│   └── test/             e2e*.js gegen echtes Renode (Übersicht: docs/WEBCONSOLE.md, Abschnitt 6)
+│   │   ├── config.js         environment variables
+│   │   ├── experiments.js    load experiments (sim/experiments/<id>.json), store .repl/.resc
+│   │   ├── experimentSpec.js check experiment files, generate Renode platform and start script
+│   │   ├── renodeManager.js  start/stop the Renode child process, forward its log
+│   │   ├── monitorClient.js  Telnet client for the Renode monitor (command queue)
+│   │   ├── uartBridge.js     UART TCP ⇄ WebSocket :3333
+│   │   └── controlBridge.js  monitor/LED bridge ⇄ WebSocket :3334 (JSON)
+│   └── test/             e2e*.js against a real Renode (overview: docs/WEBCONSOLE.md, section 6)
 └── frontend/             React (Vite)
     └── src/
         ├── hooks/useReconnectingWebSocket.js
         ├── context/ControlSocket.jsx
-        ├── layout/          Workspace (Spalten-Layout: einklappen, verschieben, Breite),
-        │                    ScaleBox (Anzeigen passen sich der Panelgröße an)
+        ├── layout/          Workspace (column layout: collapse, move, width),
+        │                    ScaleBox (displays adapt to the panel size)
         └── components/  SetupBar, ControlPanel, UartMonitor (xterm.js), Led, PushButton,
-                         OledDisplay (Canvas), DistanceSensor, Keypad (Matrix-Zuordnung),
-                         PendulumDisplay (Canvas, Nachleuchtbild)
+                         OledDisplay (canvas), DistanceSensor, Keypad (matrix mapping),
+                         PendulumDisplay (canvas, afterglow image)
 ```
 
 ## Ports
 
-| Port | Dienst |
+| Port | Service |
 |---|---|
-| 3000 | Web-Oberfläche, Upload |
-| 3333 | UART-WebSocket |
-| 3334 | Control-WebSocket |
+| 3000 | web interface, upload |
+| 3333 | UART WebSocket |
+| 3334 | control WebSocket |
 
-Intern, also nicht exponiert: 1234 (Renode-Monitor), 1235 (Abfrage-Port), 3335 (UART-TCP), 9000 (LED-Bridge).
+Internal, i.e. not exposed: 1234 (Renode monitor), 1235 (query port), 3335 (UART TCP), 9000 (LED bridge).
 
-## Entwicklung ohne Docker
+## Development without Docker
 
 ```bash
 cd webconsole/frontend && npm install && npm run build
 cd ../backend && npm install
 RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
-# Test (zweites Terminal):
+# test (second terminal):
 node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pendeldisplay.out
 ```
 
-Alle Tests und ihre Voraussetzungen: [docs/WEBCONSOLE.md, Abschnitt 6](../docs/WEBCONSOLE.md#6-test).
+All tests and their requirements: [docs/WEBCONSOLE.md, section 6](../docs/WEBCONSOLE.md#6-tests).
 
-Mit `npm run dev` im Frontend läuft Vite auf Port 5173 und leitet `/upload` und `/api` an
-Port 3000 weiter.
+With `npm run dev` in the frontend folder, Vite runs on port 5173 and forwards `/upload` and `/api`
+to port 3000.

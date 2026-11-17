@@ -1,12 +1,12 @@
 {
-  "title": "Simple Elemente",
+  "title": "Simple elements",
   "description": "",
   "uart": {
     "baud": 115200,
     "format": "8N1",
-    "label": "UART0 (PA0 RX / PA1 TX) – virtueller COM-Port"
+    "label": "UART0 (PA0 RX / PA1 TX) – virtual COM port"
   },
-  "_quantumUs": "wie bisher ohne feinere Zeitscheibe (Renode-Standard 100 us)",
+  "_quantumUs": "no finer time slice (Renode default 100 us)",
   "quantumUs": 100,
   "elements": [
     {
@@ -55,8 +55,8 @@
     },
     {
       "type": "hcsr04",
-      "title": "Ultraschall HC-SR04",
-      "label": "Trigger PD0, Echo PD1 · Messbereich 3–300 cm, sonst 200 ms Echo",
+      "title": "Ultrasonic sensor HC-SR04",
+      "label": "Trigger PD0, echo PD1 · range 3–300 cm, otherwise 200 ms echo",
       "initial": 65,
       "min": 0,
       "max": 350,

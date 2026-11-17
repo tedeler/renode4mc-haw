@@ -60,7 +60,7 @@ namespace Antmicro.Renode.Peripherals.Sensors
                     }
                     else if(b == 0xAA || b == 0xA5)
                     {
-                        this.Log(LogLevel.Info, "MaxBotix: Adresswechsel wird im Simulator nicht unterstützt.");
+                        this.Log(LogLevel.Info, "MaxBotix: changing the address is not supported by the simulator.");
                     }
                 }
             }

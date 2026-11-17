@@ -1,26 +1,26 @@
 #!/bin/sh
-# Stellt die Musterlösungen für die Web-Konsole bereit: OUT/<Name>.elf (Standard sim/solutions/),
-# im Browser per "Musterlösung starten" ladbar.
+# Provides the reference solutions for the web console: OUT/<name>.elf (default sim/solutions/),
+# can be started in the browser with the "Reference solution" button.
 #
-#   tools/build-solutions.sh                     # gcc aus dem PATH
+#   tools/build-solutions.sh                     # gcc from PATH
 #   CC=/opt/gcc/bin/arm-none-eabi-gcc tools/build-solutions.sh
-#   OUT=/irgendwo tools/build-solutions.sh       # anderes Zielverzeichnis
-#   SOLUTIONS_DIR=/pfad tools/build-solutions.sh # Quellen der Labor-Musterlösungen (Standard: solutions/)
+#   OUT=/somewhere tools/build-solutions.sh      # different output directory
+#   SOLUTIONS_DIR=/path tools/build-solutions.sh # sources of the lab reference solutions (default: solutions/)
 #
-# Zwei Quellen:
-#   1. Beispiele mit Musterlösung aus examples/ (öffentlich, Liste EXAMPLES unten) – werden immer gebaut.
-#   2. Labor-Musterlösungen aus dem privaten Submodul solutions/ (haw-mc-labsolutions, je Labor
-#      solutions/labs/<labor>/code/). Nur wer Zugriff hat, hat dort Quellen; dann werden sie gebaut,
-#      ohne Debug-Infos (die Symbole bleiben für die Web-Konsole), und ersetzen die fertigen ELFs.
-#      Ohne Quellen gelten die fertigen ELFs, die in sim/solutions/ eingecheckt sind.
+# Two sources:
+#   1. examples with a reference solution from examples/ (public, list EXAMPLES below) – always built.
+#   2. lab reference solutions from the private submodule solutions/ (haw-mc-labsolutions, one per lab in
+#      solutions/labs/<lab>/code/). Only people with access have the sources there; then they are built
+#      without debug info (the symbols stay for the web console) and replace the ready-made ELFs.
+#      Without sources, the ready-made ELFs checked in to sim/solutions/ are used.
 #
-# Das Docker-Image (webconsole/Dockerfile) ruft das Skript beim Bauen selbst auf.
-# Statt des TI-Laufzeitsystems nutzt der gcc-Build newlib; printf() läuft über tools/gcc/cio_gcc.c
-# trotzdem in die CCS-Konsole des Simulators. Auf dem Board bitte mit CCS bzw. "make" bauen.
+# The Docker image (webconsole/Dockerfile) runs this script itself while it is built.
+# Instead of the TI run-time library the gcc build uses newlib; printf() still goes to the CCS console
+# of the simulator via tools/gcc/cio_gcc.c. For the real board, please build with CCS or "make".
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CC=${CC:-arm-none-eabi-gcc}
-if [ -z "${OBJCOPY:-}" ]; then              # arm-none-eabi-gcc -> arm-none-eabi-objcopy (gleiches Verzeichnis)
+if [ -z "${OBJCOPY:-}" ]; then              # arm-none-eabi-gcc -> arm-none-eabi-objcopy (same directory)
     case "$CC" in
         */*) OBJCOPY="$(dirname "$CC")/$(basename "$CC" gcc)objcopy" ;;
         *)   OBJCOPY="$(basename "$CC" gcc)objcopy" ;;
@@ -31,7 +31,7 @@ SOLUTIONS_DIR=${SOLUTIONS_DIR:-$ROOT/solutions}
 PREBUILT=$ROOT/sim/solutions
 EXAMPLES="example05_timer_ccp"
 
-build() { # <name> <quellverzeichnis>
+build() { # <name> <source directory>
     "$CC" -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -Os -g -Wall -nostartfiles --specs=nano.specs \
         -T "$ROOT/tools/gcc/link.ld" -I "$2" -I "$ROOT/common" \
         "$2"/*.c "$ROOT/common/startup_tm4c1294.c" "$ROOT/tools/gcc/crt.c" "$ROOT/tools/gcc/cio_gcc.c" \
@@ -41,31 +41,31 @@ build() { # <name> <quellverzeichnis>
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 
-# 1. fertige Labor-ELFs übernehmen (falls OUT ein anderes Verzeichnis ist, z. B. im Docker-Build)
+# 1. take over the ready-made lab ELFs (if OUT is a different directory, e.g. in the Docker build)
 if [ "$OUT" != "$(cd "$PREBUILT" 2>/dev/null && pwd)" ]; then
     for f in "$PREBUILT"/*.elf; do
         [ -f "$f" ] && cp "$f" "$OUT/"
     done
 fi
 
-# 2. Beispiele aus examples/
+# 2. examples from examples/
 for ex in $EXAMPLES; do
     echo "[build-solutions] $ex (examples/)"
     build "$ex" "$ROOT/examples/$ex"
 done
 
-# 3. Labor-Musterlösungen aus dem Submodul, sofern Quellen vorhanden
+# 3. lab reference solutions from the submodule, if the sources are there
 found=0
 for dir in "$SOLUTIONS_DIR"/labs/*/code; do
     ls "$dir"/*.c >/dev/null 2>&1 || continue
     lab=$(basename "$(dirname "$dir")")
-    echo "[build-solutions] $lab (solutions/, Quellen)"
+    echo "[build-solutions] $lab (solutions/, sources)"
     build "$lab" "$dir"
     "$OBJCOPY" --strip-debug "$OUT/$lab.elf"
     found=$((found + 1))
 done
 if [ "$found" -eq 0 ]; then
-    echo "[build-solutions] keine Quellen in $SOLUTIONS_DIR – Labor-Musterlösungen: fertige ELFs aus sim/solutions/"
+    echo "[build-solutions] no sources in $SOLUTIONS_DIR – lab reference solutions: ready-made ELFs from sim/solutions/"
     for f in "$OUT"/lab*.elf; do [ -f "$f" ] && echo "    $(basename "$f")"; done
 fi
-echo "[build-solutions] fertig: $OUT"
+echo "[build-solutions] done: $OUT"

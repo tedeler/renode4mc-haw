@@ -137,7 +137,7 @@ namespace Antmicro.Renode.Peripherals.Timers
                     // Anzeige der Web-Konsole (alle Register des Moduls) liest still
                     if(!TivaSysCtl.Peeking)
                     {
-                        this.Log(LogLevel.Warning, "Timer: Lesen von Offset 0x{0:X3} wird nicht unterstützt (liefert 0)", offset);
+                        this.Log(LogLevel.Warning, "Timer: reading offset 0x{0:X3} is not supported (returns 0)", offset);
                     }
                     return 0;
             }
@@ -152,14 +152,14 @@ namespace Antmicro.Renode.Peripherals.Timers
                 case Cfg:
                     if((ctl & (CtlTaen | CtlTben)) != 0)
                     {
-                        Warn("cfgRun", "GPTMCFG geändert, während der Timer läuft (TAEN/TBEN = 1). Datenblatt: Timer zuerst ausschalten (GPTMCTL).");
+                        Warn("cfgRun", "GPTMCFG changed while the timer is running (TAEN/TBEN = 1). Data sheet: disable the timer first (GPTMCTL).");
                     }
                     cfg = value & CfgMask;
                     if(cfg != 0 && cfg != 4)
                     {
                         Warn("cfg" + cfg, cfg == 1
-                            ? "GPTMCFG = 0x1 (RTC) ist im Simulator nicht modelliert."
-                            : string.Format("GPTMCFG = 0x{0:X} ist reserviert (erlaubt: 0x0 = 32 Bit, 0x1 = RTC, 0x4 = 16 Bit).", cfg));
+                            ? "GPTMCFG = 0x1 (RTC) is not modelled in the simulator."
+                            : string.Format("GPTMCFG = 0x{0:X} is reserved (allowed: 0x0 = 32 bit, 0x1 = RTC, 0x4 = 16 bit).", cfg));
                     }
                     UpdateDrive(0);
                     UpdateDrive(1);
@@ -170,7 +170,7 @@ namespace Antmicro.Renode.Peripherals.Timers
                 case Imr:
                     if((value & ~(ImTatoim | ImTbtoim | ImCaeim | ImCbeim | ImTamim | ImTbmim)) != 0)
                     {
-                        Warn("imrBits", string.Format("GPTMIMR = 0x{0:X}: modelliert sind Time-out (TnTOIM), Match (TnMIM) und Capture-Event (CnEIM); Capture-Match- und RTC-Interrupts kommen nie.", value));
+                        Warn("imrBits", string.Format("GPTMIMR = 0x{0:X}: modelled are time-out (TnTOIM), match (TnMIM) and capture event (CnEIM); capture match and RTC interrupts never occur.", value));
                     }
                     imr = value & ImrMask;
                     break;
@@ -185,19 +185,19 @@ namespace Antmicro.Renode.Peripherals.Timers
                 case TbpmR: WriteMatch(1, value, true); break;
                 case Cc:
                     cc = value & 1;
-                    if(cc != 0) Warn("altclk", "GPTMCC.ALTCLK = 1 (alternativer Takt) ist im Simulator nicht modelliert: der Timer läuft weiter mit dem Systemtakt.");
+                    if(cc != 0) Warn("altclk", "GPTMCC.ALTCLK = 1 (alternate clock) is not modelled in the simulator: the timer keeps running with the system clock.");
                     break;
                 case Sync:
-                    if(value != 0) Warn("sync", "GPTMSYNC ist im Simulator nicht modelliert (ignoriert).");
+                    if(value != 0) Warn("sync", "GPTMSYNC is not modelled in the simulator (ignored).");
                     break;
                 case TaV: case TbV:
-                    Warn("tvWrite", "Schreiben von GPTMTnV ist im Simulator nicht modelliert (ignoriert).");
+                    Warn("tvWrite", "Writing GPTMTnV is not modelled in the simulator (ignored).");
                     break;
                 case Ris: case Mis: case TaR: case TbR: case TaPs: case TbPs:
-                    Warn("ro" + offset, string.Format("Schreiben auf Offset 0x{0:X3}: Register ist nur lesbar (ignoriert).", offset));
+                    Warn("ro" + offset, string.Format("Write to offset 0x{0:X3}: the register is read-only (ignored).", offset));
                     break;
                 default:
-                    this.Log(LogLevel.Warning, "Timer: Schreiben auf Offset 0x{0:X3} wird nicht unterstützt (ignoriert)", offset);
+                    this.Log(LogLevel.Warning, "Timer: writing offset 0x{0:X3} is not supported (ignored)", offset);
                     break;
             }
             UpdateIrq();
@@ -247,27 +247,27 @@ namespace Antmicro.Renode.Peripherals.Timers
             // Datenblatt (GPTMTnMR): außer TCACT nur bei TnEN = 0 ändern
             if((ctl & EnBit(half)) != 0 && ((old ^ value) & MrMask & ~MrTcact) != 0)
             {
-                Warn("mrRun" + half, string.Format("GPTMT{0}MR geändert, während Timer {0} läuft. Datenblatt: außer TCACT nur bei T{0}EN = 0 ändern.", n));
+                Warn("mrRun" + half, string.Format("GPTMT{0}MR changed while timer {0} is running. Data sheet: except for TCACT, change it only while T{0}EN = 0.", n));
             }
             mr[half] = value & MrMask;
-            if((value & ~MrMask) != 0) Warn("mrRes" + half, string.Format("GPTMT{0}MR = 0x{1:X}: Bits 31:16 sind reserviert.", n, value));
+            if((value & ~MrMask) != 0) Warn("mrRes" + half, string.Format("GPTMT{0}MR = 0x{1:X}: bits 31:16 are reserved.", n, value));
             uint mode = value & TnmrMask;
             bool ams = (value & MrAms) != 0, cmr = (value & MrCmr) != 0;
-            if(mode == 0) Warn("mr0" + half, string.Format("GPTMT{0}MR: T{0}MR = 0x0 ist reserviert (0x1 = One-Shot, 0x2 = Periodic, 0x3 = Capture).", n));
-            if(mode == 3 && !cmr && !ams) Warn("mrEc" + half, string.Format("GPTMT{0}MR: Input Edge-Count (T{0}MR = 0x3, T{0}CMR = 0) ist im Simulator nicht modelliert.", n));
-            if(ams && (cmr || mode == 3)) Warn("ams" + half, string.Format("GPTMT{0}MR = 0x{1:X}: PWM braucht T{0}AMS = 1, T{0}CMR = 0 und T{0}MR = 0x2 (Datenblatt 13.4.5).", n, value));
-            if(!ams && cmr && mode != 3) Warn("cmr" + half, string.Format("GPTMT{0}MR = 0x{1:X}: T{0}CMR = 1 wirkt nur im Capture-Modus (T{0}MR = 0x3).", n, value));
+            if(mode == 0) Warn("mr0" + half, string.Format("GPTMT{0}MR: T{0}MR = 0x0 is reserved (0x1 = one-shot, 0x2 = periodic, 0x3 = capture).", n));
+            if(mode == 3 && !cmr && !ams) Warn("mrEc" + half, string.Format("GPTMT{0}MR: input edge-count mode (T{0}MR = 0x3, T{0}CMR = 0) is not modelled in the simulator.", n));
+            if(ams && (cmr || mode == 3)) Warn("ams" + half, string.Format("GPTMT{0}MR = 0x{1:X}: PWM needs T{0}AMS = 1, T{0}CMR = 0 and T{0}MR = 0x2 (data sheet 13.4.5).", n, value));
+            if(!ams && cmr && mode != 3) Warn("cmr" + half, string.Format("GPTMT{0}MR = 0x{1:X}: T{0}CMR = 1 only has an effect in capture mode (T{0}MR = 0x3).", n, value));
             if((value & MrTcact) != 0 && (ams || mode == 3))
             {
-                Warn("tcact" + half, string.Format("GPTMT{0}MR: TCACT wirkt nur in One-Shot/Periodic mit T{0}AMS = 0 (nicht in PWM/Capture).", n));
+                Warn("tcact" + half, string.Format("GPTMT{0}MR: TCACT only has an effect in one-shot/periodic mode with T{0}AMS = 0 (not in PWM/capture).", n));
             }
             if((value & MrMie) != 0 && (ams || mode == 3))
             {
-                Warn("mie" + half, string.Format("GPTMT{0}MR: T{0}MIE wirkt nur in One-Shot/Periodic (nicht in PWM/Capture); im Simulator ignoriert.", n));
+                Warn("mie" + half, string.Format("GPTMT{0}MR: T{0}MIE only has an effect in one-shot/periodic mode (not in PWM/capture); ignored by the simulator.", n));
             }
             if((value & (MrWot | MrSnaps)) != 0)
             {
-                Warn("mrx" + half, string.Format("GPTMT{0}MR = 0x{1:X}: Wait-on-Trigger und Snapshot sind nicht modelliert.", n, value));
+                Warn("mrx" + half, string.Format("GPTMT{0}MR = 0x{1:X}: wait-on-trigger and snapshot are not modelled.", n, value));
             }
             UpdateDrive(half);
             if(CompareActive(half)) ImmediateAction(half, -1);
@@ -277,13 +277,13 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             if((value & ~(CtlTaen | CtlTastall | CtlTaevent | CtlTapwml | CtlTben | CtlTbstall | CtlTbevent | CtlTbpwml)) != 0)
             {
-                Warn("ctlBits", string.Format("GPTMCTL = 0x{0:X}: RTCEN und Ausgangs-Trigger (TnOTE) sind nicht modelliert.", value));
+                Warn("ctlBits", string.Format("GPTMCTL = 0x{0:X}: RTCEN and the output trigger (TnOTE) are not modelled.", value));
             }
             for(int h = 0; h < 2; h++)
             {
                 if(((value >> (8 * h + 2)) & 3) == 2)
                 {
-                    Warn("event2" + h, string.Format("GPTMCTL: T{0}EVENT = 0x2 ist reserviert (0x0 steigend, 0x1 fallend, 0x3 beide).", Name(h)));
+                    Warn("event2" + h, string.Format("GPTMCTL: T{0}EVENT = 0x2 is reserved (0x0 rising, 0x1 falling, 0x3 both edges).", Name(h)));
                 }
             }
             uint old = ctl;
@@ -304,11 +304,11 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             if(cfg == 4 && value > 0xFFFF)
             {
-                Warn("ilr16" + half, string.Format("GPTMT{0}ILR = 0x{1:X} im 16-Bit-Modus: nur Bits 15:0 zählen (Rest ignoriert). Größere Werte: Prescaler GPTMT{0}PR oder 32-Bit-Modus.", Name(half), value));
+                Warn("ilr16" + half, string.Format("GPTMT{0}ILR = 0x{1:X} in 16-bit mode: only bits 15:0 count (the rest is ignored). For larger values use the prescaler GPTMT{0}PR or 32-bit mode.", Name(half), value));
             }
             if(half == 1 && cfg == 0)
             {
-                Warn("tbilr32", "GPTMTBILR im 32-Bit-Modus geschrieben: Timer B gibt es nur im 16-Bit-Modus (GPTMCFG = 0x4).");
+                Warn("tbilr32", "GPTMTBILR written in 32-bit mode: timer B only exists in 16-bit mode (GPTMCFG = 0x4).");
             }
             ilr[half] = cfg == 4 ? value & 0xFFFF : value;
             Reload(half);
@@ -318,7 +318,7 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             if(value > 0xFF)
             {
-                Warn("pr8" + half, string.Format("GPTMT{0}PR = 0x{1:X}: der Prescaler hat nur 8 Bit (Rest ignoriert).", Name(half), value));
+                Warn("pr8" + half, string.Format("GPTMT{0}PR = 0x{1:X}: the prescaler has only 8 bits (the rest is ignored).", Name(half), value));
             }
             pr[half] = value & 0xFF;
             Reload(half);
@@ -329,7 +329,7 @@ namespace Antmicro.Renode.Peripherals.Timers
         {
             if(prescale)
             {
-                if(value > 0xFF) Warn("pmr8" + half, string.Format("GPTMT{0}PMR = 0x{1:X}: nur Bits 7:0 zählen.", Name(half), value));
+                if(value > 0xFF) Warn("pmr8" + half, string.Format("GPTMT{0}PMR = 0x{1:X}: only bits 7:0 count.", Name(half), value));
                 pmr[half] = value & 0xFF;
             }
             else
@@ -370,28 +370,28 @@ namespace Antmicro.Renode.Peripherals.Timers
             string n = Name(half);
             if(half == 1 && cfg == 0)
             {
-                Warn("tb32", "TBEN gesetzt, aber GPTMCFG = 0x0 (32 Bit): Timer B läuft nur im 16-Bit-Modus (GPTMCFG = 0x4).");
+                Warn("tb32", "TBEN set, but GPTMCFG = 0x0 (32 bit): timer B only runs in 16-bit mode (GPTMCFG = 0x4).");
                 return;
             }
             if(cfg == 0 && pr[0] != 0)
             {
-                Warn("pr32", "GPTMTAPR != 0 im 32-Bit-Modus: der Prescaler wirkt nur im 16-Bit-Modus (GPTMCFG = 0x4).");
+                Warn("pr32", "GPTMTAPR != 0 in 32-bit mode: the prescaler only works in 16-bit mode (GPTMCFG = 0x4).");
             }
             if(ilr[half] == 0 && (cfg != 4 || pr[half] == 0))
             {
-                Warn("ilr0" + half, string.Format("Timer {0} gestartet mit GPTMT{0}ILR = 0: kein sinnvoller Startwert/Endwert gesetzt.", n));
+                Warn("ilr0" + half, string.Format("Timer {0} started with GPTMT{0}ILR = 0: no meaningful start/end value set.", n));
             }
             var kind = KindOf(half);
             if(kind == Kind.None)
             {
-                Warn("start" + half, string.Format("Timer {0} gestartet ohne gültige bzw. modellierte Betriebsart (GPTMCFG = 0x{1:X}, GPTMT{0}MR = 0x{2:X}): der Timer bleibt stehen.", n, cfg, mr[half]));
+                Warn("start" + half, string.Format("Timer {0} started without a valid (or modelled) mode (GPTMCFG = 0x{1:X}, GPTMT{0}MR = 0x{2:X}): the timer does not run.", n, cfg, mr[half]));
                 return;
             }
             if((kind == Kind.Pwm || kind == Kind.EdgeTime || CompareActive(half)) && !PinConfigured(half))
             {
                 string pins = string.Join(", ", ccp[half].ConvertAll(c => c.Name));
-                Warn("pin" + half, string.Format("Timer {0} nutzt den CCP-Pin T{1}CCP{2}, aber keiner der möglichen Pins ({3}) ist dafür eingestellt " +
-                    "(Takt des Ports, GPIOAFSEL = 1, GPIODEN = 1, GPIOPCTL = 3).", n, clockBit, half, pins.Length > 0 ? pins : "keine"));
+                Warn("pin" + half, string.Format("Timer {0} uses the CCP pin T{1}CCP{2}, but none of the possible pins ({3}) is configured for it " +
+                    "(port clock, GPIOAFSEL = 1, GPIODEN = 1, GPIOPCTL = 3).", n, clockBit, half, pins.Length > 0 ? pins : "none"));
             }
         }
 
@@ -410,7 +410,7 @@ namespace Antmicro.Renode.Peripherals.Timers
                 if(cmr || mode == 0 || mode == 3) return Kind.None;
                 if(cfg != 4)
                 {
-                    Warn("pwm32", "PWM-Modus (TnAMS = 1) gibt es nur im 16-Bit-Modus (GPTMCFG = 0x4).");
+                    Warn("pwm32", "PWM mode (TnAMS = 1) only exists in 16-bit mode (GPTMCFG = 0x4).");
                     return Kind.None;
                 }
                 return Kind.Pwm;
@@ -421,7 +421,7 @@ namespace Antmicro.Renode.Peripherals.Timers
             {
                 if(cfg != 4)
                 {
-                    Warn("cap32", "Capture-Modus gibt es nur im 16-Bit-Modus (GPTMCFG = 0x4).");
+                    Warn("cap32", "Capture mode only exists in 16-bit mode (GPTMCFG = 0x4).");
                     return Kind.None;
                 }
                 return Kind.EdgeTime;
@@ -949,8 +949,8 @@ namespace Antmicro.Renode.Peripherals.Timers
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,
-                    "Timer: Zugriff ohne Takt! RCGCTIMER Bit {0} muss gesetzt werden (SysCtlPeripheralEnable). " +
-                    "Auf der Hardware führt das zu einem Fault.", clockBit);
+                    "Timer: access without clock! RCGCTIMER bit {0} must be set (SysCtlPeripheralEnable). " +
+                    "On real hardware this causes a fault.", clockBit);
                 clockWarned = true;
             }
             return false;

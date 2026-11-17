@@ -32,12 +32,12 @@ export default function CioConsole({ label }) {
 
   return (
     <Widget
-      title="CCS-Konsole (printf)"
+      title="CCS console (printf)"
       subtitle={label}
       className="cio"
       actions={
         <button className="btn small" onClick={() => setText('')}>
-          Leeren
+          Clear
         </button>
       }
     >
@@ -49,7 +49,7 @@ export default function CioConsole({ label }) {
           stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
         }}
       >
-        {text || <span className="cio-empty">Noch keine Ausgabe. printf() erscheint hier.</span>}
+        {text || <span className="cio-empty">No output yet. printf() output appears here.</span>}
       </pre>
     </Widget>
   );

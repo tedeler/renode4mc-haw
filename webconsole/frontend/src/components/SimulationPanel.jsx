@@ -12,10 +12,10 @@ import Widget from './Widget.jsx';
  * nach jedem Befehl {type:"sim", …}.
  */
 
-const de = (v, digits = 0) =>
-  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+const num = (v, digits = 0) =>
+  v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const hex8 = (v) => (v >>> 0).toString(16).toUpperCase().padStart(8, '0');
-const seconds = (ns) => `${de(ns / 1e9, 6)} s`;
+const seconds = (ns) => `${num(ns / 1e9, 6)} s`;
 
 function wall(ms) {
   const s = Math.floor(ms / 1000);
@@ -25,24 +25,24 @@ function wall(ms) {
 }
 
 const STATES = {
-  Running: ['läuft', 'sim-ok'],
-  Paused: ['angehalten', 'sim-warn'],
-  Step: ['angehalten (Einzelschritt)', 'sim-warn'],
-  Wake: ['Schritt bis zum nächsten Interrupt', 'sim-warn'],
-  InReset: ['im Reset', 'sim-warn'],
-  Aborted: ['abgebrochen', 'sim-bad'],
-  Halted: ['angehalten', 'sim-warn'],
+  Running: ['running', 'sim-ok'],
+  Paused: ['paused', 'sim-warn'],
+  Step: ['paused (single step)', 'sim-warn'],
+  Wake: ['stepping until the next interrupt', 'sim-warn'],
+  InReset: ['in reset', 'sim-warn'],
+  Aborted: ['aborted', 'sim-bad'],
+  Halted: ['halted', 'sim-warn'],
 };
 
 // Endlosschleifen im Startup-Code (startup_tm4c1294.c): nicht behandelter Interrupt oder Fault
 const TRAP_RE = /^(IntDefaultHandler|FaultISR|HardFault_Handler|MemManage_Handler|BusFault_Handler|UsageFault_Handler|NMI_Handler)$/;
 
-const EXCEPTIONS = { 0: 'Thread-Modus', 2: 'NMI', 3: 'HardFault', 4: 'MemManage', 5: 'BusFault', 6: 'UsageFault', 11: 'SVCall', 14: 'PendSV', 15: 'SysTick' };
+const EXCEPTIONS = { 0: 'Thread mode', 2: 'NMI', 3: 'HardFault', 4: 'MemManage', 5: 'BusFault', 6: 'UsageFault', 11: 'SVCall', 14: 'PendSV', 15: 'SysTick' };
 
 function exceptionName(n) {
   if (EXCEPTIONS[n]) return EXCEPTIONS[n];
   if (n >= 16) return `IRQ ${n - 16}`;
-  return `Nr. ${n}`;
+  return `No. ${n}`;
 }
 
 /** Werte der vorigen Nachricht (gleiche Quelle), um Änderungen hervorzuheben */
@@ -63,18 +63,18 @@ function UartLine({ uart }) {
   return (
     <>
       <dt>Firmware</dt>
-      <dd>{configured ? `${de(mcu.baud, 1)} Baud ${mcu.format}` : 'nicht eingestellt'}</dd>
+      <dd>{configured ? `${num(mcu.baud, 1)} baud ${mcu.format}` : 'not set'}</dd>
       <dt>Terminal</dt>
-      <dd>{`${terminal.baud} Baud ${terminal.format}`}</dd>
-      <dt>Passt?</dt>
+      <dd>{`${terminal.baud} baud ${terminal.format}`}</dd>
+      <dt>Match?</dt>
       <dd className={ok ? 'sim-ok' : configured ? 'sim-bad' : 'sim-warn'}>
         {!configured
-          ? 'UART0 noch nicht konfiguriert'
+          ? 'UART0 not configured yet'
           : ok
-            ? `ja (Abweichung ${de(dev, 2)} %)`
+            ? `yes (error ${num(dev, 2)} %)`
             : mcu.format !== terminal.format
-              ? `nein – Format ${mcu.format} ≠ ${terminal.format}`
-              : `nein – Abweichung ${de(dev, 1)} %`}
+              ? `no – format ${mcu.format} ≠ ${terminal.format}`
+              : `no – error ${num(dev, 1)} %`}
       </dd>
     </>
   );
@@ -82,7 +82,7 @@ function UartLine({ uart }) {
 
 // Anteil an der Simulationszeit in Prozent
 const pct = (part, whole) => (whole > 0 ? (100 * part) / whole : 0);
-const usTime = (ns) => (ns >= 1e6 ? `${de(ns / 1e6, 2)} ms` : `${de(ns / 1e3, 1)} µs`);
+const usTime = (ns) => (ns >= 1e6 ? `${num(ns / 1e6, 2)} ms` : `${num(ns / 1e3, 1)} µs`);
 
 /** Balken Schlaf / ISR / Normalbetrieb für einen Zeitraum */
 function CpuTimeBar({ w, label }) {
@@ -95,7 +95,7 @@ function CpuTimeBar({ w, label }) {
     );
   }
   const parts = [
-    ['sleep', 'Schlaf', w.sleepNs],
+    ['sleep', 'Sleep', w.sleepNs],
     ['isr', 'ISR', w.isrNs],
     ['normal', 'Normal', w.normalNs],
   ];
@@ -103,7 +103,7 @@ function CpuTimeBar({ w, label }) {
     <>
       <dt>{label}</dt>
       <dd>
-        <div className="cpu-bar" title={parts.map(([, n, v]) => `${n} ${de(pct(v, w.ns), 2)} %`).join(' · ')}>
+        <div className="cpu-bar" title={parts.map(([, n, v]) => `${n} ${num(pct(v, w.ns), 2)} %`).join(' · ')}>
           {parts.map(([k, , v]) => (
             <span key={k} className={`cpu-${k}`} style={{ width: `${pct(v, w.ns)}%` }} />
           ))}
@@ -112,7 +112,7 @@ function CpuTimeBar({ w, label }) {
           {parts.map(([k, n, v]) => (
             <span key={k}>
               <i className={`cpu-${k}`} />
-              {n} {de(pct(v, w.ns), pct(v, w.ns) < 10 ? 2 : 1)} %
+              {n} {num(pct(v, w.ns), pct(v, w.ns) < 10 ? 2 : 1)} %
             </span>
           ))}
         </span>
@@ -124,32 +124,32 @@ function CpuTimeBar({ w, label }) {
 /** Reiter "CPU-Zeit": Anteile, Zahlen und je Interrupt-Routine */
 function CpuStats({ sim, onReset }) {
   const cs = sim.cpuStats;
-  if (!cs) return <p className="sim-note">Keine Statistik (Versuch ohne Status-Modell).</p>;
+  if (!cs) return <p className="sim-note">No statistics (this experiment has no status model).</p>;
   const t = cs.total;
   const rows = [...cs.vectors].sort((a, b) => b.ns - a.ns);
   return (
     <div>
       <div className="sim-grid">
         <div>
-          <h4>Anteil der Simulationszeit</h4>
+          <h4>Share of simulated time</h4>
           <dl>
-            <CpuTimeBar w={t} label="seit Start" />
-            <CpuTimeBar w={cs.recent} label="zuletzt" />
+            <CpuTimeBar w={t} label="since start" />
+            <CpuTimeBar w={cs.recent} label="recently" />
           </dl>
         </div>
         <div>
-          <h4>Seit Start / Reset</h4>
+          <h4>Since start / reset</h4>
           <dl>
-            <dt>Zeitraum</dt>
+            <dt>Period</dt>
             <dd>{seconds(t.ns)}</dd>
-            <dt>Schlaf (WFI)</dt>
-            <dd>{`${usTime(t.sleepNs)} · ${de(pct(t.sleepNs, t.ns), 3)} %`}</dd>
-            <dt>Interrupt-Routinen</dt>
-            <dd>{`${usTime(t.isrNs)} · ${de(pct(t.isrNs, t.ns), 3)} % · ${t.isrCount} Aufrufe`}</dd>
-            <dt>Normalbetrieb</dt>
-            <dd>{`${usTime(t.normalNs)} · ${de(pct(t.normalNs, t.ns), 3)} %`}</dd>
-            <dt>Befehle</dt>
-            <dd>{`${de(t.instr)} · ${t.wakes} × aufgewacht`}</dd>
+            <dt>Sleep (WFI)</dt>
+            <dd>{`${usTime(t.sleepNs)} · ${num(pct(t.sleepNs, t.ns), 3)} %`}</dd>
+            <dt>Interrupt routines</dt>
+            <dd>{`${usTime(t.isrNs)} · ${num(pct(t.isrNs, t.ns), 3)} % · ${t.isrCount} calls`}</dd>
+            <dt>Normal operation</dt>
+            <dd>{`${usTime(t.normalNs)} · ${num(pct(t.normalNs, t.ns), 3)} %`}</dd>
+            <dt>Instructions</dt>
+            <dd>{`${num(t.instr)} · woke up ${t.wakes} ×`}</dd>
           </dl>
         </div>
       </div>
@@ -158,11 +158,11 @@ function CpuStats({ sim, onReset }) {
           <thead>
             <tr>
               <th>Interrupt</th>
-              <th>Vektor</th>
-              <th>Aufrufe</th>
-              <th>Zeit</th>
-              <th>Anteil</th>
-              <th>je Aufruf</th>
+              <th>Vector</th>
+              <th>Calls</th>
+              <th>Time</th>
+              <th>Share</th>
+              <th>Per call</th>
             </tr>
           </thead>
           <tbody>
@@ -174,20 +174,20 @@ function CpuStats({ sim, onReset }) {
                 <td>{v.vector}</td>
                 <td>{v.count}</td>
                 <td>{usTime(v.ns)}</td>
-                <td>{`${de(pct(v.ns, t.ns), 3)} %`}</td>
-                <td>{v.count ? `${de(v.instr / v.count, 1)} Befehle · ${usTime(v.ns / v.count)}` : '–'}</td>
+                <td>{`${num(pct(v.ns, t.ns), 3)} %`}</td>
+                <td>{v.count ? `${num(v.instr / v.count, 1)} instr. · ${usTime(v.ns / v.count)}` : '–'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
       <p className="sim-note">
-        Wachzeit = ausgeführte Befehle × Befehlszeit von Renode ({de(cs.nsPerInstr, 1)} ns), Schlaf = Rest. ISR = vom
-        Eintritt bis zum Rücksprung (verschachtelte Interrupts je Vektor ohne die inneren). Das Stapeln beim Eintritt
-        (am Board 12 Takte) und Wartezyklen des Flash sind nicht modelliert – die Werte zeigen die Verhältnisse, nicht
-        die exakten Zeiten des Boards. Reset der MCU beginnt die Statistik neu.{' '}
+        Awake time = executed instructions × Renode's time per instruction ({num(cs.nsPerInstr, 1)} ns), sleep = the
+        rest. ISR = from entry to return (for nested interrupts, each vector without the inner ones). Register stacking
+        on entry (12 clock cycles on the board) and flash wait states are not modelled – the values show the ratios,
+        not the exact timing of the board. A reset of the MCU restarts the statistics.{' '}
         <button className="btn small" onClick={onReset}>
-          Statistik neu beginnen
+          Restart statistics
         </button>
       </p>
     </div>
@@ -203,18 +203,18 @@ function Overview({ sim }) {
       <div>
         <h4>Firmware</h4>
         <dl>
-          <dt>Datei</dt>
-          <dd>{sim.firmware ? sim.firmware.name : 'unbekannt (vor dem Neustart des Servers geladen)'}</dd>
+          <dt>File</dt>
+          <dd>{sim.firmware ? sim.firmware.name : 'unknown (loaded before the server restarted)'}</dd>
           {sim.firmware && (
             <>
-              <dt>Größe</dt>
-              <dd>{`${de(sim.firmware.size / 1024, 1)} KB`}</dd>
+              <dt>Size</dt>
+              <dd>{`${num(sim.firmware.size / 1024, 1)} KB`}</dd>
               <dt>SHA-256</dt>
               <dd>
                 <code>{sim.firmware.sha256}…</code>
               </dd>
-              <dt>Geladen</dt>
-              <dd>{new Date(sim.firmware.loadedAt).toLocaleTimeString('de-DE')}</dd>
+              <dt>Loaded</dt>
+              <dd>{new Date(sim.firmware.loadedAt).toLocaleTimeString('en-GB')}</dd>
             </>
           )}
         </dl>
@@ -223,12 +223,12 @@ function Overview({ sim }) {
       <div>
         <h4>CPU</h4>
         <dl>
-          <dt>Zustand</dt>
+          <dt>State</dt>
           {/* Immer zwei Zeilen (Zustand, Schlaf-Hinweis), zu lang -> „…“: Layout springt nicht */}
           <dd className={`sim-2l ${stateClass}`}>
             <span title={stateText}>{stateText}</span>
-            <span title={cpu && cpu.halted ? 'schläft (WFI), wartet auf Interrupt' : undefined}>
-              {cpu && cpu.halted ? 'schläft (WFI), wartet auf Interrupt' : '\u00a0'}
+            <span title={cpu && cpu.halted ? 'sleeping (WFI), waiting for an interrupt' : undefined}>
+              {cpu && cpu.halted ? 'sleeping (WFI), waiting for an interrupt' : '\u00a0'}
             </span>
           </dd>
           <dt>PC</dt>
@@ -249,34 +249,34 @@ function Overview({ sim }) {
             <>
               <dt />
               <dd className="sim-bad">
-                Endlosschleife im Startup-Code: nicht behandelter Interrupt oder Fault (Handler in der Vektortabelle?
-                Takt der Peripherie freigegeben?)
+                Endless loop in the startup code: unhandled interrupt or fault (Is the handler in the vector table? Is
+                the clock of the peripheral enabled?)
               </dd>
             </>
           )}
-          <dt>Systemtakt</dt>
-          <dd>{cpu ? `${de(cpu.sysclk / 1e6, 3)} MHz` : '–'}</dd>
+          <dt>System clock</dt>
+          <dd>{cpu ? `${num(cpu.sysclk / 1e6, 3)} MHz` : '–'}</dd>
           <dt>Resets</dt>
           <dd>
             {sim.resets
               ? sim.resets.count
-                ? `${sim.resets.count}, zuletzt bei ${seconds(sim.resets.lastNs)}`
-                : 'keiner seit dem Start'
+                ? `${sim.resets.count}, last at ${seconds(sim.resets.lastNs)}`
+                : 'none since start'
               : '–'}
           </dd>
         </dl>
       </div>
 
       <div>
-        <h4>Zeit</h4>
+        <h4>Time</h4>
         <dl>
-          <dt>Simulationszeit</dt>
+          <dt>Simulated time</dt>
           <dd>{sim.time ? seconds(sim.time.virtualNs) : '–'}</dd>
-          <dt>Echtzeit</dt>
+          <dt>Real time</dt>
           <dd>{sim.time ? wall(sim.time.wallMs) : '–'}</dd>
-          <dt>Tempo</dt>
+          <dt>Speed</dt>
           <dd className={sim.time && sim.time.speed !== null && sim.time.speed < 0.5 && !sim.stopped ? 'sim-warn' : ''}>
-            {sim.stopped ? 'angehalten' : sim.time && sim.time.speed !== null ? `${de(sim.time.speed, 2)} × Echtzeit` : '–'}
+            {sim.stopped ? 'paused' : sim.time && sim.time.speed !== null ? `${num(sim.time.speed, 2)} × real time` : '–'}
           </dd>
           <dt>Renode</dt>
           <dd>{sim.renode.version || '–'}</dd>
@@ -285,10 +285,10 @@ function Overview({ sim }) {
 
       {sim.cpuStats && (
         <div>
-          <h4>CPU-Zeit</h4>
+          <h4>CPU time</h4>
           <dl>
-            <CpuTimeBar w={sim.cpuStats.total} label="seit Start" />
-            <CpuTimeBar w={sim.cpuStats.recent} label="zuletzt" />
+            <CpuTimeBar w={sim.cpuStats.total} label="since start" />
+            <CpuTimeBar w={sim.cpuStats.recent} label="recently" />
           </dl>
         </div>
       )}
@@ -308,7 +308,7 @@ function Overview({ sim }) {
 function Registers({ sim }) {
   const values = sim.regs ? Object.fromEntries(sim.regs.map((r) => [r.name, r.value])) : null;
   const prev = usePrevious(sim, values);
-  if (!sim.regs) return <p className="sim-note">Keine Registerdaten.</p>;
+  if (!sim.regs) return <p className="sim-note">No register data.</p>;
   const xpsr = values.xPSR;
   return (
     <div className="sim-regs">
@@ -327,13 +327,13 @@ function Registers({ sim }) {
             <code>
               {['N', 'Z', 'C', 'V'].map((f, i) => ((xpsr >>> (31 - i)) & 1 ? f : f.toLowerCase())).join(' ')}
             </code>
-            {' · '}Ausnahme {xpsr & 0x1ff}: {exceptionName(xpsr & 0x1ff)}
-            {values.PRIMASK & 1 ? ' · Interrupts gesperrt (PRIMASK)' : ''}
+            {' · '}Exception {xpsr & 0x1ff}: {exceptionName(xpsr & 0x1ff)}
+            {values.PRIMASK & 1 ? ' · interrupts disabled (PRIMASK)' : ''}
           </p>
         )}
       </div>
       <div>
-        <h4>Nächste Befehle</h4>
+        <h4>Next instructions</h4>
         {sim.disasm && sim.disasm.length ? (
           <ol className="disasm">
             {sim.disasm.map((d, i) => (
@@ -345,7 +345,7 @@ function Registers({ sim }) {
             ))}
           </ol>
         ) : (
-          <p className="sim-note">Nur sichtbar, wenn die Simulation angehalten ist (Pause oder Schritt).</p>
+          <p className="sim-note">Only visible while the simulation is paused (Pause or Step).</p>
         )}
       </div>
     </div>
@@ -372,8 +372,8 @@ function Memory({ sim, request, onRequest }) {
     <div>
       <form className="sim-form" onSubmit={apply}>
         <label>
-          Adresse oder Symbol
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="0x20000000 oder ticks" />
+          Address or symbol
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="0x20000000 or ticks" />
         </label>
         <label>
           Bytes
@@ -386,14 +386,14 @@ function Memory({ sim, request, onRequest }) {
           </select>
         </label>
         <button className="btn small" type="submit">
-          Anzeigen
+          Show
         </button>
-        <span className="sim-note">Flash 0x00000000–0x000FFFFF, SRAM 0x20000000–0x2003FFFF (Peripherie: Reiter „Peripherie“)</span>
+        <span className="sim-note">Flash 0x00000000–0x000FFFFF, SRAM 0x20000000–0x2003FFFF (peripherals: tab "Peripherals")</span>
       </form>
       {mem && mem.error && <p className="sim-bad">{mem.error}</p>}
       {mem && mem.symbol && (
         <p className="sim-note">
-          <code>{mem.symbol}</code> liegt bei <code>0x{hex8(mem.addr)}</code>
+          <code>{mem.symbol}</code> is at <code>0x{hex8(mem.addr)}</code>
         </p>
       )}
       {bytes.length > 0 && (
@@ -435,9 +435,9 @@ function Peripheral({ sim, modules, module, onModule }) {
     <div>
       <form className="sim-form" onSubmit={(e) => e.preventDefault()}>
         <label>
-          Modul
+          Module
           <select value={module || ''} onChange={(e) => onModule(e.target.value || null)}>
-            <option value="">– wählen –</option>
+            <option value="">– choose –</option>
             {modules.map((m) => (
               <option key={m} value={m}>
                 {m}
@@ -445,16 +445,16 @@ function Peripheral({ sim, modules, module, onModule }) {
             ))}
           </select>
         </label>
-        <span className="sim-note">Namen aus tm4c1294ncpdt.h; gelesen ohne Nebenwirkung (UARTDR nimmt nichts aus dem FIFO)</span>
+        <span className="sim-note">Names from tm4c1294ncpdt.h; read without side effects (reading UARTDR here does not take anything out of the FIFO)</span>
       </form>
-      {p && p.noClock && <p className="sim-warn">Das Modul hat keinen Takt (RCGC-Bit nicht gesetzt) – die Register sind nicht lesbar.</p>}
+      {p && p.noClock && <p className="sim-warn">The module has no clock (RCGC bit not set) – its registers cannot be read.</p>}
       {p && !p.noClock && (
         <table className="periph">
           <thead>
             <tr>
               <th>Register</th>
-              <th>Adresse</th>
-              <th>Wert</th>
+              <th>Address</th>
+              <th>Value</th>
               <th>Bits 31 … 0</th>
             </tr>
           </thead>
@@ -485,7 +485,7 @@ function Peripheral({ sim, modules, module, onModule }) {
 }
 
 function Messages({ sim }) {
-  if (sim.warnings.length === 0) return <span className="sim-ok">keine</span>;
+  if (sim.warnings.length === 0) return <span className="sim-ok">none</span>;
   return (
     <ul className="sim-messages">
       {[...sim.warnings].reverse().map((w) => (
@@ -525,23 +525,23 @@ export default function SimulationPanel({ debug = false }) {
 
   const stopped = sim && sim.stopped;
   const tabs = [
-    ['regs', 'CPU-Register'],
-    ['cpustats', 'CPU-Zeit'],
-    ['memory', 'Speicher'],
-    ['periph', 'Peripherie'],
-    ['messages', `Meldungen${sim && sim.warnings.length ? ` (${sim.warnings.length})` : ''}`],
+    ['regs', 'CPU registers'],
+    ['cpustats', 'CPU time'],
+    ['memory', 'Memory'],
+    ['periph', 'Peripherals'],
+    ['messages', `Messages${sim && sim.warnings.length ? ` (${sim.warnings.length})` : ''}`],
   ];
 
   return (
-    <Widget title="Simulation" subtitle={sim ? sim.experiment.title : 'warte auf Daten …'} className="sim">
+    <Widget title="Simulation" subtitle={sim ? sim.experiment.title : 'waiting for data …'} className="sim">
       {debug && (
         <div className="sim-debug">
           {stopped ? (
-            <button className="btn small primary" onClick={() => send({ type: 'continue' })} title="Simulation fortsetzen">
-              ▶ Weiter
+            <button className="btn small primary" onClick={() => send({ type: 'continue' })} title="Continue the simulation">
+              ▶ Continue
             </button>
           ) : (
-            <button className="btn small" onClick={() => send({ type: 'pause' })} disabled={!sim} title="Simulation anhalten">
+            <button className="btn small" onClick={() => send({ type: 'pause' })} disabled={!sim} title="Pause the simulation">
               ⏸ Pause
             </button>
           )}
@@ -549,22 +549,22 @@ export default function SimulationPanel({ debug = false }) {
             className="btn small"
             onClick={() => send({ type: 'step', count: steps })}
             disabled={!sim}
-            title="Die nächsten Befehle ausführen, dann anhalten"
+            title="Execute the next instructions, then pause"
           >
-            ⏭ Schritt
+            ⏭ Step
           </button>
-          <select value={steps} onChange={(e) => setSteps(Number(e.target.value))} title="Befehle pro Schritt">
+          <select value={steps} onChange={(e) => setSteps(Number(e.target.value))} title="Instructions per step">
             {[1, 10, 100, 1000].map((n) => (
               <option key={n} value={n}>
-                {n} {n === 1 ? 'Befehl' : 'Befehle'}
+                {n} {n === 1 ? 'instruction' : 'instructions'}
               </option>
             ))}
           </select>
           {stopped && sim.cpu && sim.cpu.halted && (
             <span className="sim-warn">
               {sim.cpu.state === 'Wake'
-                ? 'Schritt läuft: Simulation wartet auf den nächsten Interrupt …'
-                : 'CPU schläft (WFI): ein Schritt läuft bis zum nächsten Interrupt'}
+                ? 'Step running: the simulation waits for the next interrupt …'
+                : 'CPU is sleeping (WFI): a step runs until the next interrupt'}
             </span>
           )}
         </div>

@@ -141,18 +141,18 @@ async function lab1() {
   const elf = file('lab01');
   if (!elf) return console.log('-- lab01 fehlt, Lab 1 übersprungen');
   const s = await session('lab1_gpio', elf);
-  check('Lab 1: printf-Startmeldung in der CCS-Konsole', await waitFor(() => /Lab 1: Hex-Keypad/.test(s.cio)));
+  check('Lab 1: printf-Startmeldung in der CCS-Konsole', await waitFor(() => /Lab 1: hex keypad/.test(s.cio)));
   s.send({ type: 'keypad', row: 1, col: 1, pressed: true });                  // Y2/X2 = "5"
-  check('Lab 1: Taste 5 -> printf', await waitFor(() => /Taste 5\n/.test(s.cio)));
+  check('Lab 1: Taste 5 -> printf', await waitFor(() => /Key 5\n/.test(s.cio)));
   check('Lab 1: Taste 5 -> BCD-Anzeige 0005', await waitFor(() => s.bcd && s.bcd.digits === '0005'));
   await sleep(300);
-  check('Lab 1: Anforderung 1 – nur einmal ausgegeben', (s.cio.match(/Taste 5/g) || []).length === 1);
+  check('Lab 1: Anforderung 1 – nur einmal ausgegeben', (s.cio.match(/Key 5/g) || []).length === 1);
   s.send({ type: 'keypad', row: 1, col: 1, pressed: false });
   await sleep(200);
   s.send({ type: 'keypad', row: 3, col: 3, pressed: true });                  // Y4/X4 = "C"
   check('Lab 1: Taste C -> BCD-Anzeige 005C', await waitFor(() => s.bcd && s.bcd.digits === '005C'));
   s.send({ type: 'keypad', row: 0, col: 3, pressed: true });                  // dazu "F"
-  check('Lab 1: Anforderung 2 – zwei Tasten -> Fehlermeldung', await waitFor(() => /Fehler: mehrere Tasten/.test(s.cio)));
+  check('Lab 1: Anforderung 2 – zwei Tasten -> Fehlermeldung', await waitFor(() => /Error: several keys/.test(s.cio)));
   s.send({ type: 'keypad', row: 0, col: 3, pressed: false });
   s.send({ type: 'keypad', row: 3, col: 3, pressed: false });
   await sleep(300);
@@ -163,7 +163,7 @@ async function lab1() {
   const noDen = file('lab01_ohne_den');
   if (noDen) {
     const t = await session('lab1_gpio', noDen);
-    check('Strenge: PM4 ohne DEN wird gemeldet', await waitFor(() => /PM4 wird als Eingang gelesen, aber GPIODEN = 0/.test(t.diagText())), t.diagText());
+    check('Strenge: PM4 ohne DEN wird gemeldet', await waitFor(() => /PM4 is read as an input, but GPIODEN = 0/.test(t.diagText())), t.diagText());
     t.close();
   }
   const noWait = file('lab01_ohne_wait');
@@ -172,7 +172,7 @@ async function lab1() {
     await sleep(500);
     t.send({ type: 'keypad', row: 1, col: 1, pressed: true });
     check('Strenge: ohne wait() erkennt das Programm falsche Tasten (Laufzeitverzögerung)',
-      await waitFor(() => /Fehler: mehrere|Taste [^5]/.test(t.cio)), JSON.stringify(t.cio.slice(-60)));
+      await waitFor(() => /Error: several|Key [^5]/.test(t.cio)), JSON.stringify(t.cio.slice(-60)));
     t.close();
   }
 }
@@ -182,17 +182,17 @@ async function pendel(experiment, name, what, outOfRange) {
   if (!elf) return console.log(`-- ${name} fehlt, ${what} übersprungen`);
   const s = await session(experiment, elf);
   check(`${what}: printf-Startmeldung`, await waitFor(() => /Lab [23]/.test(s.cio)));
-  check(`${what}: Startwert 65 cm gemessen`, await waitFor(() => /Abstand: 65 cm/.test(s.cio)));
+  check(`${what}: Startwert 65 cm gemessen`, await waitFor(() => /Distance: 65 cm/.test(s.cio)));
   for (const cm of [42, 123]) {
     s.send({ type: 'sensor', value: cm });
-    check(`${what}: HC-SR04 ${cm} cm -> printf`, await waitFor(() => new RegExp(`Abstand: ${cm} cm`).test(s.cio)));
+    check(`${what}: HC-SR04 ${cm} cm -> printf`, await waitFor(() => new RegExp(`Distance: ${cm} cm`).test(s.cio)));
     await checkImage(s, `${cm}cm`, what);
   }
   s.send({ type: 'sensor', value: 330 });
   check(`${what}: außerhalb 300 cm -> Meldung`, await waitFor(() => outOfRange.test(s.cio)));
   s.send({ type: 'pendulum', frequency: 5 });
   s.send({ type: 'sensor', value: 7 });
-  check(`${what}: 5 Hz, 7 cm -> printf`, await waitFor(() => /Abstand: 7 cm/.test(s.cio)));
+  check(`${what}: 5 Hz, 7 cm -> printf`, await waitFor(() => /Distance: 7 cm/.test(s.cio)));
   await checkImage(s, '7cm', `${what} bei 5 Hz`);
   check(`${what}: Diagnose ohne Meldung (Firmware korrekt)`, s.diag.length === 0, s.diagText());
   check(`${what}: keine Fehler vom Backend`, s.errors.length === 0, s.errors.join('; '));
@@ -216,7 +216,7 @@ async function lab4() {
   check('Lab 4: "leds ~1-3+4~2" -> D2 und D4 an', await waitFor(() => !s.leds.D1 && s.leds.D2 && !s.leds.D3 && s.leds.D4), JSON.stringify(s.leds));
   s.u.send('leds +1x3\r');
   check('Lab 4: Syntaxfehler -> Abbruch ab der Fehlerstelle (D1 an, sonst gleich)',
-    await waitFor(() => s.leds.D1 && s.leds.D2 && s.leds.D4 && /Syntaxfehler/.test(s.cio)), JSON.stringify(s.leds));
+    await waitFor(() => s.leds.D1 && s.leds.D2 && s.leds.D4 && /Syntax error/.test(s.cio)), JSON.stringify(s.leds));
   check('Lab 4: Diagnose ohne Meldung (Firmware korrekt)', s.diag.length === 0, s.diagText());
   s.close();
 
@@ -228,7 +228,7 @@ async function lab4() {
     // also kein ">" an (höchstens Zeichensalat, falls doch ein Startbit erkannt wird).
     await sleep(3000);
     check('Strenge: falsche Baudrate -> kein ">" im Terminal', !t.uart.includes(0x3e), t.uart.toString('hex') || 'nichts empfangen');
-    check('Strenge: falsche Baudrate wird gemeldet', await waitFor(() => /11\d{4} Baud 8N1.*erwartet 9600 Baud 7N1/.test(t.diagText())), t.diagText());
+    check('Strenge: falsche Baudrate wird gemeldet', await waitFor(() => /11\d{4} baud 8N1.*expects 9600 baud 7N1/.test(t.diagText())), t.diagText());
     t.close();
   }
   const noPur = file('lab04_ohne_pur');
@@ -239,7 +239,7 @@ async function lab4() {
     await sleep(100);
     t.send({ type: 'button', id: 'SW1', pressed: false });
     check('Strenge: SW1 ohne Pull-up -> kein Interrupt beim Loslassen', !(await waitFor(() => t.uart.includes(0x23), 1500)));
-    check('Strenge: offener Eingang PJ0 wird gemeldet', await waitFor(() => /PJ0 ist ein offener Eingang/.test(t.diagText())), t.diagText());
+    check('Strenge: offener Eingang PJ0 wird gemeldet', await waitFor(() => /PJ0 is a floating input/.test(t.diagText())), t.diagText());
     t.close();
   }
 }
@@ -281,8 +281,8 @@ const only = (process.env.ONLY || 'lab1,lab2,lab3,lab4,solution').split(',');
 
 (async () => {
   if (only.includes('lab1')) await lab1();
-  if (only.includes('lab2')) await pendel('lab2_pendel', 'lab02', 'Lab 2', /kein Echo/);
-  if (only.includes('lab3')) await pendel('lab3_nvic', 'lab03', 'Lab 3', /kein Objekt/);
+  if (only.includes('lab2')) await pendel('lab2_pendel', 'lab02', 'Lab 2', /no echo/);
+  if (only.includes('lab3')) await pendel('lab3_nvic', 'lab03', 'Lab 3', /no object/);
   if (only.includes('lab4')) await lab4();
   if (only.includes('solution')) await solutions();
   console.log(failed ? `\n${failed} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');

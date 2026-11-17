@@ -76,7 +76,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(format == null || format.Length != 3)
             {
-                throw new ArgumentException("Format wie \"8N1\" angeben (Datenbits 5-8, Parität N/O/E/M/S, Stoppbits 1-2)");
+                throw new ArgumentException("Specify a format like \"8N1\" (data bits 5-8, parity N/O/E/M/S, stop bits 1-2)");
             }
             int data = format[0] - '0';
             int stop = format[2] - '0';
@@ -88,7 +88,7 @@ namespace Antmicro.Renode.Peripherals.UART
                 case 'E': p = UartParity.Even; break;
                 case 'M': p = UartParity.Mark; break;
                 case 'S': p = UartParity.Space; break;
-                default: throw new ArgumentException("Parität N, O, E, M oder S");
+                default: throw new ArgumentException("Parity N, O, E, M or S");
             }
             if(data < 5 || data > 8 || stop < 1 || stop > 2)
             {
@@ -96,7 +96,7 @@ namespace Antmicro.Renode.Peripherals.UART
             }
             if(!(baud > 0))
             {
-                throw new ArgumentException("Baudrate > 0");
+                throw new ArgumentException("baud rate > 0");
             }
             return new UartFrameFormat(baud, data, p, stop);
         }
@@ -120,7 +120,7 @@ namespace Antmicro.Renode.Peripherals.UART
 
         public string Describe()
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:0.#} Baud {1}", Baud, Name);
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.#} baud {1}", Baud, Name);
         }
 
         public bool ParityBit(int value)

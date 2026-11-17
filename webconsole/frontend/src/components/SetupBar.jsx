@@ -37,16 +37,16 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
         setExperiments(list);
         onListLoaded(list);
       })
-      .catch((e) => setMessage({ kind: 'error', text: `Versuche nicht ladbar: ${e.message}` }));
+      .catch((e) => setMessage({ kind: 'error', text: `Cannot load experiments: ${e.message}` }));
   }, [activeId, onListLoaded]);
 
   const start = async () => {
     if (!experimentId || !file) return;
     setBusy(true);
-    setMessage({ kind: 'info', text: 'Lade Firmware & starte Renode …' });
+    setMessage({ kind: 'info', text: 'Loading firmware & starting Renode …' });
     try {
       const res = await uploadElf(experimentId, file);
-      setMessage({ kind: 'ok', text: `„${res.experiment.title}“ läuft` });
+      setMessage({ kind: 'ok', text: `"${res.experiment.title}" is running` });
       onStarted(res.experiment, false);
     } catch (e) {
       setMessage({ kind: 'error', text: e.message, log: e.log });
@@ -61,10 +61,10 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
   const startReference = async () => {
     if (!experimentId) return;
     setBusy(true);
-    setMessage({ kind: 'info', text: 'Starte Musterlösung …' });
+    setMessage({ kind: 'info', text: 'Starting reference solution …' });
     try {
       const res = await startSolution(experimentId);
-      setMessage({ kind: 'ok', text: `„${res.experiment.title}“ läuft mit der Musterlösung` });
+      setMessage({ kind: 'ok', text: `"${res.experiment.title}" is running with the reference solution` });
       onStarted(res.experiment, true);
     } catch (e) {
       setMessage({ kind: 'error', text: e.message, log: e.log });
@@ -77,7 +77,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
     setBusy(true);
     try {
       await stopSimulation();
-      setMessage({ kind: 'info', text: 'Simulation gestoppt' });
+      setMessage({ kind: 'info', text: 'Simulation stopped' });
       onStopped();
     } catch (e) {
       setMessage({ kind: 'error', text: e.message });
@@ -91,8 +91,8 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
       <AboutDialog open={about} onClose={() => setAbout(false)} />
       <div className="setup-top">
         <div className="brand" title="Renode4MC-HAW">
-          <button type="button" className="brand-logo" onClick={() => setAbout(true)} title="Über diese Web-Konsole">
-            <img src={hawLogo} alt="HAW Hamburg – Über diese Web-Konsole" />
+          <button type="button" className="brand-logo" onClick={() => setAbout(true)} title="About this web console">
+            <img src={hawLogo} alt="HAW Hamburg – About this web console" />
           </button>
           <AppLogo size={22} />
           <span className="brand-name">
@@ -105,7 +105,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
           className="btn small setup-toggle"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          title="Versuch, Firmware, Start/Stop"
+          title="Experiment, firmware, start/stop"
         >
           {open ? 'Setup ▴' : 'Setup ▾'}
         </button>
@@ -113,7 +113,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
 
       <div className="setup-form">
         <label className="field">
-          <span>Versuch</span>
+          <span>Experiment</span>
           <select value={experimentId} onChange={(e) => onSelect(e.target.value)} disabled={busy}>
             {experiments.map((x) => (
               <option key={x.id} value={x.id}>
@@ -136,7 +136,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
 
         <div className="actions">
           <button className="btn primary" onClick={start} disabled={busy || !file || !experimentId}>
-            {busy ? 'Bitte warten …' : running && activeId === experimentId ? 'Neu starten' : 'Start'}
+            {busy ? 'Please wait …' : running && activeId === experimentId ? 'Restart' : 'Start'}
           </button>
           {solution && (
             <button
@@ -145,11 +145,11 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
               disabled={busy || !solution.available}
               title={
                 solution.available
-                  ? `${solution.label}: zum Vergleich, wie sich das fertige Programm verhält`
-                  : 'Musterlösung nicht gebaut (tools/build-solutions.sh)'
+                  ? `${solution.label}: for comparison – shows how the finished program behaves`
+                  : 'Reference solution not built (tools/build-solutions.sh)'
               }
             >
-              Musterlösung
+              Reference solution
             </button>
           )}
           {running && (
@@ -164,7 +164,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
             <span className="message-text">{message.text}</span>
             {message.log?.length > 0 && (
               <details>
-                <summary>Renode-Log</summary>
+                <summary>Renode log</summary>
                 <pre>{message.log.join('\n')}</pre>
               </details>
             )}
@@ -172,7 +172,7 @@ export default function SetupBar({ running, activeId, selectedId, onSelect, onLi
               type="button"
               className="message-close"
               onClick={() => setMessage(null)}
-              aria-label="Meldung schließen"
+              aria-label="Close message"
             >
               ×
             </button>

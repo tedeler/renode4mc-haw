@@ -86,11 +86,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         {
             if(row < 0 || row >= Size || column < 0 || column >= Size)
             {
-                throw new ArgumentException(string.Format("Taste ({0},{1}) existiert nicht", row, column));
+                throw new ArgumentException(string.Format("Key ({0},{1}) does not exist", row, column));
             }
             lock(sync)
             {
-                this.Log(LogLevel.Debug, "HexKeypad: Zeile Y{0}, Spalte X{1} {2}", row + 1, column + 1, pressed ? "gedrückt" : "losgelassen");
+                this.Log(LogLevel.Debug, "HexKeypad: row Y{0}, column X{1} {2}", row + 1, column + 1, pressed ? "pressed" : "released");
                 pressedKeys[row, column] = pressed;
             }
             Update();

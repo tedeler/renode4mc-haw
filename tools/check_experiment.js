@@ -2,18 +2,18 @@
 'use strict';
 
 /**
- * Prüft Versuchsbeschreibungen (sim/experiments/<id>.json) – dieselbe Prüfung, die das Backend beim
- * Laden macht – und zeigt auf Wunsch, was daraus erzeugt wird.
+ * Checks experiment descriptions (sim/experiments/<id>.json) – the same check the backend performs
+ * when loading them – and, on request, shows what is generated from them.
  *
- *   node tools/check_experiment.js                      alle Versuche in sim/experiments/
- *   node tools/check_experiment.js mein_versuch.json    eine Datei (auch außerhalb von sim/experiments)
- *   node tools/check_experiment.js --repl lab1_gpio     erzeugte Renode-Plattform ausgeben
+ *   node tools/check_experiment.js                      all experiments in sim/experiments/
+ *   node tools/check_experiment.js my_experiment.json   one file (may also be outside sim/experiments)
+ *   node tools/check_experiment.js --repl lab1_gpio     print the generated Renode platform
  *   node tools/check_experiment.js --out /tmp/v lab1_gpio
- *        .repl und .resc nach /tmp/v schreiben, dann ohne Web-Konsole starten:
+ *        write .repl and .resc to /tmp/v, then start without the web console:
  *        cd sim && renode -e "\$elf=@../firmware.out; s @/tmp/v/lab1_gpio.resc"
- *   node tools/check_experiment.js --types              Liste der Elementtypen und ihrer Anschlüsse
+ *   node tools/check_experiment.js --types              list of element types and their terminals
  *
- * Exit-Code: 0 = alles gültig (Hinweise erlaubt), 1 = Fehler gefunden, 2 = falscher Aufruf.
+ * Exit code: 0 = everything valid (notes allowed), 1 = errors found, 2 = wrong usage.
  * Format: docs/EXPERIMENTS.md
  */
 const fs = require('fs');
@@ -24,18 +24,18 @@ const SIM = path.join(ROOT, 'sim');
 const EXPERIMENTS = path.join(SIM, 'experiments');
 const spec = require(path.join(ROOT, 'webconsole', 'backend', 'lib', 'experimentSpec.js'));
 
-const HELP = `Aufruf: node tools/check_experiment.js [Optionen] [Datei.json | Versuchs-ID | Verzeichnis ...]
+const HELP = `Usage: node tools/check_experiment.js [options] [file.json | experiment ID | directory ...]
 
-Ohne Datei werden alle Versuche in sim/experiments/ geprüft.
+Without a file, all experiments in sim/experiments/ are checked.
 
-Optionen:
-  --repl         erzeugte Renode-Plattform (.repl) ausgeben
-  --resc         erzeugtes Renode-Startskript (.resc) ausgeben
-  --config       Konfiguration für die Web-Konsole ausgeben (JSON)
-  --out DIR      .repl und .resc nach DIR schreiben (Renode ohne Web-Konsole starten)
-  --types        Elementtypen, ihre Felder und Anschlüsse auflisten
-  -q, --quiet    nur Fehler und Hinweise ausgeben
-  -h, --help     diese Hilfe
+Options:
+  --repl         print the generated Renode platform (.repl)
+  --resc         print the generated Renode start script (.resc)
+  --config       print the configuration for the web console (JSON)
+  --out DIR      write .repl and .resc to DIR (to start Renode without the web console)
+  --types        list the element types, their fields and terminals
+  -q, --quiet    only print errors and notes
+  -h, --help     this help
 `;
 
 function parseArgs(argv) {
@@ -50,24 +50,24 @@ function parseArgs(argv) {
     else if (a === '-h' || a === '--help') o.help = true;
     else if (a === '--out') {
       o.out = argv[++i];
-      if (!o.out) throw new Error('--out braucht ein Verzeichnis');
-    } else if (a.startsWith('-')) throw new Error(`unbekannte Option ${a}`);
+      if (!o.out) throw new Error('--out needs a directory');
+    } else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
     else o.files.push(a);
   }
   return o;
 }
 
-/** Argument -> Liste von JSON-Dateien */
+/** argument -> list of JSON files */
 function resolveFiles(args) {
   if (!args.length) args = [EXPERIMENTS];
   const files = [];
   for (const a of args) {
     let p = a;
     if (!fs.existsSync(p) && fs.existsSync(path.join(EXPERIMENTS, `${a}.json`))) p = path.join(EXPERIMENTS, `${a}.json`);
-    if (!fs.existsSync(p)) throw new Error(`${a}: nicht gefunden (Datei, Verzeichnis oder Versuchs-ID in sim/experiments/)`);
+    if (!fs.existsSync(p)) throw new Error(`${a}: not found (file, directory or experiment ID in sim/experiments/)`);
     if (fs.statSync(p).isDirectory()) {
       const list = fs.readdirSync(p).filter((f) => f.endsWith('.json')).sort();
-      if (!list.length) console.warn(`${p}: keine .json-Dateien`);
+      if (!list.length) console.warn(`${p}: no .json files`);
       files.push(...list.map((f) => path.join(p, f)));
     } else files.push(p);
   }
@@ -79,23 +79,23 @@ function rel(p) {
   return r && !r.startsWith('..') ? r : p;
 }
 
-/** Zusätzliche Prüfungen gegen das Repository (das Backend prüft nur das Format) */
+/** Additional checks against the repository (the backend only checks the format) */
 function checkRepository(data, result) {
   const errors = [];
   const warnings = [];
   for (const cs of result.models || []) {
-    if (!fs.existsSync(path.join(SIM, 'models', cs))) errors.push(`Gerätemodell sim/models/${cs} fehlt`);
+    if (!fs.existsSync(path.join(SIM, 'models', cs))) errors.push(`device model sim/models/${cs} is missing`);
   }
   const ex = data.solution && data.solution.example;
   if (ex && typeof ex === 'string') {
-    // Quellen: examples/<name> (öffentlich) oder solutions/labs/<name>/code (privates Submodul, nur
-    // bei Lehrenden ausgecheckt). Ohne Quellen genügt die fertige sim/solutions/<name>.elf.
+    // sources: examples/<name> (public) or solutions/labs/<name>/code (private submodule, only
+    // checked out by teaching staff). Without sources the ready-made sim/solutions/<name>.elf is enough.
     const src = [path.join(ROOT, 'examples', ex), path.join(ROOT, 'solutions', 'labs', ex, 'code')].some((d) => fs.existsSync(d));
     const elf = fs.existsSync(path.join(SIM, 'solutions', `${ex}.elf`));
     if (!src && !elf) {
-      errors.push(`solution.example: weder Quellen (examples/${ex}, solutions/labs/${ex}/code) noch sim/solutions/${ex}.elf`);
+      errors.push(`solution.example: neither sources (examples/${ex}, solutions/labs/${ex}/code) nor sim/solutions/${ex}.elf`);
     } else if (!elf) {
-      warnings.push(`Musterlösung sim/solutions/${ex}.elf ist nicht gebaut (tools/build-solutions.sh) – Knopf "Musterlösung starten" bleibt aus`);
+      warnings.push(`reference solution sim/solutions/${ex}.elf is not built (tools/build-solutions.sh) – the "Reference solution" button stays disabled`);
     }
   }
   return { errors, warnings };
@@ -107,7 +107,7 @@ function checkFile(file, o) {
   try {
     data = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
-    console.log(`✗ ${rel(file)}: kein gültiges JSON – ${e.message}`);
+    console.log(`✗ ${rel(file)}: not valid JSON – ${e.message}`);
     return false;
   }
   const r = spec.build(data, id);
@@ -120,13 +120,13 @@ function checkFile(file, o) {
     const n = (data.elements || []).length;
     const pins = r.config.scope.signals.filter((s) => s.pin !== 'PA0' && s.pin !== 'PA1').length;
     if (!o.quiet || warnings.length) {
-      console.log(`✓ ${rel(file)}: "${data.title}" – ${n} Elemente, ${pins} Pins${warnings.length ? `, ${warnings.length} Hinweis(e)` : ''}`);
+      console.log(`✓ ${rel(file)}: "${data.title}" – ${n} elements, ${pins} pins${warnings.length ? `, ${warnings.length} note(s)` : ''}`);
     }
   } else {
-    console.log(`✗ ${rel(file)}: ${errors.length} Fehler`);
+    console.log(`✗ ${rel(file)}: ${errors.length} error(s)`);
   }
-  for (const e of errors) console.log(`    Fehler:  ${e}`);
-  for (const w of warnings) console.log(`    Hinweis: ${w}`);
+  for (const e of errors) console.log(`    error: ${e}`);
+  for (const w of warnings) console.log(`    note:  ${w}`);
   if (!ok) return false;
 
   if (o.config) console.log(JSON.stringify({ id, ...r.config }, null, 2));
@@ -139,8 +139,8 @@ function checkFile(file, o) {
     fs.writeFileSync(replPath, r.repl);
     fs.writeFileSync(path.join(outDir, `${id}.resc`), r.resc(replPath));
     if (!o.quiet) {
-      console.log(`    geschrieben: ${rel(replPath)}, ${rel(path.join(outDir, `${id}.resc`))}`);
-      console.log(`    starten:     cd sim && renode -e "\\$elf=@<firmware.out>; s @${path.join(outDir, `${id}.resc`)}"`);
+      console.log(`    written: ${rel(replPath)}, ${rel(path.join(outDir, `${id}.resc`))}`);
+      console.log(`    start:   cd sim && renode -e "\\$elf=@<firmware.out>; s @${path.join(outDir, `${id}.resc`)}"`);
     }
   }
   return true;
@@ -149,9 +149,9 @@ function checkFile(file, o) {
 function printTypes() {
   for (const t of spec.describeTypes()) {
     console.log(`${t.type.padEnd(10)} ${t.desc}`);
-    console.log(`           Widget: ${t.gui}${['leds', 'buttons'].includes(t.gui) ? ' (mehrere möglich)' : ' (höchstens eines)'}`);
-    if (t.pins.length) console.log(`           Anschlüsse: ${t.pins.join(', ')}${t.type === 'keypad' ? ' (Anzahl nach "layout")' : ''}`);
-    console.log(`           Felder: ${t.fields.join(', ')}`);
+    console.log(`           Widget: ${t.gui}${['leds', 'buttons'].includes(t.gui) ? ' (several allowed)' : ' (at most one)'}`);
+    if (t.pins.length) console.log(`           Terminals: ${t.pins.join(', ')}${t.type === 'keypad' ? ' (number depends on "layout")' : ''}`);
+    console.log(`           Fields: ${t.fields.join(', ')}`);
   }
 }
 
@@ -180,7 +180,7 @@ function main() {
   }
   let bad = 0;
   for (const f of files) if (!checkFile(f, o)) bad++;
-  if (files.length > 1 && !o.quiet) console.log(`\n${files.length - bad} von ${files.length} Versuchen gültig`);
+  if (files.length > 1 && !o.quiet) console.log(`\n${files.length - bad} of ${files.length} experiments valid`);
   return bad ? 1 : 0;
 }
 

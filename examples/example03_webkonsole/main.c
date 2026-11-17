@@ -1,25 +1,25 @@
 /*
- * Example 03 - Web-Konsole: Demo für alle Bedienelemente von Example 1 (reiner Registerzugriff)
- * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
+ * Example 03 - Web console: demo for all controls of Example 1 (direct register access)
+ * Board: EK-TM4C1294XL (TM4C1294NCPDT), clock: 16 MHz (clock after reset, not changed here)
  *
- * Läuft im Simulator (Web-Konsole, Versuch "example1") und auf dem Board mit Zusatz-Hardware.
+ * Runs in the simulator (web console, experiment "example1") and on the board with extra hardware.
  *
- *   Baustein                 Anschluss                          Verwendung im Programm
+ *   Component                Connection                         Use in the program
  *   ------------------------ ---------------------------------- -------------------------------------
- *   LEDs D1, D2, D3, D4      PN1, PN0, PF4, PF0 (Ausgang)        D1 = Abstand < 50 cm, D2 = Herzschlag,
- *                                                                D3/D4 = von USR_SW1/USR_SW2 umgeschaltet
- *   Taster USR_SW1, USR_SW2  PJ0, PJ1 (Eingang, Pull-up,        Interrupt bei fallender Flanke (Drücken)
- *                            gedrückt = LOW)
- *   UART0 (Virtual COM)      PA0 = RX, PA1 = TX, 115200 8N1      Meldungen, Echo empfangener Zeichen
- *   I2C0                     PB2 = SCL, PB3 = SDA, 100 kHz       OLED (0x3C) und Ultraschallsensor (0x70)
- *   OLED SSD1306 128x64      I2C0, Adresse 0x3C                  Textanzeige (Abstand, Taste, ...)
- *   Ultraschall MB1242       I2C0, Adresse 0x70                  Messung alle 200 ms
- *   Keypad 4x3               Zeilen PK0..PK3 (Ausgang),          Interrupt an den Spalten, dann Zeilen-Scan
- *                            Spalten PK4..PK6 (Eingang, Pull-down)
- *   Timer0A                  -                                   100-ms-Takt (Interrupt)
+ *   LEDs D1, D2, D3, D4      PN1, PN0, PF4, PF0 (outputs)        D1 = distance < 50 cm, D2 = heartbeat,
+ *                                                                D3/D4 = toggled by USR_SW1/USR_SW2
+ *   Buttons USR_SW1, SW2     PJ0, PJ1 (inputs, pull-up,          interrupt on falling edge (press)
+ *                            pressed = LOW)
+ *   UART0 (Virtual COM)      PA0 = RX, PA1 = TX, 115200 8N1      messages, echo of received characters
+ *   I2C0                     PB2 = SCL, PB3 = SDA, 100 kHz       OLED (0x3C) and ultrasonic sensor (0x70)
+ *   OLED SSD1306 128x64      I2C0, address 0x3C                  text display (distance, key, ...)
+ *   Ultrasonic MB1242        I2C0, address 0x70                  measurement every 200 ms
+ *   Keypad 4x3               rows PK0..PK3 (outputs),            interrupt on the columns, then row scan
+ *                            columns PK4..PK6 (inputs, pull-down)
+ *   Timer0A                  -                                   100 ms tick (interrupt)
  *
- * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
- * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Register names and bit constants: TI header file tm4c1294ncpdt.h (common/), no addresses of
+ * our own. Look them up in the data sheet "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -28,24 +28,24 @@
 #define SYSTEM_CLOCK_HZ     16000000u
 
 /* ---------------------------------------------------------------------------------------------
- * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h.
- * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Pin-Funktionen, IRQs).
+ * Registers: all names (..._R) and bit constants come from tm4c1294ncpdt.h.
+ * Only constants that the header file does not know are defined here (pins, pin functions, IRQs).
  * ------------------------------------------------------------------------------------------- */
-/* Bits der benutzten Ports in RCGCGPIO bzw. PRGPIO (A = Bit 0 ... N = Bit 12) */
-#define PORTS_TAKT          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R5 | \
+/* Bits of the ports used, in RCGCGPIO and PRGPIO (A = bit 0 ... N = bit 12) */
+#define PORTS_CLOCK          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R5 | \
                              SYSCTL_RCGCGPIO_R8 | SYSCTL_RCGCGPIO_R9 | SYSCTL_RCGCGPIO_R12)
-#define PORTS_BEREIT        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R5 | \
+#define PORTS_READY        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R5 | \
                              SYSCTL_PRGPIO_R8 | SYSCTL_PRGPIO_R9 | SYSCTL_PRGPIO_R12)
 
-/* GPIOPCTL: je 4 Bit pro Pin wählen die alternative Funktion (Datenblatt, Tabelle
- * "GPIO Pins and Alternate Functions"). Dafür hat die Headerdatei keine Konstanten. */
-#define PCTL_MASKE(pin)     (0xFu << (4u * (pin)))
-#define PCTL_FUNKTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
+/* GPIOPCTL: 4 bits per pin select the alternate function (data sheet, table
+ * "GPIO Pins and Alternate Functions"). The header file has no constants for this. */
+#define PCTL_MASK(pin)     (0xFu << (4u * (pin)))
+#define PCTL_FUNCTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
 #define PCTL_UART0          1u                 /* PA0 = U0RX, PA1 = U0TX */
 #define PCTL_I2C0           2u                 /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 
-/* NVIC: INT_... aus der Headerdatei ist die Nummer in der Vektortabelle; der NVIC zählt
- * ab dem ersten Peripherie-Interrupt (Eintrag 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
+/* NVIC: INT_... from the header file is the number in the vector table; the NVIC counts
+ * from the first peripheral interrupt (entry 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
 #define IRQ_TIMER0A         (INT_TIMER0A - 16u)   /* 19 */
 #define IRQ_GPIOJ           (INT_GPIOJ - 16u)     /* 51 */
 #define IRQ_GPIOK           (INT_GPIOK - 16u)     /* 52 */
@@ -64,16 +64,16 @@
 #define PINS_I2C0           0x0Cu              /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 #define PIN_I2C0_SDA        0x08u              /* PB3 */
 
-/* Geräteadressen am I2C-Bus (7 Bit) */
+/* Device addresses on the I2C bus (7 bit) */
 #define OLED_ADDR           0x3Cu
 #define SONAR_ADDR          0x70u
 
 /* ---------------------------------------------------------------------------------------------
- * Ereignisse aus den Interrupt-Routinen (volatile: werden in ISR und main benutzt)
+ * Events from the interrupt routines (volatile: used both in the ISR and in main)
  * ------------------------------------------------------------------------------------------- */
-static volatile uint32_t ticks;            /* 100-ms-Zähler (Timer0A) */
-static volatile bool     keypadEvent;      /* Flanke an einer Keypad-Spalte */
-static volatile uint32_t buttonEvents;     /* Bit 0 = SW1 gedrückt, Bit 1 = SW2 gedrückt */
+static volatile uint32_t ticks;            /* 100 ms counter (Timer0A) */
+static volatile bool     keypadEvent;      /* edge on a keypad column */
+static volatile uint32_t buttonEvents;     /* bit 0 = SW1 pressed, bit 1 = SW2 pressed */
 
 void TIMER0A_Handler(void)
 {
@@ -95,24 +95,24 @@ void GPIOK_Handler(void)
 }
 
 /* ---------------------------------------------------------------------------------------------
- * UART0: 115200 Baud bei 16 MHz -> BRD = 16e6 / (16 * 115200) = 8,6806
- *        IBRD = 8, FBRD = round(0,6806 * 64) = 44
+ * UART0: 115200 baud at 16 MHz -> BRD = 16e6 / (16 * 115200) = 8.6806
+ *        IBRD = 8, FBRD = round(0.6806 * 64) = 44
  * ------------------------------------------------------------------------------------------- */
 #define BAUD_IBRD           8u
 #define BAUD_FBRD           44u
 
 static void uart_init(void)
 {
-    GPIO_PORTA_AHB_AFSEL_R |= PINS_UART0;                  /* PA0, PA1: alternative Funktion ... */
-    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASKE(0) | PCTL_MASKE(1)))
-                          | PCTL_FUNKTION(0, PCTL_UART0) | PCTL_FUNKTION(1, PCTL_UART0); /* U0RX/U0TX */
+    GPIO_PORTA_AHB_AFSEL_R |= PINS_UART0;                  /* PA0, PA1: alternate function ... */
+    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASK(0) | PCTL_MASK(1)))
+                          | PCTL_FUNCTION(0, PCTL_UART0) | PCTL_FUNCTION(1, PCTL_UART0); /* U0RX/U0TX */
     GPIO_PORTA_AHB_DEN_R |= PINS_UART0;
 
-    UART0_CTL_R = 0;                                        /* zum Konfigurieren ausschalten */
-    UART0_CC_R = UART_CC_CS_SYSCLK;                         /* Takt = Systemtakt */
+    UART0_CTL_R = 0;                                        /* switch off for configuration */
+    UART0_CC_R = UART_CC_CS_SYSCLK;                         /* clock = system clock */
     UART0_IBRD_R = BAUD_IBRD;
     UART0_FBRD_R = BAUD_FBRD;
-    UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN;        /* 8 Datenbits, FIFO an */
+    UART0_LCRH_R = UART_LCRH_WLEN_8 | UART_LCRH_FEN;        /* 8 data bits, FIFO on */
     UART0_CTL_R = UART_CTL_UARTEN | UART_CTL_TXE | UART_CTL_RXE;
 }
 
@@ -146,46 +146,46 @@ static bool uart_getc(char *c)
     return true;
 }
 
-/* Zahl als Dezimaltext (rechtsbündig in "breite" Zeichen, mit Leerzeichen aufgefüllt) */
-static void utoa_pad(uint32_t wert, char *ziel, int breite)
+/* Number as decimal text (right-aligned in "width" characters, padded with spaces) */
+static void utoa_pad(uint32_t value, char *dest, int width)
 {
     char tmp[11];
     int n = 0;
     do
     {
-        tmp[n++] = (char)('0' + wert % 10u);
-        wert /= 10u;
-    } while (wert != 0u && n < 10);
+        tmp[n++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0u && n < 10);
     int i = 0;
-    for (; i < breite - n; i++)
+    for (; i < width - n; i++)
     {
-        ziel[i] = ' ';
+        dest[i] = ' ';
     }
     while (n > 0)
     {
-        ziel[i++] = tmp[--n];
+        dest[i++] = tmp[--n];
     }
-    ziel[i] = '\0';
+    dest[i] = '\0';
 }
 
 /* ---------------------------------------------------------------------------------------------
- * I2C0 als Master, 100 kHz:  MTPR = SysClk / (2 * (6 + 4) * 100 kHz) - 1 = 7
+ * I2C0 as master, 100 kHz:  MTPR = SysClk / (2 * (6 + 4) * 100 kHz) - 1 = 7
  * ------------------------------------------------------------------------------------------- */
 #define TPR_100KHZ          7u
 
 static void i2c_init(void)
 {
-    GPIO_PORTB_AHB_AFSEL_R |= PINS_I2C0;                   /* PB2, PB3: alternative Funktion */
-    GPIO_PORTB_AHB_ODR_R |= PIN_I2C0_SDA;                      /* SDA (PB3) als Open-Drain */
-    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASKE(2) | PCTL_MASKE(3)))
-                          | PCTL_FUNKTION(2, PCTL_I2C0) | PCTL_FUNKTION(3, PCTL_I2C0); /* SCL/SDA */
+    GPIO_PORTB_AHB_AFSEL_R |= PINS_I2C0;                   /* PB2, PB3: alternate function */
+    GPIO_PORTB_AHB_ODR_R |= PIN_I2C0_SDA;                      /* SDA (PB3) as open drain */
+    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASK(2) | PCTL_MASK(3)))
+                          | PCTL_FUNCTION(2, PCTL_I2C0) | PCTL_FUNCTION(3, PCTL_I2C0); /* SCL/SDA */
     GPIO_PORTB_AHB_DEN_R |= PINS_I2C0;
 
-    I2C0_MCR_R = I2C_MCR_MFE;                               /* Master-Betrieb */
+    I2C0_MCR_R = I2C_MCR_MFE;                               /* master mode */
     I2C0_MTPR_R = TPR_100KHZ;
 }
 
-/* Wartet auf das Ende eines Befehls; true = ohne Fehler (Gerät hat quittiert) */
+/* Waits for the end of a command; true = no error (the device acknowledged) */
 static bool i2c_wait(void)
 {
     while (I2C0_MCS_R & I2C_MCS_BUSY)
@@ -194,30 +194,30 @@ static bool i2c_wait(void)
     return (I2C0_MCS_R & I2C_MCS_ERROR) == 0;
 }
 
-/* Schreibt n Bytes an ein Gerät: START, Daten, STOP */
-static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
+/* Writes n bytes to a device: START, data, STOP */
+static bool i2c_write(uint8_t addr, const uint8_t *data, uint32_t n)
 {
-    I2C0_MSA_R = (uint32_t)addr << I2C_MSA_SA_S;            /* R/S = 0: schreiben */
+    I2C0_MSA_R = (uint32_t)addr << I2C_MSA_SA_S;            /* R/S = 0: write */
     for (uint32_t i = 0; i < n; i++)
     {
-        I2C0_MDR_R = daten[i];
+        I2C0_MDR_R = data[i];
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i == n - 1) cmd |= I2C_MCS_STOP;
         I2C0_MCS_R = cmd;
         if (!i2c_wait())
         {
-            I2C0_MCS_R = I2C_MCS_STOP;                      /* Fehler: Bus freigeben */
+            I2C0_MCS_R = I2C_MCS_STOP;                      /* error: release the bus */
             return false;
         }
     }
     return true;
 }
 
-/* Liest n (>= 2) Bytes von einem Gerät: START, Daten mit ACK, letztes Byte ohne ACK + STOP */
-static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
+/* Reads n (>= 2) bytes from a device: START, data with ACK, last byte without ACK + STOP */
+static bool i2c_read(uint8_t addr, uint8_t *data, uint32_t n)
 {
-    I2C0_MSA_R = ((uint32_t)addr << I2C_MSA_SA_S) | I2C_MSA_RS; /* R/S = 1: lesen */
+    I2C0_MSA_R = ((uint32_t)addr << I2C_MSA_SA_S) | I2C_MSA_RS; /* R/S = 1: read */
     for (uint32_t i = 0; i < n; i++)
     {
         uint32_t cmd = I2C_MCS_RUN;
@@ -230,38 +230,38 @@ static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
             I2C0_MCS_R = I2C_MCS_STOP;
             return false;
         }
-        daten[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
+        data[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
     }
     return true;
 }
 
 /* ---------------------------------------------------------------------------------------------
- * OLED SSD1306 (128 x 64, 8 "Pages" zu je 8 Pixelzeilen)
- * Jede I2C-Übertragung beginnt mit einem Steuerbyte: 0x00 = Befehle folgen, 0x40 = Bilddaten.
+ * OLED SSD1306 (128 x 64, 8 "pages" of 8 pixel rows each)
+ * Every I2C transfer starts with a control byte: 0x00 = commands follow, 0x40 = image data.
  * ------------------------------------------------------------------------------------------- */
 static bool oled_ok;
 
 static void oled_init(void)
 {
     static const uint8_t init[] = {
-        0x00,               /* Steuerbyte: Befehle */
-        0xAE,               /* Display aus */
-        0xD5, 0x80,         /* Taktteiler */
-        0xA8, 0x3F,         /* Multiplex 64 Zeilen */
-        0xD3, 0x00,         /* kein Versatz */
-        0x40,               /* Startzeile 0 */
-        0x8D, 0x14,         /* Ladungspumpe an */
-        0x20, 0x02,         /* Page-Adressierung */
-        0xA1, 0xC8,         /* Spiegelung (Anschlüsse oben) */
+        0x00,               /* control byte: commands */
+        0xAE,               /* display off */
+        0xD5, 0x80,         /* clock divider */
+        0xA8, 0x3F,         /* multiplex 64 rows */
+        0xD3, 0x00,         /* no offset */
+        0x40,               /* start line 0 */
+        0x8D, 0x14,         /* charge pump on */
+        0x20, 0x02,         /* page addressing */
+        0xA1, 0xC8,         /* mirroring (connector at the top) */
         0xDA, 0x12,         /* COM-Pins */
-        0x81, 0x7F,         /* Kontrast */
-        0xA4, 0xA6,         /* RAM anzeigen, nicht invertiert */
-        0xAF                /* Display an */
+        0x81, 0x7F,         /* contrast */
+        0xA4, 0xA6,         /* show RAM, not inverted */
+        0xAF                /* display on */
     };
     oled_ok = i2c_write(OLED_ADDR, init, sizeof init);
 }
 
-/* 5x7-Zeichensatz (Spalten, Bit 0 = oben) für die verwendeten Zeichen ' '..'Z' */
+/* 5x7 font (columns, bit 0 = top) for the characters used, ' '..'Z' */
 static const uint8_t font5x7[][5] = {
     [' ' - ' '] = {0x00, 0x00, 0x00, 0x00, 0x00},
     ['#' - ' '] = {0x14, 0x7F, 0x14, 0x7F, 0x14},
@@ -307,25 +307,25 @@ static const uint8_t font5x7[][5] = {
     ['Z' - ' '] = {0x61, 0x51, 0x49, 0x45, 0x43},
 };
 
-/* Schreibt eine Textzeile (max. 21 Zeichen) in Page 0..7; der Rest der Zeile wird gelöscht. */
+/* Writes a line of text (max. 21 characters) to page 0..7; the rest of the line is cleared. */
 static void oled_text(uint8_t page, const char *text)
 {
     if (!oled_ok)
     {
         return;
     }
-    const uint8_t pos[] = { 0x00, (uint8_t)(0xB0u | page), 0x00, 0x10 }; /* Page, Spalte 0 */
+    const uint8_t pos[] = { 0x00, (uint8_t)(0xB0u | page), 0x00, 0x10 }; /* page, column 0 */
     i2c_write(OLED_ADDR, pos, sizeof pos);
 
-    uint8_t zeile[1 + 128];
-    zeile[0] = 0x40;                                      /* Steuerbyte: Bilddaten */
+    uint8_t line[1 + 128];
+    line[0] = 0x40;                                      /* control byte: image data */
     uint32_t x = 1;
-    for (; *text && x + 6 <= sizeof zeile; text++)
+    for (; *text && x + 6 <= sizeof line; text++)
     {
         char c = *text;
         if (c >= 'a' && c <= 'z')
         {
-            c = (char)(c - 'a' + 'A');                    /* nur Großbuchstaben im Zeichensatz */
+            c = (char)(c - 'a' + 'A');                    /* the font only has capital letters */
         }
         if (c < ' ' || c > 'Z')
         {
@@ -333,19 +333,19 @@ static void oled_text(uint8_t page, const char *text)
         }
         for (int i = 0; i < 5; i++)
         {
-            zeile[x++] = font5x7[c - ' '][i];
+            line[x++] = font5x7[c - ' '][i];
         }
-        zeile[x++] = 0x00;                                /* Abstand zwischen Zeichen */
+        line[x++] = 0x00;                                /* gap between characters */
     }
-    while (x < sizeof zeile)
+    while (x < sizeof line)
     {
-        zeile[x++] = 0x00;
+        line[x++] = 0x00;
     }
-    i2c_write(OLED_ADDR, zeile, sizeof zeile);
+    i2c_write(OLED_ADDR, line, sizeof line);
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Ultraschallsensor MB1242: 0x51 schreiben startet eine Messung, danach 2 Bytes lesen (cm)
+ * Ultrasonic sensor MB1242: writing 0x51 starts a measurement, then read 2 bytes (cm)
  * ------------------------------------------------------------------------------------------- */
 static bool sonar_start(void)
 {
@@ -366,9 +366,9 @@ static bool sonar_read(uint32_t *cm)
 
 /* ---------------------------------------------------------------------------------------------
  * Keypad 4x3 (Multiplexing)
- *   Ruhezustand: alle Zeilen HIGH. Drückt man eine Taste, wird ihre Spalte HIGH -> Interrupt.
- *   Dann werden die Zeilen einzeln HIGH geschaltet: Die Zeile, bei der die Spalte HIGH bleibt,
- *   ist die Zeile der gedrückten Taste.
+ *   Idle state: all rows HIGH. When a key is pressed, its column becomes HIGH -> interrupt.
+ *   Then the rows are switched HIGH one at a time: the row for which the column stays HIGH
+ *   is the row of the pressed key.
  * ------------------------------------------------------------------------------------------- */
 static const char keymap[4][3] = {
     { '1', '2', '3' },
@@ -380,66 +380,66 @@ static const char keymap[4][3] = {
 static void keypad_init(void)
 {
     GPIO_PORTK_DIR_R = (GPIO_PORTK_DIR_R | KP_ROWS) & ~KP_COLS;
-    GPIO_PORTK_PDR_R |= KP_COLS;                      /* Spalten: Pull-down */
+    GPIO_PORTK_PDR_R |= KP_COLS;                      /* columns: pull-down */
     GPIO_PORTK_DEN_R |= KP_ROWS | KP_COLS;
-    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* alle Zeilen HIGH */
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* all rows HIGH */
 
-    GPIO_PORTK_IS_R &= ~KP_COLS;                      /* Flanke */
-    GPIO_PORTK_IBE_R &= ~KP_COLS;                     /* nur eine Flanke ... */
-    GPIO_PORTK_IEV_R |= KP_COLS;                      /* ... und zwar steigend */
+    GPIO_PORTK_IS_R &= ~KP_COLS;                      /* edge */
+    GPIO_PORTK_IBE_R &= ~KP_COLS;                     /* only one edge ... */
+    GPIO_PORTK_IEV_R |= KP_COLS;                      /* ... namely the rising one */
     GPIO_PORTK_ICR_R = KP_COLS;
     GPIO_PORTK_IM_R |= KP_COLS;
 }
 
-static void kurz_warten(void)
+static void short_delay(void)
 {
     for (volatile int i = 0; i < 50; i++)
     {
     }
 }
 
-/* Liefert die gedrückte Taste oder 0 */
+/* Returns the pressed key or 0 */
 static char keypad_scan(void)
 {
-    char taste = 0;
-    GPIO_PORTK_IM_R &= ~KP_COLS;                      /* Scan löst sonst selbst Interrupts aus */
-    for (uint32_t zeile = 0; zeile < 4 && taste == 0; zeile++)
+    char key = 0;
+    GPIO_PORTK_IM_R &= ~KP_COLS;                      /* otherwise the scan itself would trigger interrupts */
+    for (uint32_t row = 0; row < 4 && key == 0; row++)
     {
-        GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile;
-        kurz_warten();                                    /* Leitungen einschwingen lassen */
-        uint32_t spalten = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> KP_COL_SHIFT;
+        GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << row;
+        short_delay();                                    /* let the lines settle */
+        uint32_t cols = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> KP_COL_SHIFT;
         for (uint32_t s = 0; s < 3; s++)
         {
-            if (spalten & (1u << s))
+            if (cols & (1u << s))
             {
-                taste = keymap[zeile][s];
+                key = keymap[row][s];
                 break;
             }
         }
     }
-    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* Ruhezustand */
-    kurz_warten();
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;           /* idle state */
+    short_delay();
     GPIO_PORTK_ICR_R = KP_COLS;
     GPIO_PORTK_IM_R |= KP_COLS;
-    return taste;
+    return key;
 }
 
-static bool keypad_gedrueckt(void)
+static bool keypad_pressed(void)
 {
     return (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) != 0;
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Hauptprogramm
+ * Main program
  * ------------------------------------------------------------------------------------------- */
 int main(void)
 {
-    /* Takt für alle benutzten Module freigeben und auf "bereit" warten */
-    SYSCTL_RCGCGPIO_R |= PORTS_TAKT;
+    /* Enable the clock of all modules used and wait for "ready" */
+    SYSCTL_RCGCGPIO_R |= PORTS_CLOCK;
     SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
     SYSCTL_RCGCI2C_R |= SYSCTL_RCGCI2C_R0;
     SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_R0;
-    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
+    while ((SYSCTL_PRGPIO_R & PORTS_READY) != PORTS_READY || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
            (SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0 || (SYSCTL_PRTIMER_R & SYSCTL_PRTIMER_R0) == 0)
     {
     }
@@ -450,7 +450,7 @@ int main(void)
     GPIO_PORTF_AHB_DIR_R |= LED_D3 | LED_D4;
     GPIO_PORTF_AHB_DEN_R |= LED_D3 | LED_D4;
 
-    /* Taster: Eingang mit Pull-up, Interrupt bei fallender Flanke (= Drücken) */
+    /* Push buttons: input with pull-up, interrupt on falling edge (= press) */
     GPIO_PORTJ_AHB_DIR_R &= ~(SW1 | SW2);
     GPIO_PORTJ_AHB_PUR_R |= SW1 | SW2;
     GPIO_PORTJ_AHB_DEN_R |= SW1 | SW2;
@@ -464,7 +464,7 @@ int main(void)
     i2c_init();
     keypad_init();
 
-    /* Timer0A: 100 ms periodisch */
+    /* Timer0A: 100 ms periodic */
     TIMER0_CTL_R = 0;
     TIMER0_CFG_R = TIMER_CFG_32_BIT_TIMER;
     TIMER0_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
@@ -477,72 +477,72 @@ int main(void)
     __asm volatile("cpsie i");
     TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
-    uart_puts("\nrenode4mc-haw - Example 03 Web-Konsole\n");
-    uart_puts("Taster, Keypad und Abstandssensor bedienen; Zeichen werden zurueckgesendet.\n");
+    uart_puts("\nrenode4mc-haw - Example 03 Web console\n");
+    uart_puts("Use the push buttons, keypad and distance sensor; characters are echoed back.\n");
 
     oled_init();
     if (!oled_ok)
     {
-        uart_puts("OLED antwortet nicht (I2C-Adresse 0x3C)\n");
+        uart_puts("OLED does not respond (I2C address 0x3C)\n");
     }
     for (uint8_t p = 0; p < 8; p++)
     {
         oled_text(p, "");
     }
     oled_text(0, "RENODE4MC-HAW");
-    oled_text(1, "LAB 03 WEBKONSOLE");
-    oled_text(3, "ABSTAND:   --- CM");
-    oled_text(5, "TASTE:     -");
+    oled_text(1, "EXAMPLE 03 WEBCONSOLE");
+    oled_text(3, "DISTANCE:  --- CM");
+    oled_text(5, "KEY:       -");
     oled_text(7, "UART:      -");
 
-    uint32_t letzterTick = 0;
-    uint32_t abstand = UINT32_MAX;              /* noch kein Messwert */
-    bool tasteGedrueckt = false;
-    char puffer[24];
-    char zahl[8];
+    uint32_t lastTick = 0;
+    uint32_t distance = UINT32_MAX;              /* no measurement yet */
+    bool keyPressed = false;
+    char buf[24];
+    char num[8];
 
     while (1)
     {
-        /* --- 100-ms-Takt: Herzschlag, Sensor, Keypad loslassen ------------------------- */
-        if (ticks != letzterTick)
+        /* --- 100 ms tick: heartbeat, sensor, keypad release -------------------------- */
+        if (ticks != lastTick)
         {
-            letzterTick = ticks;
+            lastTick = ticks;
 
-            if (letzterTick % 5u == 0u)
+            if (lastTick % 5u == 0u)
             {
                 GPIO_PORTN_DATA_BITS_R[LED_D2] ^= LED_D2;            /* D2: 1 Hz */
             }
 
-            if (letzterTick % 2u == 0u)
+            if (lastTick % 2u == 0u)
             {
-                sonar_start();                                    /* Messung anstoßen ... */
+                sonar_start();                                    /* start a measurement ... */
             }
             else
             {
                 uint32_t cm;
-                if (sonar_read(&cm) && cm != abstand)             /* ... 100 ms später lesen */
+                if (sonar_read(&cm) && cm != distance)             /* ... read it 100 ms later */
                 {
-                    abstand = cm;
-                    utoa_pad(cm, zahl, 3);
-                    const char *vorne = "ABSTAND:   ";
+                    distance = cm;
+                    utoa_pad(cm, num, 3);
+                    const char *prefix = "DISTANCE:  ";
                     int i = 0;
-                    for (; vorne[i]; i++) puffer[i] = vorne[i];
-                    for (int k = 0; zahl[k]; k++) puffer[i++] = zahl[k];
-                    puffer[i++] = ' '; puffer[i++] = 'C'; puffer[i++] = 'M'; puffer[i] = '\0';
-                    oled_text(3, puffer);
-                    uart_puts("Abstand: ");
-                    uart_puts(zahl);
+                    for (; prefix[i]; i++) buf[i] = prefix[i];
+                    for (int k = 0; num[k]; k++) buf[i++] = num[k];
+                    buf[i++] = ' '; buf[i++] = 'C'; buf[i++] = 'M'; buf[i] = '\0';
+                    oled_text(3, buf);
+                    uart_puts("Distance: ");
+                    uart_puts(num);
                     uart_puts(" cm\n");
 
-                    /* D1: Näherungswarnung unter 50 cm */
+                    /* D1: proximity warning below 50 cm */
                     GPIO_PORTN_DATA_BITS_R[LED_D1] = (cm < 50u) ? LED_D1 : 0u;
                 }
             }
 
-            if (tasteGedrueckt && !keypad_gedrueckt())
+            if (keyPressed && !keypad_pressed())
             {
-                tasteGedrueckt = false;
-                uart_puts("Taste losgelassen\n");
+                keyPressed = false;
+                uart_puts("Key released\n");
             }
         }
 
@@ -550,19 +550,19 @@ int main(void)
         if (keypadEvent)
         {
             keypadEvent = false;
-            char taste = keypad_scan();
-            if (taste != 0 && !tasteGedrueckt)
+            char key = keypad_scan();
+            if (key != 0 && !keyPressed)
             {
-                tasteGedrueckt = true;
-                const char text[] = { 'T', 'A', 'S', 'T', 'E', ':', ' ', ' ', ' ', ' ', ' ', taste, '\0' };
+                keyPressed = true;
+                const char text[] = { 'K', 'E', 'Y', ':', ' ', ' ', ' ', ' ', ' ', ' ', ' ', key, '\0' };
                 oled_text(5, text);
-                uart_puts("Taste: ");
-                uart_putc(taste);
+                uart_puts("Key: ");
+                uart_putc(key);
                 uart_puts("\n");
             }
         }
 
-        /* --- Taster USR_SW1 / USR_SW2 ---------------------------------------------------- */
+        /* --- Push buttons USR_SW1 / USR_SW2 ---------------------------------------------- */
         if (buttonEvents)
         {
             __asm volatile("cpsid i");
@@ -572,16 +572,16 @@ int main(void)
             if (ev & SW1)
             {
                 GPIO_PORTF_AHB_DATA_BITS_R[LED_D3] ^= LED_D3;
-                uart_puts("USR_SW1 gedrueckt -> D3 umgeschaltet\n");
+                uart_puts("USR_SW1 pressed -> D3 toggled\n");
             }
             if (ev & SW2)
             {
                 GPIO_PORTF_AHB_DATA_BITS_R[LED_D4] ^= LED_D4;
-                uart_puts("USR_SW2 gedrueckt -> D4 umgeschaltet\n");
+                uart_puts("USR_SW2 pressed -> D4 toggled\n");
             }
         }
 
-        /* --- UART-Echo -------------------------------------------------------------------- */
+        /* --- UART echo -------------------------------------------------------------------- */
         char c;
         while (uart_getc(&c))
         {
@@ -594,6 +594,6 @@ int main(void)
             oled_text(7, text);
         }
 
-        __asm volatile("wfi");                            /* schlafen bis zum nächsten Interrupt */
+        __asm volatile("wfi");                            /* sleep until the next interrupt */
     }
 }

@@ -179,7 +179,7 @@ class ControlBridge {
 
     this.wss = new WebSocketServer({ port: wsPort });
     this.wss.on('connection', (ws) => this._onClient(ws));
-    console.log(`[control] WebSocket auf Port ${wsPort}`);
+    console.log(`[control] WebSocket on port ${wsPort}`);
   }
 
   /**
@@ -187,9 +187,9 @@ class ControlBridge {
    * POST /api/terminal). Gilt beim nächsten Start dieses Versuchs.
    */
   rememberTerminalSettings(id, baud, format) {
-    if (!experiments.isValidUartSettings(baud, format)) throw new Error('Ungültige Terminal-Einstellung');
+    if (!experiments.isValidUartSettings(baud, format)) throw new Error('Invalid terminal settings');
     if (this.attached && this.experiment && this.experiment.id === id) {
-      throw new Error('Der Versuch läuft – Einstellung im UART-Monitor ändern');
+      throw new Error('The experiment is running – change the settings in the UART monitor');
     }
     this.uartSettings.set(id, { baud, format });
     return { baud, format };
@@ -313,7 +313,7 @@ class ControlBridge {
       try {
         msg = JSON.parse(raw.toString());
       } catch {
-        return this._send(ws, { type: 'error', message: 'Ungültiges JSON' });
+        return this._send(ws, { type: 'error', message: 'Invalid JSON' });
       }
       try {
         if (msg && msg.type === 'scope') return await this._scopeSources(ws, msg.sources);
@@ -356,7 +356,7 @@ class ControlBridge {
       case 'uartconfig': {
         const baud = Number(msg.baud);
         const format = String(msg.format || '').toUpperCase();
-        if (!experiments.isValidUartSettings(baud, format)) throw new Error('Ungültige Terminal-Einstellung');
+        if (!experiments.isValidUartSettings(baud, format)) throw new Error('Invalid terminal settings');
         const exp = this.experiment;
         this.uartSettings.set((exp && exp.id) || this.lastExperimentId || '*', { baud, format });
         if (this.attached && exp && exp.uart && exp.uart.host) {
@@ -378,14 +378,14 @@ class ControlBridge {
         return;
       default:
     }
-    if (!this.attached || !this.experiment) throw new Error('Renode läuft nicht');
+    if (!this.attached || !this.experiment) throw new Error('Renode is not running');
     const exp = this.experiment;
     const run = (cmd) => this.monitor.execute(cmd, { priority: true });
 
     switch (msg.type) {
       case 'button': {
         const btn = (exp.buttons || []).find((b) => b.id === msg.id);
-        if (!btn) throw new Error(`Unbekannter Taster: ${msg.id}`);
+        if (!btn) throw new Error(`Unknown push button: ${msg.id}`);
         const pressed = !!msg.pressed;
         if (btn.path) {
           // Renode-Peripherie Miscellaneous.Button
@@ -401,29 +401,29 @@ class ControlBridge {
       }
       case 'keypad': {
         const kp = exp.keypad;
-        if (!kp) throw new Error('Kein Keypad in diesem Versuch');
+        if (!kp) throw new Error('This experiment has no keypad');
         const rows = kp.layout.length;
         const cols = kp.layout[0].length;
         const { row, col } = msg;
         if (!Number.isInteger(row) || !Number.isInteger(col) || row < 0 || col < 0 || row >= rows || col >= cols) {
-          throw new Error('Ungültige Keypad-Position');
+          throw new Error('Invalid keypad position');
         }
         // sim/models/KeypadMatrix.cs verbindet Zeile und Spalte elektrisch
         await run(`${kp.path} SetKey ${row} ${col} ${!!msg.pressed}`);
         break;
       }
       case 'sensor': {
-        if (!exp.sensor) throw new Error('Kein Sensor in diesem Versuch');
+        if (!exp.sensor) throw new Error('This experiment has no sensor');
         const min = exp.sensor.min ?? 0;
         const max = exp.sensor.max ?? 400;
         const v = Math.round(Number(msg.value));
-        if (!Number.isFinite(v)) throw new Error('Ungültiger Sensorwert');
+        if (!Number.isFinite(v)) throw new Error('Invalid sensor value');
         // Renode-Monitor-Syntax für "sensor.Distance = <Wert>"
         await run(`${exp.sensor.path} Distance ${Math.min(max, Math.max(min, v))}`);
         break;
       }
       case 'reset': {
-        if (!exp.reset) throw new Error('Kein Reset in diesem Versuch');
+        if (!exp.reset) throw new Error('This experiment has no reset');
         this.stepGen++;
         await run(`${exp.reset.path} ResetMcu`);
         // Der Reset geschieht beim nächsten Zeitschritt: angehaltene Simulation dafür fortsetzen
@@ -433,14 +433,14 @@ class ControlBridge {
         break;
       }
       case 'cpuStatsReset': {
-        if (!exp.status) throw new Error('Keine CPU-Statistik in diesem Versuch');
+        if (!exp.status) throw new Error('This experiment has no CPU statistics');
         await run(`${exp.status.path} ResetCpuStats`);
         this.cpuStatsPrev = null;
         this._pollSimSoon();
         break;
       }
       case 'pause': {
-        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        if (!exp.debug) throw new Error('This experiment has no debugger');
         this.stepGen++;
         await run('pause');
         this.stopped = true;
@@ -449,14 +449,14 @@ class ControlBridge {
         break;
       }
       case 'continue': {
-        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        if (!exp.debug) throw new Error('This experiment has no debugger');
         this.stepGen++;
         await this._continue(run);
         this._pollSimSoon();
         break;
       }
       case 'step': {
-        if (!exp.debug) throw new Error('Kein Debugger in diesem Versuch');
+        if (!exp.debug) throw new Error('This experiment has no debugger');
         const n = Math.max(1, Math.min(MAX_STEPS, Math.round(Number(msg.count) || 1)));
         this.stopped = true;
         this.frozen = true;
@@ -467,9 +467,9 @@ class ControlBridge {
       }
       case 'pendulum': {
         const pd = exp.pendulum;
-        if (!pd) throw new Error('Kein Pendeldisplay in diesem Versuch');
+        if (!pd) throw new Error('This experiment has no pendulum display');
         const f = Number(msg.frequency);
-        if (!Number.isFinite(f)) throw new Error('Ungültige Pendelfrequenz');
+        if (!Number.isFinite(f)) throw new Error('Invalid pendulum frequency');
         const hz = Math.min(pd.maxFrequency, Math.max(pd.minFrequency, f));
         // Modell erwartet die Periode in us (gerade Zahl); gilt ab dem nächsten Nulldurchgang
         const periodUs = 2 * Math.round(1e6 / hz / 2);
@@ -477,7 +477,7 @@ class ControlBridge {
         break;
       }
       default:
-        throw new Error(`Unbekannter Typ: ${msg.type}`);
+        throw new Error(`Unknown type: ${msg.type}`);
     }
   }
 
@@ -494,7 +494,7 @@ class ControlBridge {
     while (left > 0 && gen === this.stepGen) {
       const out = await run(`${path} StepCpu ${left}`);
       const m = SS_RE.exec(out);
-      if (!m) throw new Error(`Einzelschritt fehlgeschlagen: ${out.trim().split('\n').pop()}`);
+      if (!m) throw new Error(`Single step failed: ${out.trim().split('\n').pop()}`);
       left -= Number(m[1]);
       if (m[2] === 'wfi') {
         this.wakePending = true;
@@ -530,18 +530,18 @@ class ControlBridge {
       try {
         await this._pollSim(this.monitor);
       } catch (e) {
-        if (this.attached) console.error(`[control] Sim-Fehler: ${e.message}`);
+        if (this.attached) console.error(`[control] sim error: ${e.message}`);
       }
     }, 30);
   }
 
   /** Oszilloskop: Quellen eines Browsers setzen (gilt auch, wenn Renode gerade nicht läuft) */
   async _scopeSources(ws, sources) {
-    if (!Array.isArray(sources)) throw new Error('Oszilloskop: sources muss eine Liste sein');
+    if (!Array.isArray(sources)) throw new Error('Oscilloscope: sources must be a list');
     const pins = [...new Set(sources.filter(Boolean))];
-    if (pins.length > MAX_SCOPE_SOURCES) throw new Error(`Oszilloskop: höchstens ${MAX_SCOPE_SOURCES} Quellen`);
+    if (pins.length > MAX_SCOPE_SOURCES) throw new Error(`Oscilloscope: at most ${MAX_SCOPE_SOURCES} sources`);
     const bad = pins.find((p) => !isPin(p));
-    if (bad) throw new Error(`Oszilloskop: unbekannter Pin ${bad}`);
+    if (bad) throw new Error(`Oscilloscope: unknown pin ${bad}`);
     ws.scopeSources = pins;
     await this._updateScopeProbes();
   }
@@ -583,9 +583,9 @@ class ControlBridge {
     this.lastBcd = null;
 
     const mon = new MonitorClient({ host: this.renodeHost, port: this.monitorPort });
-    mon.on('error', (e) => console.error(`[control] Monitor-Fehler: ${e.message}`));
+    mon.on('error', (e) => console.error(`[control] monitor error: ${e.message}`));
     mon.on('close', () => {
-      console.log('[control] Monitor-Verbindung geschlossen');
+      console.log('[control] monitor connection closed');
       this._stopPolling();
       this._broadcast({ type: 'renode', state: 'stopped' });
     });
@@ -600,7 +600,7 @@ class ControlBridge {
         await q.connect(3000);
         this.query = q;
       } catch (e) {
-        console.log(`[control] ${e.message} – Abfragen über den Monitor`);
+        console.log(`[control] ${e.message} – using the monitor for queries`);
       }
     }
 
@@ -644,7 +644,7 @@ class ControlBridge {
 
     const ws = new WebSocket(exp.ledBridge);
     this.ledSocket = ws;
-    ws.on('open', () => console.log(`[control] LED-Bridge verbunden (${exp.ledBridge})`));
+    ws.on('open', () => console.log(`[control] LED bridge connected (${exp.ledBridge})`));
     ws.on('message', (data) => {
       const text = data.toString();
       const b = LED_LEVEL_RE.exec(text);
@@ -904,7 +904,7 @@ class ControlBridge {
       await this._pollSignals(mon);
       if (this.pollCount++ % 5 === 0 && this._watchers().length) await this._pollSim(mon);
     } catch (e) {
-      if (this.attached) console.error(`[control] Poll-Fehler: ${e.message}`);
+      if (this.attached) console.error(`[control] poll error: ${e.message}`);
     } finally {
       this.polling = false;
     }
@@ -1042,15 +1042,15 @@ class ControlBridge {
           this.symbols.set(s, m ? parseInt(m[1], 16) : null);
         }
         a = this.symbols.get(s);
-        if (a === null) return { request: s, error: `Symbol "${s}" nicht in der ELF-Datei` };
+        if (a === null) return { request: s, error: `Symbol "${s}" not found in the ELF file` };
       } else {
-        return { request: s, error: 'Adresse (hex, z. B. 0x20000000) oder Symbolname angeben' };
+        return { request: s, error: 'Enter an address (hex, e.g. 0x20000000) or a symbol name' };
       }
     }
-    if (!Number.isFinite(a)) return { request: String(addr), error: 'Ungültige Adresse' };
+    if (!Number.isFinite(a)) return { request: String(addr), error: 'Invalid address' };
     const out = await mon.execute(`${exp.status.path} ReadMemory 0x${a.toString(16)} ${count}`);
     const m = MEM_RE.exec(out);
-    if (!m) return { request: String(addr), error: 'Keine Antwort' };
+    if (!m) return { request: String(addr), error: 'No response' };
     if (m[3]) return { request: String(addr), error: m[3].trim() };
     return { request: String(addr), symbol, addr: parseInt(m[1], 16), data: m[2] };
   }

@@ -29,7 +29,7 @@ export default function Widget({ title, subtitle, className = '', children, stat
       aria-label={title}
     >
       <header className="widget-head" onPointerDown={onPointerDown} onClick={onClick}>
-        <span className="widget-grip" title="Ziehen zum Verschieben" aria-hidden="true">
+        <span className="widget-grip" title="Drag to move" aria-hidden="true">
           ⠿
         </span>
         <h3>{title}</h3>
@@ -45,7 +45,7 @@ export default function Widget({ title, subtitle, className = '', children, stat
           type="button"
           className="widget-fold"
           aria-expanded={!collapsed}
-          title={collapsed ? 'Ausklappen' : 'Einklappen'}
+          title={collapsed ? 'Expand' : 'Collapse'}
           onClick={(e) => {
             e.stopPropagation();
             panel.toggle();

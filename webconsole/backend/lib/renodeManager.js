@@ -103,7 +103,7 @@ class RenodeManager extends EventEmitter {
 
     child.once('error', (e) => this._log('stderr', `spawn error: ${e.message}`));
     child.once('exit', (code, signal) => {
-      console.log(`[renode] beendet (code=${code}, signal=${signal})`);
+      console.log(`[renode] terminated (code=${code}, signal=${signal})`);
       const expId = this.experimentId;
       if (this.child === child) {
         this.child = null;
@@ -120,7 +120,7 @@ class RenodeManager extends EventEmitter {
     // Kurz warten, um Sofort-Abstürze (z.B. Binary nicht gefunden) zu erkennen
     await sleep(200);
     if (!this.running) {
-      throw new Error(`Renode konnte nicht gestartet werden:\n${this.logTail.join('\n')}`);
+      throw new Error(`Renode could not be started:\n${this.logTail.join('\n')}`);
     }
   }
 
@@ -161,7 +161,7 @@ class RenodeManager extends EventEmitter {
     if (this.booting) return this.booting;
     const { stamp } = this._models();
     if (this.running && this.modelStamp === stamp) return Promise.resolve();
-    if (this.running && this.modelStamp) console.log('[renode] Modelldateien geändert – Renode wird neu gestartet');
+    if (this.running && this.modelStamp) console.log('[renode] model files changed – restarting Renode');
     this.booting = this._boot().finally(() => {
       this.booting = null;
     });
@@ -182,7 +182,7 @@ class RenodeManager extends EventEmitter {
       mon.close();
     }
     this.modelStamp = stamp;
-    console.log(`[renode] bereit: ${order.length} Modelle übersetzt in ${Date.now() - t0} ms`);
+    console.log(`[renode] ready: ${order.length} models compiled in ${Date.now() - t0} ms`);
     this.emit('spawned', { experimentId: null });
   }
 
@@ -197,7 +197,7 @@ class RenodeManager extends EventEmitter {
     try {
       await this._load(experimentId, rescPath, elfPath, uart, machine);
     } catch (e) {
-      console.error(`[renode] Laden fehlgeschlagen (${e.message.split('\n')[0]}) – starte Renode neu`);
+      console.error(`[renode] loading failed (${e.message.split('\n')[0]}) – restarting Renode`);
       await this.kill();
       await this._load(experimentId, rescPath, elfPath, uart, machine);
     }
@@ -228,7 +228,7 @@ class RenodeManager extends EventEmitter {
     } finally {
       mon.close();
     }
-    console.log(`[renode] Versuch "${experimentId}" geladen in ${Date.now() - t0} ms`);
+    console.log(`[renode] experiment "${experimentId}" loaded in ${Date.now() - t0} ms`);
   }
 
   /** Ohne Dauerbetrieb: eigener Renode-Prozess je Versuch (bisheriges Verhalten) */
@@ -262,7 +262,7 @@ class RenodeManager extends EventEmitter {
       this.machine = null;
       this.experimentId = null;
     } catch (e) {
-      console.error(`[renode] Entfernen der Maschine fehlgeschlagen (${e.message}) – beende Renode`);
+      console.error(`[renode] removing the machine failed (${e.message}) – stopping Renode`);
       await this.kill();
     }
   }
@@ -330,9 +330,9 @@ async function assertPortsFree(ports, timeoutMs = 3000) {
     if (Date.now() >= deadline) {
       const list = busy.map((p) => `${p.port} (${p.name})`).join(', ');
       throw new Error(
-        `Port ${list} ist bereits belegt. Läuft noch eine andere Renode-Instanz ` +
-          `(z.B. ucsim/Visualizer) oder ein anderer Dienst auf diesem Port? ` +
-          `Prüfen mit: ss -ltnp | grep -E ':(${busy.map((p) => p.port).join('|')})\\b'`,
+        `Port ${list} is already in use. Is another Renode instance still running ` +
+          `(e.g. ucsim/visualizer), or another service on this port? ` +
+          `Check with: ss -ltnp | grep -E ':(${busy.map((p) => p.port).join('|')})\\b'`,
       );
     }
     await sleep(250); // Ports eines eben beendeten Renode werden evtl. noch freigegeben

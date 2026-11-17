@@ -4,16 +4,16 @@ check_header.py - prüft Simulator-Hardware und Beispiele gegen common/tm4c1294n
 
   python3 tools/check_header.py          (aus dem Repo-Wurzelverzeichnis oder von überall)
 
-Geprüft wird:
-  1. sim/platforms/tm4c1294ncpdt.repl: Basisadresse, Clock-Gating-Bit (RCGC...) und NVIC-Nummer
-     jedes Peripheriemoduls; NVIC-Basis (EN0 muss bei +0x100 liegen); die aus sim/experiments/*.json
-     erzeugten Plattformen (tools/check_experiment.js, braucht node) legen keine Chip-Peripherie neu an
-     und belegen keine Adresse der Basisplattform doppelt
-  2. sim/models/*.cs: Register-Offsets und Bitkonstanten der Modelle (benannte Konstanten)
-  3. common/startup_tm4c1294.c: jeder INT_-Eintrag der Headerdatei hat seinen Handler am richtigen Platz
-  4. alle .c/.h in examples/, common/ und – falls ausgecheckt – solutions/labs/ (außer tm4c1294ncpdt.h): keine selbst definierten Adressen
-     und keine Register-/Bitkonstanten, die der Header schon hat
-Ausgabe: FEHLER (Abweichung), HINWEIS (nicht modelliert/nicht angeschlossen), Rückgabewert 1 bei Fehlern.
+Checked are:
+  1. sim/platforms/tm4c1294ncpdt.repl: base address, clock gating bit (RCGC...) and NVIC number of
+     every peripheral module; NVIC base (EN0 must be at +0x100); the platforms generated from
+     sim/experiments/*.json (tools/check_experiment.js, needs node) do not add chip peripherals again
+     and do not use an address of the base platform a second time
+  2. sim/models/*.cs: register offsets and bit constants of the models (named constants)
+  3. common/startup_tm4c1294.c: every INT_ entry of the header file has its handler in the right place
+  4. all .c/.h files in examples/, common/ and – if checked out – solutions/labs/ (except tm4c1294ncpdt.h):
+     no self-defined addresses and no register/bit constants that the header already provides
+Output: ERROR (mismatch), NOTE (not modelled/not connected), exit code 1 if there are errors.
 """
 import os
 import re
@@ -56,14 +56,14 @@ ALLE_NAMEN = set(re.findall(r'^#define\s+(\w+)', header, re.M))   # jeder im Hea
 
 def reg(name):
     if name not in REG:
-        fehler.append(f'Header: Register {name} fehlt')
+        fehler.append(f'header: register {name} is missing')
         return None
     return REG[name]
 
 
 def konst(name):
     if name not in KONST:
-        fehler.append(f'Header: Konstante {name} fehlt')
+        fehler.append(f'header: constant {name} is missing')
         return None
     return KONST[name]
 
@@ -117,14 +117,14 @@ def lies_repl(pfad):
 def pruefe_irq(e, anschluss, int_name):
     if int_name not in INT:
         if anschluss in e['irq']:
-            fehler.append(f'repl {e["name"]}: {anschluss} -> nvic@{e["irq"][anschluss]}, aber INT_{int_name} fehlt im Header')
+            fehler.append(f'repl {e["name"]}: {anschluss} -> nvic@{e["irq"][anschluss]}, but INT_{int_name} is missing in the header')
         return
     soll = INT[int_name] - 16
     if anschluss not in e['irq']:
-        hinweise.append(f'repl {e["name"]}: {anschluss} nicht an den NVIC angeschlossen (INT_{int_name} = IRQ {soll})')
+        hinweise.append(f'repl {e["name"]}: {anschluss} not connected to the NVIC (INT_{int_name} = IRQ {soll})')
         return
     pruefe(e['irq'][anschluss] == soll,
-           f'repl {e["name"]}: {anschluss} -> nvic@{e["irq"][anschluss]}, Header INT_{int_name} - 16 = {soll}')
+           f'repl {e["name"]}: {anschluss} -> nvic@{e["irq"][anschluss]}, header INT_{int_name} - 16 = {soll}')
 
 
 repl = lies_repl(os.path.join(ROOT, 'sim', 'platforms', 'tm4c1294ncpdt.repl'))
@@ -137,40 +137,40 @@ for e in repl:
         port = e['werte'].get('portName', '?')
         gesehen.add(f'GPIO{port}')
         soll = REG.get(f'GPIO_PORT{port}_AHB_DATA_BITS_R', REG.get(f'GPIO_PORT{port}_DATA_BITS_R'))
-        pruefe(soll == adr, f'repl {name}: Adresse 0x{adr:08X}, Header Port {port} 0x{(soll or 0):08X}')
+        pruefe(soll == adr, f'repl {name}: address 0x{adr:08X}, header port {port} 0x{(soll or 0):08X}')
         bit = rcgc_bit('RCGCGPIO', rf'GPIO Port {port}\b')
         pruefe(bit == int(e['werte'].get('clockBit', -1)),
-               f'repl {name}: clockBit {e["werte"].get("clockBit")}, Header RCGCGPIO Port {port} = Bit {bit}')
+               f'repl {name}: clockBit {e["werte"].get("clockBit")}, header RCGCGPIO port {port} = bit {bit}')
         pruefe_irq(e, 'IRQ', f'GPIO{port}' if f'GPIO{port}' in INT else f'GPIO{port}0')
     elif typ.endswith('TivaTimer'):
         n = int(re.search(r'(\d+)$', name).group(1))
         gesehen.add(f'TIMER{n}')
-        pruefe(reg(f'TIMER{n}_CFG_R') == adr, f'repl {name}: Adresse 0x{adr:08X}, Header TIMER{n}_CFG_R = 0x{REG.get(f"TIMER{n}_CFG_R", 0):08X}')
+        pruefe(reg(f'TIMER{n}_CFG_R') == adr, f'repl {name}: address 0x{adr:08X}, header TIMER{n}_CFG_R = 0x{REG.get(f"TIMER{n}_CFG_R", 0):08X}')
         pruefe(rcgc_bit('RCGCTIMER', nummer=n) == int(e['werte'].get('clockBit', -1)),
-               f'repl {name}: clockBit {e["werte"].get("clockBit")} passt nicht zu SYSCTL_RCGCTIMER_R{n}')
+               f'repl {name}: clockBit {e["werte"].get("clockBit")} does not match SYSCTL_RCGCTIMER_R{n}')
         pruefe_irq(e, 'IRQA', f'TIMER{n}A')
         pruefe_irq(e, 'IRQB', f'TIMER{n}B')
     elif typ.endswith('TivaUART'):
         n = int(re.search(r'(\d+)$', name).group(1))
         gesehen.add(f'UART{n}')
-        pruefe(reg(f'UART{n}_DR_R') == adr, f'repl {name}: Adresse 0x{adr:08X}, Header UART{n}_DR_R = 0x{REG.get(f"UART{n}_DR_R", 0):08X}')
+        pruefe(reg(f'UART{n}_DR_R') == adr, f'repl {name}: address 0x{adr:08X}, header UART{n}_DR_R = 0x{REG.get(f"UART{n}_DR_R", 0):08X}')
         pruefe(rcgc_bit('RCGCUART', nummer=n) == int(e['werte'].get('clockBit', -1)),
-               f'repl {name}: clockBit passt nicht zu SYSCTL_RCGCUART_R{n}')
+               f'repl {name}: clockBit does not match SYSCTL_RCGCUART_R{n}')
         pruefe_irq(e, 'IRQ', f'UART{n}')
     elif typ.endswith('TivaI2C'):
         n = int(re.search(r'(\d+)$', name).group(1))
         gesehen.add(f'I2C{n}')
-        pruefe(reg(f'I2C{n}_MSA_R') == adr, f'repl {name}: Adresse 0x{adr:08X}, Header I2C{n}_MSA_R = 0x{REG.get(f"I2C{n}_MSA_R", 0):08X}')
+        pruefe(reg(f'I2C{n}_MSA_R') == adr, f'repl {name}: address 0x{adr:08X}, header I2C{n}_MSA_R = 0x{REG.get(f"I2C{n}_MSA_R", 0):08X}')
         pruefe(rcgc_bit('RCGCI2C', nummer=n) == int(e['werte'].get('clockBit', -1)),
-               f'repl {name}: clockBit passt nicht zu SYSCTL_RCGCI2C_R{n}')
+               f'repl {name}: clockBit does not match SYSCTL_RCGCI2C_R{n}')
         pruefe_irq(e, 'IRQ', f'I2C{n}')
     elif typ.endswith('TivaSysCtl'):
-        pruefe(reg('SYSCTL_DID0_R') == adr, f'repl {name}: Adresse 0x{adr:08X}, Header SYSCTL_DID0_R')
+        pruefe(reg('SYSCTL_DID0_R') == adr, f'repl {name}: address 0x{adr:08X}, header SYSCTL_DID0_R')
     elif typ.endswith('NVIC'):
         pruefe(reg('NVIC_EN0_R') - adr == 0x100,
-               f'repl {name}: Basis 0x{adr:08X}, NVIC_EN0_R liegt nicht bei Basis + 0x100')
+               f'repl {name}: base 0x{adr:08X}, NVIC_EN0_R is not at base + 0x100')
         pruefe(reg('NVIC_ST_CTRL_R') - adr == 0x010,
-               f'repl {name}: Basis 0x{adr:08X}, NVIC_ST_CTRL_R (SysTick) liegt nicht bei Basis + 0x10')
+               f'repl {name}: base 0x{adr:08X}, NVIC_ST_CTRL_R (SysTick) is not at base + 0x10')
 
 # Versuchs-Plattformen erweitern die Basisplattform: Sie dürfen keine Peripherie an einer Adresse
 # anlegen, die die Basis schon belegt, und keine Tiva-Peripherie neu anlegen (Adressen, Takt und IRQs
@@ -179,12 +179,12 @@ for e in repl:
 basis_adressen = {e['adresse']: e['name'] for e in repl if e['bus'] == 'sysbus' and e['adresse'] is not None}
 node = shutil.which('node')
 if not node:
-    hinweise.append('node nicht gefunden: Versuchs-Plattformen (sim/experiments/*.json) nicht geprüft')
+    hinweise.append('node not found: experiment platforms (sim/experiments/*.json) not checked')
 else:
     with tempfile.TemporaryDirectory() as gen:
         lauf = subprocess.run([node, os.path.join(ROOT, 'tools', 'check_experiment.js'), '-q', '--out', gen],
                               capture_output=True, text=True)
-        pruefe(lauf.returncode == 0, 'tools/check_experiment.js: ungültige Versuchsdatei(en)\n' + lauf.stdout.strip())
+        pruefe(lauf.returncode == 0, 'tools/check_experiment.js: invalid experiment file(s)\n' + lauf.stdout.strip())
         for pfad in sorted(os.listdir(gen)):
             if not pfad.endswith('.repl'):
                 continue
@@ -193,10 +193,10 @@ else:
                 if e['bus'] != 'sysbus' or e['adresse'] is None:
                     continue
                 pruefe(e['adresse'] not in basis_adressen,
-                       f'experiments/{json_name}: {e["name"]} @ 0x{e["adresse"]:08X} belegt dieselbe Adresse wie '
-                       f'{basis_adressen.get(e["adresse"])} der Basisplattform')
+                       f'experiments/{json_name}: {e["name"]} @ 0x{e["adresse"]:08X} uses the same address as '
+                       f'{basis_adressen.get(e["adresse"])} of the base platform')
                 pruefe(not e['typ'].split('.')[-1].startswith('Tiva'),
-                       f'experiments/{json_name}: {e["name"]} ({e["typ"]}) ist Chip-Peripherie – gehört in '
+                       f'experiments/{json_name}: {e["name"]} ({e["typ"]}) is a chip peripheral – it belongs in '
                        f'platforms/tm4c1294ncpdt.repl')
 
 # Module des Headers, die im Simulator fehlen
@@ -205,7 +205,7 @@ for art, muster in (('GPIO', r'GPIO_PORT([A-Z])(?:_AHB)?_DATA_BITS_R'), ('TIMER'
     for name in REG:
         m = re.fullmatch(muster, name)
         if m and f'{art}{m.group(1)}' not in gesehen:
-            hinweise.append(f'repl: {art}{m.group(1)} ist im Header definiert, aber nicht modelliert')
+            hinweise.append(f'repl: {art}{m.group(1)} is defined in the header but not modelled')
 
 # ------------------------------------------------------------------------------------------------
 # 2. Modelle (C#): benannte Konstanten  Name = Wert
@@ -236,12 +236,12 @@ def pruefe_modell(datei, basis_register, offsets, bits, masken=None, sysctl=None
         if soll is None:
             continue
         pruefe(k.get(c_name) == soll - basis,
-               f'{datei}: {c_name} = {hex(k[c_name]) if c_name in k else "fehlt"}, '
-               f'Header {praefix}{h_suffix}_R = Basis + 0x{soll - basis:03X}')
+               f'{datei}: {c_name} = {hex(k[c_name]) if c_name in k else "missing"}, '
+               f'header {praefix}{h_suffix}_R = base + 0x{soll - basis:03X}')
     for c_name, h_name in bits.items():
         soll = konst(h_name)
         pruefe(k.get(c_name) == soll,
-               f'{datei}: {c_name} = {hex(k[c_name]) if c_name in k else "fehlt"}, Header {h_name} = {hex(soll or 0)}')
+               f'{datei}: {c_name} = {hex(k[c_name]) if c_name in k else "missing"}, header {h_name} = {hex(soll or 0)}')
     for c_name, h_praefix in (masken or {}).items():
         erlaubt = 0
         for n, v in KONST.items():
@@ -249,11 +249,11 @@ def pruefe_modell(datei, basis_register, offsets, bits, masken=None, sysctl=None
                 erlaubt |= v
         wert = k.get(c_name, 0)
         pruefe(wert & ~erlaubt == 0,
-               f'{datei}: {c_name} = 0x{wert:X} enthält Bits, die es laut Header nicht gibt (0x{wert & ~erlaubt:X})')
+               f'{datei}: {c_name} = 0x{wert:X} contains bits that do not exist according to the header (0x{wert & ~erlaubt:X})')
     for c_name, h_name in (sysctl or {}).items():
         soll = reg(h_name)
         pruefe(k.get(c_name) == soll - reg('SYSCTL_DID0_R'),
-               f'{datei}: {c_name} = {hex(k.get(c_name, -1))}, Header {h_name} = SYSCTL + 0x{soll - REG["SYSCTL_DID0_R"]:03X}')
+               f'{datei}: {c_name} = {hex(k.get(c_name, -1))}, header {h_name} = SYSCTL + 0x{soll - REG["SYSCTL_DID0_R"]:03X}')
     return k
 
 
@@ -316,16 +316,16 @@ k = pruefe_modell('TivaSysCtl.cs', 'SYSCTL_DID0_R', {},
                           'ScgcBase': 'SYSCTL_SCGCWD_R', 'DcgcBase': 'SYSCTL_DCGCWD_R', 'PrBase': 'SYSCTL_PRWD_R'})
 soll_did0 = sum(konst(n) or 0 for n in ('SYSCTL_DID0_VER_1', 'SYSCTL_DID0_CLASS_TM4C129'))
 pruefe(k.get('Did0Value', 0) & (konst('SYSCTL_DID0_VER_M') | konst('SYSCTL_DID0_CLASS_M')) == soll_did0,
-       f'TivaSysCtl.cs: DID0 = 0x{k.get("Did0Value", 0):08X}, VER/CLASS laut Header 0x{soll_did0:08X} (TM4C129)')
+       f'TivaSysCtl.cs: DID0 = 0x{k.get("Did0Value", 0):08X}, VER/CLASS according to the header 0x{soll_did0:08X} (TM4C129)')
 soll_did1 = konst('SYSCTL_DID1_PRTNO_TM4C1294NCPDT') | konst('SYSCTL_DID1_PINCNT_128')
 pruefe(k.get('Did1Value', 0) & (konst('SYSCTL_DID1_PRTNO_M') | konst('SYSCTL_DID1_PINCNT_M')) == soll_did1,
-       f'TivaSysCtl.cs: DID1 = 0x{k.get("Did1Value", 0):08X}, PRTNO/PINCNT laut Header 0x{soll_did1:08X} '
-       f'(TM4C1294NCPDT, 128 Pins)')
+       f'TivaSysCtl.cs: DID1 = 0x{k.get("Did1Value", 0):08X}, PRTNO/PINCNT according to the header 0x{soll_did1:08X} '
+       f'(TM4C1294NCPDT, 128 pins)')
 # Alle RCGC-/PR-Register des Headers müssen im gespiegelten Bereich liegen
 groesster = max(a - REG['SYSCTL_RCGCWD_R'] for n, a in REG.items() if re.fullmatch(r'SYSCTL_RCGC\w+_R', n))
 pruefe(k.get('RegisterCount', 0) * 4 > groesster,
-       f'TivaSysCtl.cs: RegisterCount = {k.get("RegisterCount")} deckt RCGC-Offsets nur bis '
-       f'0x{k.get("RegisterCount", 0) * 4 - 4:02X} ab, Header hat bis 0x{groesster:02X} (z. B. RCGCEMAC)')
+       f'TivaSysCtl.cs: RegisterCount = {k.get("RegisterCount")} only covers RCGC offsets up to '
+       f'0x{k.get("RegisterCount", 0) * 4 - 4:02X}, the header goes up to 0x{groesster:02X} (e.g. RCGCEMAC)')
 
 # ------------------------------------------------------------------------------------------------
 # 3. Vektortabelle
@@ -335,9 +335,9 @@ with open(os.path.join(ROOT, 'common', 'startup_tm4c1294.c'), encoding='utf-8') 
 tabelle = dict(re.findall(r'\[INT_(\w+)\]\s*=\s*(\w+)', startup))
 for name in INT:
     pruefe(tabelle.get(name) == f'{name}_Handler',
-           f'startup: INT_{name} hat Handler {tabelle.get(name, "keinen")}, erwartet {name}_Handler')
+           f'startup: INT_{name} has handler {tabelle.get(name, "none")}, expected {name}_Handler')
 for name in tabelle:
-    pruefe(name in INT, f'startup: [INT_{name}] gibt es im Header nicht')
+    pruefe(name in INT, f'startup: [INT_{name}] does not exist in the header')
 
 # ------------------------------------------------------------------------------------------------
 # 4. Keine Adressen im Code
@@ -367,21 +367,21 @@ for p in dateien:
     for nr, zeile in enumerate(ohne.split('\n'), 1):
         treffer = re.search(r'0x(?:4[0-9A-Fa-f]{7}|E000[0-9A-Fa-f]{4}|2[02][0-9A-Fa-f]{6})|\bREG\s*\(|'
                             r'volatile\s+uint32_t\s*\*\s*\)', zeile)
-        pruefe(treffer is None, f'{rel}:{nr}: Adresse im Code: {zeile.strip()}')
+        pruefe(treffer is None, f'{rel}:{nr}: address in the code: {zeile.strip()}')
     logisch = re.sub(r'\\\n', ' ', ohne)
     for m in re.finditer(r'^[ \t]*#[ \t]*define[ \t]+(\w+)(\([^)]*\))?([^\n]*)', logisch, re.M):
         name, wert = m.group(1), m.group(3).strip()
         nr = ohne[:ohne.find(m.group(0).split('\n')[0].strip())].count('\n') + 1
         pruefe(name not in ALLE_NAMEN,
-               f'{rel}:{nr}: {name} ist in tm4c1294ncpdt.h schon definiert – nicht neu definieren')
+               f'{rel}:{nr}: {name} is already defined in tm4c1294ncpdt.h – do not define it again')
         if name not in ALLE_NAMEN and MODUL_PRAEFIX.match(name):
             pruefe(any(w in ALLE_NAMEN for w in re.findall(r'\b[A-Z_][A-Z0-9_]*\b', wert)),
-                   f'{rel}:{nr}: eigene Registerkonstante {name} = {wert} – Header-Konstante verwenden')
+                   f'{rel}:{nr}: own register constant {name} = {wert} – use the header constant')
 
 # ------------------------------------------------------------------------------------------------
 for h in hinweise:
-    print('HINWEIS', h)
+    print('NOTE ', h)
 for e in fehler:
-    print('FEHLER ', e)
-print(f'{ok} Prüfungen bestanden, {len(fehler)} Fehler, {len(hinweise)} Hinweise')
+    print('ERROR', e)
+print(f'{ok} checks passed, {len(fehler)} errors, {len(hinweise)} notes')
 sys.exit(1 if fehler else 0)

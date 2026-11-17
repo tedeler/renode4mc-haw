@@ -1,6 +1,6 @@
-/* printf() für gcc (newlib) über das CIO-Protokoll des TI-Laufzeitsystems (trgmsg.c / hostwrite.c):
- * Die gcc-Builds erzeugen damit genau die Nachrichten, die CCS-Programme an C$$IO$$ senden, und
- * ihre Ausgabe erscheint im Simulator in der CCS-Konsole (sim/models/TiCioConsole.cs). */
+/* printf() for gcc (newlib) via the CIO protocol of the TI run-time library (trgmsg.c / hostwrite.c):
+ * With it, the gcc builds generate exactly the messages that CCS programs send to C$$IO$$, and
+ * their output appears in the simulator in the CCS console (sim/models/TiCioConsole.cs). */
 #include <stdint.h>
 #include <sys/stat.h>
 #include <errno.h>

@@ -155,7 +155,7 @@ namespace Antmicro.Renode.Peripherals.UART
             };
             new Thread(AcceptLoop) { IsBackground = true, Name = "UartHostTerminal accept" }.Start();
             new Thread(SendLoop) { IsBackground = true, Name = "UartHostTerminal send" }.Start();
-            this.Log(LogLevel.Info, "Terminal auf TCP-Port {0}", port);
+            this.Log(LogLevel.Info, "Terminal on TCP port {0}", port);
         }
 
         private void AcceptLoop()
@@ -298,8 +298,8 @@ namespace Antmicro.Renode.Peripherals.UART
                 {
                     var other = line != null ? line.TransmitFormat : null;
                     this.Log(LogLevel.Warning,
-                        "Terminal: {0} beim Empfang – Terminal eingestellt auf {1}, Mikrocontroller sendet mit {2}.",
-                        (errors & UartErrors.Break) != 0 ? "Break" : (errors & UartErrors.Framing) != 0 ? "Framing-Fehler" : "Paritätsfehler",
+                        "Terminal: {0} while receiving – terminal set to {1}, the microcontroller sends with {2}.",
+                        (errors & UartErrors.Break) != 0 ? "Break" : (errors & UartErrors.Framing) != 0 ? "framing error" : "parity error",
                         settings.Describe(), other != null && other.Valid ? other.Describe() : "?");
                     errorWarned = true;
                 }

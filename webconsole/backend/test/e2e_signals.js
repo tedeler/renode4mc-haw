@@ -145,7 +145,7 @@ function decodeUart(edges, baud, format) {
   await new Promise((r) => u.once('open', r));
   const text = () => uart.toString('latin1');
 
-  check('UART: Startmeldung im Terminal', await waitFor(() => /Example 03 Web-Konsole/.test(text()), 10000));
+  check('UART: Startmeldung im Terminal', await waitFor(() => /Example 03 Web console/.test(text()), 10000));
   check('signals: uart0.tx mit Baudrate des Senders',
     await waitFor(() => signals['uart0.tx'] && signals['uart0.tx'].protocol &&
       Math.abs(signals['uart0.tx'].protocol.baud - 16e6 / (16 * (8 + 44 / 64))) < 0.01), JSON.stringify(signals['uart0.tx']));
@@ -153,7 +153,7 @@ function decodeUart(edges, baud, format) {
     signals['uart0.rx'] && signals['uart0.rx'].protocol && signals['uart0.rx'].protocol.baud === 115200, JSON.stringify(signals['uart0.rx']));
 
   send({ type: 'sensor', value: 42 });
-  check('Sensor 42 cm -> UART', await waitFor(() => /Abstand:\s+42 cm/.test(text())));
+  check('Sensor 42 cm -> UART', await waitFor(() => /Distance:\s+42 cm/.test(text())));
   await sleep(500);
 
   const tx = edges['uart0.tx'];
@@ -167,8 +167,8 @@ function decodeUart(edges, baud, format) {
   check(`Flanken: Abstände sind ganze Bitdauern (${bit.toFixed(2)} ns)`, tx.length > 100 && worst <= 1.5,
     `${tx.length} Flanken, größte Abweichung ${worst.toFixed(2)} ns`);
   const decoded = Buffer.from(decodeUart(tx, signals['uart0.tx'].protocol.baud, '8N1').map((f) => f.value)).toString('latin1');
-  check('eigener Dekoder liest aus den Flanken die Startmeldung', /Example 03 Web-Konsole/.test(decoded));
-  check('eigener Dekoder: "Abstand: 42 cm"', /Abstand:\s+42 cm/.test(decoded));
+  check('eigener Dekoder liest aus den Flanken die Startmeldung', /Example 03 Web console/.test(decoded));
+  check('eigener Dekoder: "Distance: 42 cm"', /Distance:\s+42 cm/.test(decoded));
 
   u.send('x');
   check('Tastendruck -> Flanken auf uart0.rx', await waitFor(() => edges['uart0.rx'].length >= 2));
@@ -189,14 +189,14 @@ function decodeUart(edges, baud, format) {
   send({ type: 'sensor', value: 123 });
   await sleep(1500);
   const wrong = uart.subarray(mark).toString('latin1');
-  check('Terminal 9600, MCU 115200: kein lesbarer Text', !/Abstand/.test(wrong), JSON.stringify(wrong.slice(0, 40)));
+  check('Terminal 9600, MCU 115200: kein lesbarer Text', !/Distance/.test(wrong), JSON.stringify(wrong.slice(0, 40)));
   check('signals: uart0.rx zeigt jetzt 9600', await waitFor(() => signals['uart0.rx'].protocol.baud === 9600));
 
   send({ type: 'uartconfig', baud: 115200, format: '8N1' });
   await sleep(500);
   mark = uart.length;
   send({ type: 'sensor', value: 77 });
-  check('Terminal wieder 115200: lesbar', await waitFor(() => /Abstand:\s+77 cm/.test(uart.subarray(mark).toString('latin1'))));
+  check('Terminal wieder 115200: lesbar', await waitFor(() => /Distance:\s+77 cm/.test(uart.subarray(mark).toString('latin1'))));
 
   // Simulations-Anzeige
   send({ type: 'watch', sim: true });
@@ -212,12 +212,12 @@ function decodeUart(edges, baud, format) {
 
   // Reset-Taster: Firmware neu, Sensor bleibt
   send({ type: 'sensor', value: 55 });
-  check('Sensor 55 cm vor dem Reset', await waitFor(() => /Abstand:\s+55 cm/.test(text())));
+  check('Sensor 55 cm vor dem Reset', await waitFor(() => /Distance:\s+55 cm/.test(text())));
   mark = uart.length;
   send({ type: 'reset' });
-  check('Reset -> Startmeldung erneut', await waitFor(() => /Example 03 Web-Konsole/.test(uart.subarray(mark).toString('latin1')), 5000));
+  check('Reset -> Startmeldung erneut', await waitFor(() => /Example 03 Web console/.test(uart.subarray(mark).toString('latin1')), 5000));
   check('Reset an alle gemeldet', resets === 1);
-  check('nach dem Reset: Sensor weiterhin 55 cm', await waitFor(() => /Abstand:\s+55 cm/.test(uart.subarray(mark).toString('latin1')), 5000));
+  check('nach dem Reset: Sensor weiterhin 55 cm', await waitFor(() => /Distance:\s+55 cm/.test(uart.subarray(mark).toString('latin1')), 5000));
   check('sim: Reset gezählt', await waitFor(() => sim.resets && sim.resets.count === 1, 3000), JSON.stringify(sim.resets));
 
   // Debugger
@@ -252,7 +252,7 @@ function decodeUart(edges, baud, format) {
   check('UART1 ohne Takt erkannt', await waitFor(() => sim.periph && sim.periph.module === 'UART1' && sim.periph.noClock));
   // erwartet sind nur die Warnungen aus dem Test mit 9600 Baud weiter oben: Terminal (Framing-Fehler)
   // und UART0 (Einstellung passt nicht zum Terminal, danach wieder korrekt)
-  const expected = /uart0\.host: Terminal|UART0: Firmware ist auf \d+ Baud .* das Terminal erwartet 9600 Baud|UART0: Konfiguration jetzt korrekt/;
+  const expected = /uart0\.host: Terminal|UART0: the firmware is set to \d+ baud .* the terminal expects 9600 baud|UART0: configuration is now correct/;
   const other = sim.warnings.filter((w) => !expected.test(w.text));
   check('Meldungen: Terminal-Warnung vom 9600-Test angezeigt', sim.warnings.length > other.length);
   check('keine weiteren Warnungen von Renode (Anzeige liest ohne Nebenwirkung)', other.length === 0, JSON.stringify(other));

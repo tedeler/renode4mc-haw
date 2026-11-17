@@ -232,7 +232,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
         {
             uint bit = 1u << pin;
             var errors = new List<string>();
-            if(!sysCtl.IsClockEnabled(RcgcGpio, clockBit)) errors.Add(string.Format("Takt von Port {0} aus (RCGCGPIO Bit {1})", portName, clockBit));
+            if(!sysCtl.IsClockEnabled(RcgcGpio, clockBit)) errors.Add(string.Format("Clock of port {0} is off (RCGCGPIO bit {1})", portName, clockBit));
             if((afsel & bit) == 0) errors.Add("GPIOAFSEL-Bit = 0");
             uint pctl;
             other.TryGetValue(Pctl, out pctl);
@@ -315,7 +315,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 case Cr:
                     if(locked)
                     {
-                        Warn("crLocked", "GPIOCR beschrieben, ohne vorher GPIOLOCK mit 0x4C4F434B zu entsperren: wirkungslos.");
+                        Warn("crLocked", "GPIOCR written without unlocking GPIOLOCK with 0x4C4F434B first: no effect.");
                     }
                     else
                     {
@@ -323,7 +323,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                     }
                     break;
                 case Ris: case Mis: case Pp:
-                    Warn("ro" + offset, string.Format("Schreiben auf Offset 0x{0:X3}: Register ist nur lesbar (ignoriert).", offset));
+                    Warn("ro" + offset, string.Format("Write to offset 0x{0:X3}: the register is read-only (ignored).", offset));
                     break;
                 default: other[offset] = value; break;
             }
@@ -455,13 +455,13 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                     // Nur melden, wenn der Pin offensichtlich benutzt wird (konfiguriert oder angeschlossen)
                     if(((PullUps() | PullDowns() | inputDriven | im) & bit) != 0)
                     {
-                        Warn("denIn" + i, string.Format("{0} wird als Eingang gelesen, aber GPIODEN = 0: liest immer 0. DEN-Bit setzen.", Pin(i)));
+                        Warn("denIn" + i, string.Format("{0} is read as an input, but GPIODEN = 0: it always reads 0. Set the DEN bit.", Pin(i)));
                     }
                 }
                 else if(((inputDriven | PullUps() | PullDowns()) & bit) == 0)
                 {
-                    Warn("float" + i, string.Format("{0} ist ein offener Eingang (nichts angeschlossen bzw. Taster losgelassen, kein Pull-up/Pull-down): " +
-                        "Pegel undefiniert, im Simulator 0. GPIOPUR oder GPIOPDR setzen.", Pin(i)));
+                    Warn("float" + i, string.Format("{0} is a floating input (nothing connected or push button released, no pull-up/pull-down): " +
+                        "the level is undefined, the simulator reads 0. Set GPIOPUR or GPIOPDR.", Pin(i)));
                 }
             }
         }
@@ -473,7 +473,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             {
                 if((bad & (1u << i)) != 0)
                 {
-                    Warn("denOut" + i, string.Format("{0} ist Ausgang (GPIODIR = 1), aber GPIODEN = 0: der Pin wird nicht getrieben. DEN-Bit setzen.", Pin(i)));
+                    Warn("denOut" + i, string.Format("{0} is an output (GPIODIR = 1), but GPIODEN = 0: the pin is not driven. Set the DEN bit.", Pin(i)));
                 }
             }
         }
@@ -486,12 +486,12 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             {
                 if((bad & (1u << i)) != 0)
                 {
-                    Warn("denIm" + i, string.Format("Interrupt an {0} freigegeben (GPIOIM), aber GPIODEN = 0: es kommt nie ein Interrupt.", Pin(i)));
+                    Warn("denIm" + i, string.Format("Interrupt on {0} enabled (GPIOIM), but GPIODEN = 0: no interrupt will ever occur.", Pin(i)));
                 }
                 if((open & (1u << i)) != 0)
                 {
-                    Warn("float" + i, string.Format("{0} ist ein offener Eingang (nichts angeschlossen bzw. Taster losgelassen, kein Pull-up/Pull-down), " +
-                        "aber sein Interrupt ist freigegeben: Pegel undefiniert, im Simulator 0. GPIOPUR oder GPIOPDR setzen.", Pin(i)));
+                    Warn("float" + i, string.Format("{0} is a floating input (nothing connected or push button released, no pull-up/pull-down), " +
+                        "but its interrupt is enabled: the level is undefined, the simulator reads 0. Set GPIOPUR or GPIOPDR.", Pin(i)));
                 }
             }
         }
@@ -506,7 +506,7 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
                 {
                     if((blocked & (1u << i)) != 0)
                     {
-                        Warn("commit" + reg + i, string.Format("{0}: {1} ist geschützt (JTAG/NMI). Ohne GPIOLOCK = 0x4C4F434B und GPIOCR-Bit wird das Schreiben ignoriert.", reg, Pin(i)));
+                        Warn("commit" + reg + i, string.Format("{0}: {1} is protected (JTAG/NMI). Without GPIOLOCK = 0x4C4F434B and the GPIOCR bit, the write is ignored.", reg, Pin(i)));
                     }
                 }
             }
@@ -585,8 +585,8 @@ namespace Antmicro.Renode.Peripherals.GPIOPort
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,
-                    "GPIO Port {0}: Zugriff (Offset 0x{1:X}) ohne Takt! RCGCGPIO Bit {2} muss gesetzt werden " +
-                    "(SysCtlPeripheralEnable). Auf der Hardware führt das zu einem Fault.",
+                    "GPIO port {0}: access (offset 0x{1:X}) without clock! RCGCGPIO bit {2} must be set " +
+                    "(SysCtlPeripheralEnable). On real hardware this causes a fault.",
                     portName, offset, clockBit);
                 clockWarned = true;
             }

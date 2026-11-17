@@ -65,13 +65,13 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 int pin;
                 if(!Parse(name, out port, out pin))
                 {
-                    throw new ArgumentException("Oscilloscope: unbekannter Pin " + raw);
+                    throw new ArgumentException("Oscilloscope: unknown pin " + raw);
                 }
                 if(!wanted.Contains(name)) wanted.Add(name);
             }
             if(wanted.Count > MaxProbes)
             {
-                throw new ArgumentException("Oscilloscope: höchstens " + MaxProbes + " Pins");
+                throw new ArgumentException("Oscilloscope: at most " + MaxProbes + " pins");
             }
             lock(sync)
             {

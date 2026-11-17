@@ -7,7 +7,7 @@ const ControlSocketContext = createContext(null);
 
 /** Bedienhandlungen, die ohne laufende Simulation einen Hinweis auslösen (Abos/Anzeigen schweigen) */
 const USER_ACTIONS = new Set(['button', 'keypad', 'reset', 'pause', 'continue', 'step', 'cpuStatsReset']);
-export const NO_FIRMWARE_HINT = 'Keine Firmware geladen – Datei wählen und Start klicken';
+export const NO_FIRMWARE_HINT = 'No firmware loaded – choose a file and click Start';
 
 function decodeFrame(msg) {
   const bin = atob(msg.data);
@@ -270,6 +270,6 @@ export function ControlSocketProvider({ children, live = true, experimentId = nu
 
 export function useControlSocket() {
   const ctx = useContext(ControlSocketContext);
-  if (!ctx) throw new Error('useControlSocket außerhalb von <ControlSocketProvider>');
+  if (!ctx) throw new Error('useControlSocket used outside of <ControlSocketProvider>');
   return ctx;
 }

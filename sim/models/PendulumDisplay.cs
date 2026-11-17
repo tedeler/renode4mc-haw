@@ -64,11 +64,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         {
             if(columns < 8 || columns > 512)
             {
-                throw new ArgumentException("PendulumDisplay: 8..512 Spalten");
+                throw new ArgumentException("PendulumDisplay: 8..512 columns");
             }
             if(syncMode != "position" && syncMode != "direction")
             {
-                throw new ArgumentException("PendulumDisplay: syncMode muss \"position\" oder \"direction\" sein");
+                throw new ArgumentException("PendulumDisplay: syncMode must be \"position\" or \"direction\"");
             }
             this.machine = machine;
             directionSync = syncMode == "direction";
@@ -97,7 +97,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 lock(sync)
                 {
                     pendingHalfUs = HalfOf(value);
-                    this.Log(LogLevel.Info, "Pendel: neue Periode {0} us ({1:F2} Hz) ab dem nächsten Nulldurchgang",
+                    this.Log(LogLevel.Info, "Pendulum: new period {0} us ({1:F2} Hz) from the next zero crossing",
                         2 * pendingHalfUs, 1e6 / (2 * pendingHalfUs));
                 }
             }
@@ -178,7 +178,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             if(periodUs < MinPeriodUs || periodUs > MaxPeriodUs)
             {
                 throw new ArgumentException(string.Format(
-                    "PendulumDisplay: Periode {0} us außerhalb {1}..{2} us", periodUs, MinPeriodUs, MaxPeriodUs));
+                    "PendulumDisplay: period {0} us outside {1}..{2} us", periodUs, MinPeriodUs, MaxPeriodUs));
             }
             return periodUs / 2;
         }

@@ -37,21 +37,21 @@ function assert(cond, msg) {
 }
 
 function assertPath(p, where) {
-  assert(typeof p === 'string' && PATH_RE.test(p), `Ungültiger Renode-Pfad in ${where}: ${p}`);
+  assert(typeof p === 'string' && PATH_RE.test(p), `Invalid Renode path in ${where}: ${p}`);
 }
 
 function validate(cfg, file) {
   if (cfg.ledBridge !== undefined) {
-    assert(WS_RE.test(cfg.ledBridge), `${file}: ledBridge muss ws://127.0.0.1:<port> sein`);
+    assert(WS_RE.test(cfg.ledBridge), `${file}: ledBridge must be ws://127.0.0.1:<port>`);
   }
   (cfg.leds || []).forEach((l, i) => {
-    assert(typeof l.id === 'string' && l.id, `${file} leds[${i}]: id fehlt`);
+    assert(typeof l.id === 'string' && l.id, `${file} leds[${i}]: id is missing`);
     if (l.path !== undefined) assertPath(l.path, `${file} leds[${i}]`);
     else assert(Number.isInteger(l.bridge) && l.bridge >= 0 && l.bridge <= 7 && cfg.ledBridge,
-      `${file} leds[${i}]: "path" oder "bridge" (0..7, mit ledBridge) angeben`);
+      `${file} leds[${i}]: specify "path" or "bridge" (0..7, with ledBridge)`);
   });
   (cfg.buttons || []).forEach((b, i) => {
-    assert(typeof b.id === 'string' && b.id, `${file} buttons[${i}]: id fehlt`);
+    assert(typeof b.id === 'string' && b.id, `${file} buttons[${i}]: id is missing`);
     if (b.path !== undefined) assertPath(b.path, `${file} buttons[${i}]`);
     else {
       assertPath(b.port, `${file} buttons[${i}].port`);
@@ -77,13 +77,13 @@ function validate(cfg, file) {
     assertPath(cfg.uart.host, `${file} uart.host`);
     cfg.uart.baud = cfg.uart.baud ?? 115200;
     cfg.uart.format = cfg.uart.format ?? '8N1';
-    assert(isValidUartSettings(cfg.uart.baud, cfg.uart.format), `${file} uart: baud 50..4000000, format wie "8N1"`);
+    assert(isValidUartSettings(cfg.uart.baud, cfg.uart.format), `${file} uart: baud 50..4000000, format like "8N1"`);
   }
   if (cfg.reset) assertPath(cfg.reset.path, `${file} reset.path`);
   if (cfg.status) assertPath(cfg.status.path, `${file} status.path`);
   if (cfg.debug) assertPath(cfg.debug.cpu, `${file} debug.cpu`);
   (cfg.signals || []).forEach((sig, i) => {
-    assert(typeof sig.name === 'string' && SIGNAL_RE.test(sig.name), `${file} signals[${i}].name wie "uart0.tx"`);
+    assert(typeof sig.name === 'string' && SIGNAL_RE.test(sig.name), `${file} signals[${i}].name like "uart0.tx"`);
     assertPath(sig.path, `${file} signals[${i}].path`);
   });
   if (cfg.scope) {
@@ -92,19 +92,19 @@ function validate(cfg, file) {
     const pin = (p) => typeof p === 'string' && /^P[A-HJ-NPQ][0-7]$/.test(p);
     (sc.signals || []).forEach((g, i) => assert(pin(g.pin) && typeof g.label === 'string', `${file} scope.signals[${i}]: { pin: "PD0", label }`));
     assert(!sc.channels || (Array.isArray(sc.channels) && sc.channels.length <= 4 && sc.channels.every((p) => !p || pin(p))),
-      `${file} scope.channels: bis zu 4 Pins`);
+      `${file} scope.channels: up to 4 pins`);
     assert(!sc.trigger || ((!sc.trigger.source || pin(sc.trigger.source)) && (!sc.trigger.edge || ['rising', 'falling'].includes(sc.trigger.edge))),
       `${file} scope.trigger: { source: "PL0", edge: "rising" | "falling" }`);
   }
   if (cfg.solution) {
-    assert(isValidId(cfg.solution.example), `${file} solution.example: Name der Musterlösung (examples/<name> bzw. sim/solutions/<name>.elf)`);
+    assert(isValidId(cfg.solution.example), `${file} solution.example: name of the reference solution (examples/<name> or sim/solutions/<name>.elf)`);
   }
   if (cfg.keypad) {
     assertPath(cfg.keypad.path, `${file} keypad.path`);
     const layout = cfg.keypad.layout;
     assert(Array.isArray(layout) && layout.length > 0 && layout.length <= 8 &&
       layout.every((r) => Array.isArray(r) && r.length === layout[0].length && r.length <= 4),
-    `${file} keypad.layout: Zeilen gleicher Länge (max. 8 x 4)`);
+    `${file} keypad.layout: rows of equal length (max. 8 x 4)`);
   }
   return cfg;
 }
@@ -125,11 +125,11 @@ function load(simDir, sub, id) {
   try {
     data = JSON.parse(fs.readFileSync(json, 'utf8'));
   } catch (e) {
-    throw new Error(`${json}: kein gültiges JSON (${e.message})`);
+    throw new Error(`${json}: not valid JSON (${e.message})`);
   }
   const r = spec.build(data, id);
-  if (r.errors.length) throw new Error(`${json}: ${r.errors.length} Fehler\n  ${r.errors.join('\n  ')}`);
-  for (const w of r.warnings) console.warn(`[experiments] ${id}: Hinweis: ${w}`);
+  if (r.errors.length) throw new Error(`${json}: ${r.errors.length} error(s)\n  ${r.errors.join('\n  ')}`);
+  for (const w of r.warnings) console.warn(`[experiments] ${id}: note: ${w}`);
   // Zweite Sicherung: dieselben Prüfungen wie für die frühere handgeschriebene Konfiguration
   const v = validate({ id, ...r.config }, json);
   const solutionPath = v.solution ? path.join(simDir, 'solutions', `${v.solution.example}.elf`) : null;
@@ -174,7 +174,7 @@ function list(simDir, sub) {
 function solutionInfo(cfg) {
   if (!cfg || !cfg.solution) return null;
   return {
-    label: cfg.solution.label || 'Musterlösung',
+    label: cfg.solution.label || 'Reference solution',
     available: !!cfg.solutionPath && fs.existsSync(cfg.solutionPath),
   };
 }

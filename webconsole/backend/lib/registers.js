@@ -42,7 +42,7 @@ function load(headerPath) {
   try {
     text = fs.readFileSync(headerPath, 'latin1');
   } catch (e) {
-    console.error(`[registers] Headerdatei nicht lesbar (${headerPath}): ${e.message}`);
+    console.error(`[registers] cannot read header file (${headerPath}): ${e.message}`);
     return { modules: [], byModule, vectors };
   }
   for (const line of text.split(/\r?\n/)) {

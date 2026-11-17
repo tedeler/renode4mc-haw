@@ -1,33 +1,33 @@
 /*
- * Example 04 - Pendeldisplay: Abstand vom Ultraschallsensor auf einem POV-Pendel anzeigen
- * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
+ * Example 04 - Pendulum display: show the distance from the ultrasonic sensor on a POV pendulum
+ * Board: EK-TM4C1294XL (TM4C1294NCPDT), clock: 16 MHz (clock after reset, not changed here)
  *
- * Läuft im Simulator (Web-Konsole, Versuch "example2") und auf dem Board mit Zusatz-Hardware.
+ * Runs in the simulator (web console, experiment "example2") and on the board with extra hardware.
  *
- *   Baustein                 Anschluss                          Verwendung im Programm
+ *   Component                Connection                         Use in the program
  *   ------------------------ ---------------------------------- -------------------------------------
- *   Pendeldisplay, 8 LEDs    PM0..PM7 (Ausgang),                 eine Bildspalte = ein Byte auf Port M
- *                            Drehpunkt unten, PM0 = LED an der
- *                            Spitze (oben), PM7 = LED unten
- *   Pendel-Signal            PL0 (Eingang)                       HIGH = Pendel rechts, LOW = links;
- *                                                                Interrupt bei beiden Flanken
- *   UART0 (Virtual COM)      PA0 = RX, PA1 = TX, 115200 8N1      Meldungen (Abstand, Pendelperiode)
- *   I2C0                     PB2 = SCL, PB3 = SDA, 100 kHz       Ultraschallsensor MB1242 (0x70)
- *   LED D2                   PN0 (Ausgang)                       Herzschlag 1 Hz
- *   Timer0A                  -                                   100-ms-Takt (Sensor, Herzschlag)
- *   Timer1A                  -                                   Einmal-Timer: Zeitpunkt der nächsten Bildspalte
- *   Timer2A                  -                                   freilaufend, misst die Pendelperiode
+ *   Pendulum display, 8 LEDs PM0..PM7 (outputs),                one image column = one byte on port M
+ *                            pivot at the bottom, PM0 = LED at
+ *                            the tip (top), PM7 = bottom LED
+ *   Pendulum signal          PL0 (input)                         HIGH = pendulum right, LOW = left;
+ *                                                                interrupt on both edges
+ *   UART0 (Virtual COM)      PA0 = RX, PA1 = TX, 115200 8N1      messages (distance, pendulum period)
+ *   I2C0                     PB2 = SCL, PB3 = SDA, 100 kHz       ultrasonic sensor MB1242 (0x70)
+ *   LED D2                   PN0 (output)                        heartbeat 1 Hz
+ *   Timer0A                  -                                   100 ms tick (sensor, heartbeat)
+ *   Timer1A                  -                                   one-shot timer: time of the next image column
+ *   Timer2A                  -                                   free-running, measures the pendulum period
  *
- * Prinzip (POV = persistence of vision):
- *   Das Pendel schwingt 10-mal pro Sekunde (Periode T = 100 ms; in der Web-Konsole einstellbar,
- *   die Firmware misst T laufend nach und akzeptiert 0,1..50 Hz). Wechselt die Firmware die
- *   LEDs genau dann, wenn das Pendel an der richtigen Stelle ist, sieht das Auge ein stehendes
- *   Bild aus 40 Spalten zu 8 Punkten. Bezugspunkt ist der Nulldurchgang (Flanke an PL0):
- *   Eine halbe Periode nach jeder Flanke läuft das Pendel wieder durch die Mitte, diesmal in
- *   der anderen Richtung. Um diesen Zeitpunkt herum wird eine Bildzeile "geschrieben".
+ * Principle (POV = persistence of vision):
+ *   The pendulum swings 10 times per second (period T = 100 ms; adjustable in the web console,
+ *   the firmware keeps measuring T and accepts 0.1..50 Hz). If the firmware changes the LEDs
+ *   exactly when the pendulum is at the right position, the eye sees a stationary image
+ *   of 40 columns with 8 dots each. The reference point is the zero crossing (edge on PL0):
+ *   half a period after each edge the pendulum passes the centre again, this time in the
+ *   other direction. Around this point in time one line of the image is "written".
  *
- * Registernamen und Bitkonstanten: TI-Headerdatei tm4c1294ncpdt.h (common/), keine eigenen
- * Adressen. Nachschlagen im Datenblatt "TM4C1294NCPDT" (SPMS433).
+ * Register names and bit constants: TI header file tm4c1294ncpdt.h (common/), no addresses of
+ * our own. Look them up in the data sheet "TM4C1294NCPDT" (SPMS433).
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -36,59 +36,59 @@
 #define SYSTEM_CLOCK_HZ     16000000u
 
 /* ---------------------------------------------------------------------------------------------
- * Register: alle Namen (..._R) und Bitkonstanten kommen aus tm4c1294ncpdt.h.
- * Hier stehen nur Konstanten, die die Headerdatei nicht kennt (Pins, Pin-Funktionen, IRQs).
+ * Registers: all names (..._R) and bit constants come from tm4c1294ncpdt.h.
+ * Only constants that the header file does not know are defined here (pins, pin functions, IRQs).
  * ------------------------------------------------------------------------------------------- */
-/* Bits der benutzten Module in RCGC... bzw. PR... */
-#define PORTS_TAKT          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R10 | \
+/* Bits of the modules used, in RCGC... and PR... */
+#define PORTS_CLOCK          (SYSCTL_RCGCGPIO_R0 | SYSCTL_RCGCGPIO_R1 | SYSCTL_RCGCGPIO_R10 | \
                              SYSCTL_RCGCGPIO_R11 | SYSCTL_RCGCGPIO_R12)            /* A, B, L, M, N */
-#define PORTS_BEREIT        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R10 | \
+#define PORTS_READY        (SYSCTL_PRGPIO_R0 | SYSCTL_PRGPIO_R1 | SYSCTL_PRGPIO_R10 | \
                              SYSCTL_PRGPIO_R11 | SYSCTL_PRGPIO_R12)
-#define TIMER_TAKT          (SYSCTL_RCGCTIMER_R0 | SYSCTL_RCGCTIMER_R1 | SYSCTL_RCGCTIMER_R2)
-#define TIMER_BEREIT        (SYSCTL_PRTIMER_R0 | SYSCTL_PRTIMER_R1 | SYSCTL_PRTIMER_R2)
+#define TIMERS_CLOCK          (SYSCTL_RCGCTIMER_R0 | SYSCTL_RCGCTIMER_R1 | SYSCTL_RCGCTIMER_R2)
+#define TIMERS_READY        (SYSCTL_PRTIMER_R0 | SYSCTL_PRTIMER_R1 | SYSCTL_PRTIMER_R2)
 
-/* GPIOPCTL: je 4 Bit pro Pin wählen die alternative Funktion (Datenblatt, Tabelle
- * "GPIO Pins and Alternate Functions"). Dafür hat die Headerdatei keine Konstanten. */
-#define PCTL_MASKE(pin)     (0xFu << (4u * (pin)))
-#define PCTL_FUNKTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
+/* GPIOPCTL: 4 bits per pin select the alternate function (data sheet, table
+ * "GPIO Pins and Alternate Functions"). The header file has no constants for this. */
+#define PCTL_MASK(pin)     (0xFu << (4u * (pin)))
+#define PCTL_FUNCTION(pin, f) ((uint32_t)(f) << (4u * (pin)))
 #define PCTL_UART0          1u                 /* PA0 = U0RX, PA1 = U0TX */
 #define PCTL_I2C0           2u                 /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 
-/* NVIC: INT_... aus der Headerdatei ist die Nummer in der Vektortabelle; der NVIC zählt
- * ab dem ersten Peripherie-Interrupt (Eintrag 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
+/* NVIC: INT_... from the header file is the number in the vector table; the NVIC counts
+ * from the first peripheral interrupt (entry 16). EN0 = IRQ 0..31, EN1 = IRQ 32..63. */
 #define IRQ_TIMER0A         (INT_TIMER0A - 16u)   /* 19 */
 #define IRQ_TIMER1A         (INT_TIMER1A - 16u)   /* 21 */
 #define IRQ_GPIOL           (INT_GPIOL - 16u)     /* 53 */
 
 /* Pins */
 #define LED_D2              (1u << 0)          /* PN0 */
-#define PENDEL_SYNC         (1u << 0)          /* PL0 */
-#define PENDEL_LEDS         0xFFu              /* PM0..PM7 */
+#define PENDULUM_SYNC         (1u << 0)          /* PL0 */
+#define PENDULUM_LEDS         0xFFu              /* PM0..PM7 */
 #define PINS_UART0          0x03u              /* PA0 = U0RX, PA1 = U0TX */
 #define PINS_I2C0           0x0Cu              /* PB2 = I2C0SCL, PB3 = I2C0SDA */
 #define PIN_I2C0_SDA        0x08u              /* PB3 */
 
-/* Geräteadresse am I2C-Bus (7 Bit) */
+/* Device address on the I2C bus (7 bit) */
 #define SONAR_ADDR          0x70u
 
 /* ---------------------------------------------------------------------------------------------
- * Pendeldisplay: Bild und Zeitplan
+ * Pendulum display: image and schedule
  *
- * Das Bild hat SPALTEN Spalten. Spalte k liegt zwischen den Auslenkungen x(k) und x(k+1) mit
- *     x(k) = -0,9 + 1,8 * k / SPALTEN        (x = -1: ganz links, x = +1: ganz rechts)
- * Die äußeren 10 % des Schwenkbereichs bleiben frei: Dort ist das Pendel sehr langsam und die
- * Spalten würden zu breit.
+ * The image has COLUMNS columns. Column k lies between the deflections x(k) and x(k+1) with
+ *     x(k) = -0.9 + 1.8 * k / COLUMNS        (x = -1: far left, x = +1: far right)
+ * The outer 10 % of the swing range stay empty: there the pendulum is very slow and the
+ * columns would become too wide.
  *
- * Das Pendel bewegt sich nicht gleichmäßig, sondern wie x(t) = sin(2*pi*t/T). Die Spalte k
- * beginnt also zur Zeit  t(k) = asin(x(k)) / (2*pi) * T  (gemessen ab dem Nulldurchgang).
- * Die Tabelle enthält t(k)/T in Einheiten von 1/65536 der Periode, berechnet mit
+ * The pendulum does not move at constant speed but like x(t) = sin(2*pi*t/T). So column k
+ * starts at the time  t(k) = asin(x(k)) / (2*pi) * T  (measured from the zero crossing).
+ * The table contains t(k)/T in units of 1/65536 of the period, computed with
  *     python3 -c "import math; print([round(math.asin(-0.9+1.8*k/40)/(2*math.pi)*65536) for k in range(41)])"
- * Sie gilt für beide Schwungrichtungen: Beim Schwung von rechts nach links wird nur die
- * Reihenfolge der Spalten umgedreht.
+ * It is valid for both swing directions: for the swing from right to left only the
+ * order of the columns is reversed.
  * ------------------------------------------------------------------------------------------- */
-#define SPALTEN             40u
+#define COLUMNS             40u
 
-static const int16_t spaltenZeit_q16[SPALTEN + 1] = {
+static const int16_t columnTime_q16[COLUMNS + 1] = {
     -11680, -10697,  -9848,  -9085,  -8384,  -7729,  -7109,  -6518,  -5950,  -5401,
      -4869,  -4349,  -3841,  -3342,  -2852,  -2367,  -1888,  -1412,   -940,   -470,
          0,    470,    940,   1412,   1888,   2367,   2852,   3342,   3841,   4349,
@@ -96,55 +96,55 @@ static const int16_t spaltenZeit_q16[SPALTEN + 1] = {
      11680,
 };
 
-#define PERIODE_SOLL        (SYSTEM_CLOCK_HZ / 10u)        /* 10 Hz: 100 ms = 1 600 000 Takte */
-#define PERIODE_MIN         (SYSTEM_CLOCK_HZ / 50u)        /* schnellstes Pendel: 50 Hz */
-#define PERIODE_MAX         (SYSTEM_CLOCK_HZ * 10u)        /* langsamstes Pendel: 0,1 Hz (10 s) */
+#define PERIOD_NOMINAL        (SYSTEM_CLOCK_HZ / 10u)        /* 10 Hz: 100 ms = 1 600 000 clock cycles */
+#define PERIOD_MIN         (SYSTEM_CLOCK_HZ / 50u)        /* fastest pendulum: 50 Hz */
+#define PERIOD_MAX         (SYSTEM_CLOCK_HZ * 10u)        /* slowest pendulum: 0.1 Hz (10 s) */
 
-static volatile uint8_t  bild[SPALTEN];                    /* Bit n = LED n (PMn), Bit 0 oben */
-static volatile uint32_t periode = PERIODE_SOLL;           /* gemessene Pendelperiode in Takten */
-static int32_t           spaltenTakte[SPALTEN + 1];        /* t(k) in Takten, aus periode berechnet */
+static volatile uint8_t  image[COLUMNS];                    /* bit n = LED n (PMn), bit 0 at the top */
+static volatile uint32_t period = PERIOD_NOMINAL;           /* measured pendulum period in clock cycles */
+static int32_t           columnTicks[COLUMNS + 1];        /* t(k) in clock cycles, computed from period */
 
-/* Zustand des Bildaufbaus (nur in den Interrupt-Routinen benutzt) */
-static uint32_t spalte;                                    /* nächste Spalte 0..SPALTEN */
-static bool     nachLinks;                                 /* true: Schwung von rechts nach links */
-static bool     laeuft;                                    /* Timer1A ist für einen Schwung geplant */
-static uint32_t letzteKante;                               /* Timer2-Stand bei der letzten Flanke */
-static uint32_t mitte;                                     /* Timer2-Stand beim nächsten Nulldurchgang */
+/* State of the image output (only used in the interrupt routines) */
+static uint32_t column;                                    /* next column 0..COLUMNS */
+static bool     toLeft;                                 /* true: swing from right to left */
+static bool     running;                                    /* Timer1A is scheduled for a swing */
+static uint32_t lastEdge;                               /* Timer2 value at the last edge */
+static uint32_t center;                                     /* Timer2 value at the next zero crossing */
 
-static void zeitplan_berechnen(uint32_t takte)
+static void compute_schedule(uint32_t ticksPerPeriod)
 {
-    for (uint32_t k = 0; k <= SPALTEN; k++)
+    for (uint32_t k = 0; k <= COLUMNS; k++)
     {
-        spaltenTakte[k] = (int32_t)(((int64_t)spaltenZeit_q16[k] * (int64_t)takte) / 65536);
+        columnTicks[k] = (int32_t)(((int64_t)columnTime_q16[k] * (int64_t)ticksPerPeriod) / 65536);
     }
 }
 
 /*
- * Stellt den Einmal-Timer (Timer1A) auf den Beginn von Spalte k.
- * Der Zeitpunkt wird ABSOLUT auf der Zeitbasis Timer2 gerechnet (Mitte + t(k)) und nicht
- * relativ zur vorigen Spalte: Sonst addiert sich die Verzögerung jeder Interrupt-Routine
- * über alle 40 Spalten, und das Bild verschiebt sich (beim Hin- und Rückschwung gegenläufig).
- * Timer2 zählt ABWÄRTS: "später" heißt "kleinerer Zählerstand".
+ * Sets the one-shot timer (Timer1A) to the start of column k.
+ * The point in time is computed ABSOLUTELY on the time base Timer2 (centre + t(k)) and not
+ * relative to the previous column: otherwise the delay of every interrupt routine would add up
+ * over all 40 columns, and the image would shift (in opposite directions on the two swings).
+ * Timer2 counts DOWN: "later" means "smaller counter value".
  */
-static void spaltentimer_auf(uint32_t k)
+static void set_column_timer(uint32_t k)
 {
-    uint32_t ziel = mitte - (uint32_t)spaltenTakte[k];
-    int32_t warten = (int32_t)(TIMER2_TAV_R - ziel);
-    if (warten < 16)
+    uint32_t dest = center - (uint32_t)columnTicks[k];
+    int32_t wait = (int32_t)(TIMER2_TAV_R - dest);
+    if (wait < 16)
     {
-        warten = 16;                                       /* schon vorbei: sofort weiter */
+        wait = 16;                                       /* already passed: continue immediately */
     }
-    TIMER1_TAILR_R = (uint32_t)warten - 1u;
+    TIMER1_TAILR_R = (uint32_t)wait - 1u;
     TIMER1_CTL_R |= TIMER_CTL_TAEN;
 }
 
-/* Statistik für die UART-Ausgabe */
-static volatile uint32_t neuePeriode;                      /* != 0: neu gemessene Periode */
+/* Statistics for the UART output */
+static volatile uint32_t newPeriod;                      /* != 0: newly measured period */
 
 /* ---------------------------------------------------------------------------------------------
- * Interrupt-Routinen
+ * Interrupt routines
  * ------------------------------------------------------------------------------------------- */
-static volatile uint32_t ticks;            /* 100-ms-Zähler (Timer0A) */
+static volatile uint32_t ticks;            /* 100 ms counter (Timer0A) */
 
 void TIMER0A_Handler(void)
 {
@@ -153,86 +153,86 @@ void TIMER0A_Handler(void)
 }
 
 /*
- * Plant den nächsten Schwung durch die Mitte.
- *   Pendel rechts (PL0 HIGH): der nächste Durchgang geht nach LINKS
- *   Pendel links  (PL0 LOW):  der nächste Durchgang geht nach RECHTS
- * Dieser Durchgang liegt eine halbe Periode nach der letzten Flanke; die erste Spalte beginnt
- * t(0) Takte davor (t(0) ist negativ). Die Flanke selbst liegt also MITTEN im Schwung -
- * deshalb wird der nächste Schwung erst geplant, wenn der vorige fertig ist.
+ * Schedules the next swing through the centre.
+ *   pendulum right (PL0 HIGH): the next pass goes to the LEFT
+ *   pendulum left  (PL0 LOW):  the next pass goes to the RIGHT
+ * This pass is half a period after the last edge; the first column starts
+ * t(0) clock cycles earlier (t(0) is negative). So the edge itself lies IN THE MIDDLE of a swing -
+ * that is why the next swing is only scheduled when the previous one is finished.
  */
-static void schwung_planen(void)
+static void plan_swing(void)
 {
-    mitte = letzteKante - periode / 2u;                    /* eine halbe Periode nach der Flanke */
-    int32_t bisStart = (int32_t)(TIMER2_TAV_R - (mitte - (uint32_t)spaltenTakte[0]));
-    if (bisStart < 100)
+    center = lastEdge - period / 2u;                    /* half a period after the edge */
+    int32_t untilStart = (int32_t)(TIMER2_TAV_R - (center - (uint32_t)columnTicks[0]));
+    if (untilStart < 100)
     {
-        laeuft = false;                                    /* zu spät: auf die nächste Flanke warten */
+        running = false;                                    /* too late: wait for the next edge */
         return;
     }
-    nachLinks = (GPIO_PORTL_DATA_BITS_R[PENDEL_SYNC] & PENDEL_SYNC) != 0;
-    spalte = 0;
-    laeuft = true;
-    spaltentimer_auf(0);
+    toLeft = (GPIO_PORTL_DATA_BITS_R[PENDULUM_SYNC] & PENDULUM_SYNC) != 0;
+    column = 0;
+    running = true;
+    set_column_timer(0);
 }
 
-/* Flanke am Pendel-Signal (PL0) = Pendel läuft durch die Mitte */
+/* Edge on the pendulum signal (PL0) = pendulum passes the centre */
 void GPIOL_Handler(void)
 {
-    static bool gemessen;                                  /* schon eine Flanke gesehen */
-    static bool gemeldet;                                  /* Periode schon per UART gemeldet */
+    static bool measured;                                  /* an edge has been seen already */
+    static bool reported;                                  /* period already reported via UART */
 
-    uint32_t jetzt = TIMER2_TAV_R;               /* Timer2 zählt abwärts */
-    GPIO_PORTL_ICR_R = PENDEL_SYNC;
+    uint32_t now = TIMER2_TAV_R;               /* Timer2 counts down */
+    GPIO_PORTL_ICR_R = PENDULUM_SYNC;
 
     /*
-     * Periode = 2 x Abstand zweier aufeinanderfolgender Flanken (eine halbe Schwingung).
-     * Das rastet doppelt so schnell ein wie die Messung von steigender zu steigender Flanke -
-     * wichtig bei langsamen Pendeln (0,1 Hz: 10 s pro Schwingung).
+     * Period = 2 x time between two consecutive edges (half an oscillation).
+     * This locks in twice as fast as measuring from rising edge to rising edge -
+     * important for slow pendulums (0.1 Hz: 10 s per oscillation).
      */
-    uint32_t t = 2u * (letzteKante - jetzt);               /* Abwärtszähler: alt - neu */
-    if (gemessen && t >= PERIODE_MIN && t <= PERIODE_MAX)  /* Störungen ignorieren */
+    uint32_t t = 2u * (lastEdge - now);               /* down counter: old - new */
+    if (measured && t >= PERIOD_MIN && t <= PERIOD_MAX)  /* ignore glitches */
     {
-        uint32_t abweichung = (t > periode) ? t - periode : periode - t;
-        if (abweichung > periode / 1000u)                  /* mehr als 0,1 % geändert */
+        uint32_t deviation = (t > period) ? t - period : period - t;
+        if (deviation > period / 1000u)                  /* changed by more than 0.1 % */
         {
-            periode = t;
-            zeitplan_berechnen(t);                         /* Zeitplan an die echte Periode anpassen */
-            gemeldet = false;
+            period = t;
+            compute_schedule(t);                         /* adapt the schedule to the real period */
+            reported = false;
         }
-        if (!gemeldet)
+        if (!reported)
         {
-            neuePeriode = t;
-            gemeldet = true;
+            newPeriod = t;
+            reported = true;
         }
     }
-    gemessen = true;
+    measured = true;
 
-    letzteKante = jetzt;
-    if (!laeuft)
+    lastEdge = now;
+    if (!running)
     {
-        schwung_planen();                                  /* Start bzw. nach einer Unterbrechung */
+        plan_swing();                                  /* start, or after an interruption */
     }
 }
 
-/* Einmal-Timer: jetzt beginnt die nächste Spalte */
+/* One-shot timer: the next column starts now */
 void TIMER1A_Handler(void)
 {
     TIMER1_ICR_R = TIMER_ICR_TATOCINT;
 
-    if (spalte >= SPALTEN)
+    if (column >= COLUMNS)
     {
-        GPIO_PORTM_DATA_R = 0;                         /* Bild zu Ende: LEDs aus ... */
-        schwung_planen();                                  /* ... und den nächsten Schwung planen */
+        GPIO_PORTM_DATA_R = 0;                         /* end of the image: LEDs off ... */
+        plan_swing();                                  /* ... and schedule the next swing */
         return;
     }
-    uint32_t index = nachLinks ? (SPALTEN - 1u - spalte) : spalte;
-    GPIO_PORTM_DATA_R = bild[index];
-    spalte++;
-    spaltentimer_auf(spalte);
+    uint32_t index = toLeft ? (COLUMNS - 1u - column) : column;
+    GPIO_PORTM_DATA_R = image[index];
+    column++;
+    set_column_timer(column);
 }
 
 /* ---------------------------------------------------------------------------------------------
- * UART0: 115200 Baud bei 16 MHz -> IBRD = 8, FBRD = 44 (siehe Example 03)
+ * UART0: 115200 baud at 16 MHz -> IBRD = 8, FBRD = 44 (see Example 03)
  * ------------------------------------------------------------------------------------------- */
 #define BAUD_IBRD           8u
 #define BAUD_FBRD           44u
@@ -240,8 +240,8 @@ void TIMER1A_Handler(void)
 static void uart_init(void)
 {
     GPIO_PORTA_AHB_AFSEL_R |= PINS_UART0;
-    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASKE(0) | PCTL_MASKE(1)))
-                          | PCTL_FUNKTION(0, PCTL_UART0) | PCTL_FUNKTION(1, PCTL_UART0);
+    GPIO_PORTA_AHB_PCTL_R = (GPIO_PORTA_AHB_PCTL_R & ~(PCTL_MASK(0) | PCTL_MASK(1)))
+                          | PCTL_FUNCTION(0, PCTL_UART0) | PCTL_FUNCTION(1, PCTL_UART0);
     GPIO_PORTA_AHB_DEN_R |= PINS_UART0;
 
     UART0_CTL_R = 0;
@@ -272,26 +272,26 @@ static void uart_puts(const char *s)
     }
 }
 
-/* Zahl als Dezimaltext ohne führende Leerzeichen; liefert die Anzahl Zeichen */
-static int utoa(uint32_t wert, char *ziel)
+/* Number as decimal text without leading spaces; returns the number of characters */
+static int utoa(uint32_t value, char *dest)
 {
     char tmp[11];
     int n = 0;
     do
     {
-        tmp[n++] = (char)('0' + wert % 10u);
-        wert /= 10u;
-    } while (wert != 0u);
+        tmp[n++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0u);
     for (int i = 0; i < n; i++)
     {
-        ziel[i] = tmp[n - 1 - i];
+        dest[i] = tmp[n - 1 - i];
     }
-    ziel[n] = '\0';
+    dest[n] = '\0';
     return n;
 }
 
 /* ---------------------------------------------------------------------------------------------
- * I2C0 als Master, 100 kHz (siehe Example 03)
+ * I2C0 as master, 100 kHz (see Example 03)
  * ------------------------------------------------------------------------------------------- */
 #define TPR_100KHZ          7u
 
@@ -299,8 +299,8 @@ static void i2c_init(void)
 {
     GPIO_PORTB_AHB_AFSEL_R |= PINS_I2C0;
     GPIO_PORTB_AHB_ODR_R |= PIN_I2C0_SDA;
-    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASKE(2) | PCTL_MASKE(3)))
-                          | PCTL_FUNKTION(2, PCTL_I2C0) | PCTL_FUNKTION(3, PCTL_I2C0);
+    GPIO_PORTB_AHB_PCTL_R = (GPIO_PORTB_AHB_PCTL_R & ~(PCTL_MASK(2) | PCTL_MASK(3)))
+                          | PCTL_FUNCTION(2, PCTL_I2C0) | PCTL_FUNCTION(3, PCTL_I2C0);
     GPIO_PORTB_AHB_DEN_R |= PINS_I2C0;
 
     I2C0_MCR_R = I2C_MCR_MFE;
@@ -315,12 +315,12 @@ static bool i2c_wait(void)
     return (I2C0_MCS_R & I2C_MCS_ERROR) == 0;
 }
 
-static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
+static bool i2c_write(uint8_t addr, const uint8_t *data, uint32_t n)
 {
     I2C0_MSA_R = (uint32_t)addr << I2C_MSA_SA_S;
     for (uint32_t i = 0; i < n; i++)
     {
-        I2C0_MDR_R = daten[i];
+        I2C0_MDR_R = data[i];
         uint32_t cmd = I2C_MCS_RUN;
         if (i == 0)     cmd |= I2C_MCS_START;
         if (i == n - 1) cmd |= I2C_MCS_STOP;
@@ -334,7 +334,7 @@ static bool i2c_write(uint8_t addr, const uint8_t *daten, uint32_t n)
     return true;
 }
 
-static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
+static bool i2c_read(uint8_t addr, uint8_t *data, uint32_t n)
 {
     I2C0_MSA_R = ((uint32_t)addr << I2C_MSA_SA_S) | I2C_MSA_RS;
     for (uint32_t i = 0; i < n; i++)
@@ -349,12 +349,12 @@ static bool i2c_read(uint8_t addr, uint8_t *daten, uint32_t n)
             I2C0_MCS_R = I2C_MCS_STOP;
             return false;
         }
-        daten[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
+        data[i] = (uint8_t)(I2C0_MDR_R & I2C_MDR_DATA_M);
     }
     return true;
 }
 
-/* Ultraschallsensor MB1242: 0x51 schreiben startet eine Messung, danach 2 Bytes lesen (cm) */
+/* Ultrasonic sensor MB1242: writing 0x51 starts a measurement, then read 2 bytes (cm) */
 static bool sonar_start(void)
 {
     const uint8_t cmd = 0x51;
@@ -373,7 +373,7 @@ static bool sonar_read(uint32_t *cm)
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Text -> Bild. 5x7-Zeichensatz (Spalten, Bit 0 = oben = LED an der Pendelspitze)
+ * Text -> image. 5x7 font (columns, bit 0 = top = LED at the tip of the pendulum)
  * ------------------------------------------------------------------------------------------- */
 static const uint8_t font5x7[][5] = {
     { 0x3E, 0x51, 0x49, 0x45, 0x3E },   /* 0 */
@@ -386,13 +386,13 @@ static const uint8_t font5x7[][5] = {
     { 0x01, 0x71, 0x09, 0x05, 0x03 },   /* 7 */
     { 0x36, 0x49, 0x49, 0x49, 0x36 },   /* 8 */
     { 0x06, 0x49, 0x49, 0x29, 0x1E },   /* 9 */
-    { 0x3E, 0x41, 0x41, 0x41, 0x22 },   /* C (Index 10) */
-    { 0x7F, 0x02, 0x0C, 0x02, 0x7F },   /* M (Index 11) */
-    { 0x08, 0x08, 0x08, 0x08, 0x08 },   /* - (Index 12) */
-    { 0x00, 0x00, 0x00, 0x00, 0x00 },   /* Leerzeichen (Index 13) */
+    { 0x3E, 0x41, 0x41, 0x41, 0x22 },   /* C (index 10) */
+    { 0x7F, 0x02, 0x0C, 0x02, 0x7F },   /* M (index 11) */
+    { 0x08, 0x08, 0x08, 0x08, 0x08 },   /* - (index 12) */
+    { 0x00, 0x00, 0x00, 0x00, 0x00 },   /* space (index 13) */
 };
 
-static uint32_t zeichen_index(char c)
+static uint32_t char_index(char c)
 {
     if (c >= '0' && c <= '9') return (uint32_t)(c - '0');
     if (c == 'C') return 10u;
@@ -401,66 +401,66 @@ static uint32_t zeichen_index(char c)
     return 13u;
 }
 
-/* Schreibt den Text zentriert ins Bild (6 Spalten pro Zeichen, max. 6 Zeichen) */
-static void bild_text(const char *text)
+/* Writes the text centred into the image (6 columns per character, max. 6 characters) */
+static void image_text(const char *text)
 {
-    uint8_t neu[SPALTEN] = { 0 };
+    uint8_t next[COLUMNS] = { 0 };
     uint32_t n = 0;
-    while (text[n] && n < SPALTEN / 6u)
+    while (text[n] && n < COLUMNS / 6u)
     {
         n++;
     }
-    uint32_t x = (SPALTEN - (n * 6u - 1u)) / 2u;          /* links auffüllen = zentrieren */
+    uint32_t x = (COLUMNS - (n * 6u - 1u)) / 2u;          /* pad on the left = centre */
     for (uint32_t i = 0; i < n; i++)
     {
-        const uint8_t *z = font5x7[zeichen_index(text[i])];
+        const uint8_t *z = font5x7[char_index(text[i])];
         for (uint32_t s = 0; s < 5u; s++)
         {
-            neu[x++] = z[s];
+            next[x++] = z[s];
         }
-        x++;                                               /* Abstand zwischen Zeichen */
+        x++;                                               /* gap between characters */
     }
-    for (uint32_t k = 0; k < SPALTEN; k++)
+    for (uint32_t k = 0; k < COLUMNS; k++)
     {
-        bild[k] = neu[k];
+        image[k] = next[k];
     }
 }
 
 /* ---------------------------------------------------------------------------------------------
- * Hauptprogramm
+ * Main program
  * ------------------------------------------------------------------------------------------- */
 int main(void)
 {
-    SYSCTL_RCGCGPIO_R |= PORTS_TAKT;
+    SYSCTL_RCGCGPIO_R |= PORTS_CLOCK;
     SYSCTL_RCGCUART_R |= SYSCTL_RCGCUART_R0;
     SYSCTL_RCGCI2C_R |= SYSCTL_RCGCI2C_R0;
-    SYSCTL_RCGCTIMER_R |= TIMER_TAKT;
-    while ((SYSCTL_PRGPIO_R & PORTS_BEREIT) != PORTS_BEREIT || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
-           (SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0 || (SYSCTL_PRTIMER_R & TIMER_BEREIT) != TIMER_BEREIT)
+    SYSCTL_RCGCTIMER_R |= TIMERS_CLOCK;
+    while ((SYSCTL_PRGPIO_R & PORTS_READY) != PORTS_READY || (SYSCTL_PRUART_R & SYSCTL_PRUART_R0) == 0 ||
+           (SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0 || (SYSCTL_PRTIMER_R & TIMERS_READY) != TIMERS_READY)
     {
     }
 
-    /* LED D2 (Herzschlag) */
+    /* LED D2 (heartbeat) */
     GPIO_PORTN_DIR_R |= LED_D2;
     GPIO_PORTN_DEN_R |= LED_D2;
 
-    /* Pendel-LEDs: ganzer Port M als Ausgang */
-    GPIO_PORTM_DIR_R |= PENDEL_LEDS;
-    GPIO_PORTM_DEN_R |= PENDEL_LEDS;
+    /* Pendulum LEDs: the whole port M as output */
+    GPIO_PORTM_DIR_R |= PENDULUM_LEDS;
+    GPIO_PORTM_DEN_R |= PENDULUM_LEDS;
     GPIO_PORTM_DATA_R = 0;
 
-    /* Pendel-Signal PL0: Eingang, Interrupt bei beiden Flanken */
-    GPIO_PORTL_DIR_R &= ~PENDEL_SYNC;
-    GPIO_PORTL_DEN_R |= PENDEL_SYNC;
-    GPIO_PORTL_IS_R &= ~PENDEL_SYNC;                  /* Flanke */
-    GPIO_PORTL_IBE_R |= PENDEL_SYNC;                  /* beide Flanken */
-    GPIO_PORTL_ICR_R = PENDEL_SYNC;
-    GPIO_PORTL_IM_R |= PENDEL_SYNC;
+    /* Pendulum signal PL0: input, interrupt on both edges */
+    GPIO_PORTL_DIR_R &= ~PENDULUM_SYNC;
+    GPIO_PORTL_DEN_R |= PENDULUM_SYNC;
+    GPIO_PORTL_IS_R &= ~PENDULUM_SYNC;                  /* edge */
+    GPIO_PORTL_IBE_R |= PENDULUM_SYNC;                  /* both edges */
+    GPIO_PORTL_ICR_R = PENDULUM_SYNC;
+    GPIO_PORTL_IM_R |= PENDULUM_SYNC;
 
     uart_init();
     i2c_init();
 
-    /* Timer0A: 100 ms periodisch (Sensor, Herzschlag) */
+    /* Timer0A: 100 ms periodic (sensor, heartbeat) */
     TIMER0_CTL_R = 0;
     TIMER0_CFG_R = TIMER_CFG_32_BIT_TIMER;
     TIMER0_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
@@ -468,63 +468,63 @@ int main(void)
     TIMER0_ICR_R = TIMER_ICR_TATOCINT;
     TIMER0_IMR_R |= TIMER_IMR_TATOIM;
 
-    /* Timer1A: Einmal-Timer für die Spalten (wird in den ISRs gestartet) */
+    /* Timer1A: one-shot timer for the columns (started in the ISRs) */
     TIMER1_CTL_R = 0;
     TIMER1_CFG_R = TIMER_CFG_32_BIT_TIMER;
     TIMER1_TAMR_R = TIMER_TAMR_TAMR_1_SHOT;
     TIMER1_ICR_R = TIMER_ICR_TATOCINT;
     TIMER1_IMR_R |= TIMER_IMR_TATOIM;
 
-    /* Timer2A: freilaufend (32 Bit, periodisch, ohne Interrupt) als Zeitbasis */
+    /* Timer2A: free-running (32 bit, periodic, no interrupt) as time base */
     TIMER2_CTL_R = 0;
     TIMER2_CFG_R = TIMER_CFG_32_BIT_TIMER;
     TIMER2_TAMR_R = TIMER_TAMR_TAMR_PERIOD;
-    TIMER2_TAILR_R = TIMER_TAILR_M;               /* größter Startwert: läuft ~268 s */
+    TIMER2_TAILR_R = TIMER_TAILR_M;               /* largest start value: runs ~268 s */
     TIMER2_CTL_R |= TIMER_CTL_TAEN;
 
-    zeitplan_berechnen(periode);
-    bild_text("---");
+    compute_schedule(period);
+    image_text("---");
 
     NVIC_EN0_R = (1u << IRQ_TIMER0A) | (1u << IRQ_TIMER1A);
     NVIC_EN1_R = 1u << (IRQ_GPIOL - 32u);
     __asm volatile("cpsie i");
     TIMER0_CTL_R |= TIMER_CTL_TAEN;
 
-    uart_puts("\nrenode4mc-haw - Example 04 Pendeldisplay\n");
-    uart_puts("Abstand am Sensor einstellen; er erscheint auf dem Pendel und hier.\n");
+    uart_puts("\nrenode4mc-haw - Example 04 Pendulum display\n");
+    uart_puts("Set the distance at the sensor; it appears on the pendulum and here.\n");
 
-    uint32_t letzterTick = 0;
-    uint32_t abstand = UINT32_MAX;              /* noch kein Messwert */
+    uint32_t lastTick = 0;
+    uint32_t distance = UINT32_MAX;              /* no measurement yet */
     char text[16];
 
     while (1)
     {
-        if (ticks != letzterTick)
+        if (ticks != lastTick)
         {
-            letzterTick = ticks;
+            lastTick = ticks;
 
-            if (letzterTick % 5u == 0u)
+            if (lastTick % 5u == 0u)
             {
                 GPIO_PORTN_DATA_BITS_R[LED_D2] ^= LED_D2;            /* D2: 1 Hz */
             }
 
-            if (letzterTick % 2u == 0u)
+            if (lastTick % 2u == 0u)
             {
-                sonar_start();                                    /* Messung anstoßen ... */
+                sonar_start();                                    /* start a measurement ... */
             }
             else
             {
                 uint32_t cm;
-                if (sonar_read(&cm) && cm != abstand)             /* ... 100 ms später lesen */
+                if (sonar_read(&cm) && cm != distance)             /* ... read it 100 ms later */
                 {
-                    abstand = cm;
+                    distance = cm;
                     int n = utoa(cm, text);
                     text[n] = 'C';
                     text[n + 1] = 'M';
                     text[n + 2] = '\0';
-                    bild_text(text);
+                    image_text(text);
 
-                    uart_puts("Abstand: ");
+                    uart_puts("Distance: ");
                     text[n] = '\0';
                     uart_puts(text);
                     uart_puts(" cm\n");
@@ -532,19 +532,19 @@ int main(void)
             }
         }
 
-        if (neuePeriode)
+        if (newPeriod)
         {
-            uint32_t p = neuePeriode;
-            neuePeriode = 0;
-            const uint32_t takteJe100us = SYSTEM_CLOCK_HZ / 10000u;
-            int n = utoa((p + takteJe100us / 2u) / takteJe100us, text); /* in 0,1 ms, gerundet */
-            uart_puts("Pendelperiode: ");
+            uint32_t p = newPeriod;
+            newPeriod = 0;
+            const uint32_t ticksPer100us = SYSTEM_CLOCK_HZ / 10000u;
+            int n = utoa((p + ticksPer100us / 2u) / ticksPer100us, text); /* in 0.1 ms, rounded */
+            uart_puts("Pendulum period: ");
             for (int i = 0; i < n - 1; i++) uart_putc(text[i]);
-            uart_putc(',');
+            uart_putc('.');
             uart_putc(text[n - 1]);
             uart_puts(" ms\n");
         }
 
-        __asm volatile("wfi");                            /* schlafen bis zum nächsten Interrupt */
+        __asm volatile("wfi");                            /* sleep until the next interrupt */
     }
 }

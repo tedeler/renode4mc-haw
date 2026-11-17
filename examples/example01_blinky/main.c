@@ -1,63 +1,63 @@
 /*
- * Example 01 - Blinky: LED D1 und D2 abwechselnd blinken lassen (reiner Registerzugriff)
- * Board: EK-TM4C1294XL (TM4C1294NCPDT), Takt: 16 MHz (Reset-Takt, wird hier nicht verändert)
+ * Example 01 - Blinky: LEDs D1 and D2 blink alternately (direct register access)
+ * Board: EK-TM4C1294XL (TM4C1294NCPDT), clock: 16 MHz (clock after reset, not changed here)
  *
- * LEDs auf dem Board:   D1 = PN1,  D2 = PN0
+ * LEDs on the board:   D1 = PN1,  D2 = PN0
  *
- * Programmablauf:
- *   1. Takt für GPIO-Port N einschalten ("Clock Gating", Register RCGCGPIO)
- *   2. Warten, bis der Port bereit ist (Register PRGPIO)
- *   3. PN0 und PN1 als digitale Ausgänge konfigurieren (DIR, DEN)
- *   4. Endlosschleife: LEDs umschalten (DATA), dann warten
+ * Program flow:
+ *   1. Switch on the clock of GPIO port N ("clock gating", register RCGCGPIO)
+ *   2. Wait until the port is ready (register PRGPIO)
+ *   3. Configure PN0 and PN1 as digital outputs (DIR, DEN)
+ *   4. Endless loop: toggle the LEDs (DATA), then wait
  *
- * Registernamen und Bitkonstanten stammen aus der TI-Headerdatei tm4c1294ncpdt.h
- * (common/). Sie enthält für jedes Register ein Makro <MODUL>_<REGISTER>_R, das direkt
- * wie eine Variable gelesen und beschrieben wird, z. B. GPIO_PORTN_DIR_R, und für die Bits
- * Konstanten wie SYSCTL_RCGCGPIO_R12 (Bit 12 = Port N). Im Programm steht deshalb keine
- * einzige Adresse; nachschlagen lassen sich die Register im Datenblatt "TM4C1294NCPDT"
- * (Kapitel "System Control" und "General-Purpose Input/Outputs (GPIO)").
+ * Register names and bit constants come from the TI header file tm4c1294ncpdt.h
+ * (common/). For every register it contains a macro <MODULE>_<REGISTER>_R that can be read
+ * and written directly like a variable, e.g. GPIO_PORTN_DIR_R, and for the bits it contains
+ * constants such as SYSCTL_RCGCGPIO_R12 (bit 12 = port N). That is why the program does not
+ * contain a single address; you can look up the registers in the data sheet "TM4C1294NCPDT"
+ * (chapters "System Control" and "General-Purpose Input/Outputs (GPIO)").
  */
 #include <stdint.h>
 #include "tm4c1294ncpdt.h"
 
-#define PORT_N              SYSCTL_RCGCGPIO_R12   /* Port N ist Bit 12 in RCGCGPIO */
-#define PORT_N_BEREIT       SYSCTL_PRGPIO_R12     /* ... und in PRGPIO */
+#define PORT_N              SYSCTL_RCGCGPIO_R12   /* port N is bit 12 in RCGCGPIO */
+#define PORT_N_READY        SYSCTL_PRGPIO_R12     /* ... and in PRGPIO */
 #define PIN0                (1u << 0)
 #define PIN1                (1u << 1)
 
-/* Warteschleife: Dauer nur ungefähr, hängt vom Compiler ab (siehe README). */
-#define HALBE_SEKUNDE       700000u
+/* Busy-wait loop: the duration is only approximate, it depends on the compiler (see README). */
+#define HALF_SECOND         700000u
 
-static void warten(uint32_t durchlaeufe)
+static void delay(uint32_t loops)
 {
-    for (volatile uint32_t i = 0; i < durchlaeufe; i++)
+    for (volatile uint32_t i = 0; i < loops; i++)
     {
     }
 }
 
 int main(void)
 {
-    /* 1. Takt für Port N freigeben. Ohne diesen Schritt löst jeder Zugriff auf die
-     *    Port-Register einen Fault aus (auf der Hardware: HardFault). */
+    /* 1. Enable the clock of port N. Without this step, every access to the port
+     *    registers causes a fault (on the hardware: HardFault). */
     SYSCTL_RCGCGPIO_R |= PORT_N;
 
-    /* 2. Warten, bis der Port nach dem Einschalten bereit ist. */
-    while ((SYSCTL_PRGPIO_R & PORT_N_BEREIT) == 0)
+    /* 2. Wait until the port is ready after being switched on. */
+    while ((SYSCTL_PRGPIO_R & PORT_N_READY) == 0)
     {
     }
 
-    /* 3. PN0 und PN1 sind Ausgänge und digital. */
+    /* 3. PN0 and PN1 are outputs and digital. */
     GPIO_PORTN_DIR_R |= PIN0 | PIN1;
     GPIO_PORTN_DEN_R |= PIN0 | PIN1;
 
-    /* Startzustand: D1 (PN1) an, D2 (PN0) aus. */
+    /* Initial state: D1 (PN1) on, D2 (PN0) off. */
     GPIO_PORTN_DATA_R = PIN1;
 
     while (1)
     {
-        warten(HALBE_SEKUNDE);
+        delay(HALF_SECOND);
 
-        /* Beide Pins umschalten: XOR invertiert genau die Bits, die in der Maske 1 sind. */
+        /* Toggle both pins: XOR inverts exactly those bits that are 1 in the mask. */
         GPIO_PORTN_DATA_R ^= PIN0 | PIN1;
     }
 }

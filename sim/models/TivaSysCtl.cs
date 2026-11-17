@@ -59,7 +59,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 resetCount++;
                 lastResetNs = machine.LocalTimeSource.ElapsedVirtualTime.Ticks;
                 ResetCpuStats();   // erst hier: auch der Befehlszähler der CPU ist jetzt zurückgesetzt
-                this.Log(LogLevel.Info, "Reset-Taster: Mikrocontroller neu gestartet");
+                this.Log(LogLevel.Info, "Reset button: microcontroller restarted");
             }, keep);
         }
 
@@ -87,7 +87,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             queryListener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
             queryListener.Start();
             new System.Threading.Thread(QueryAcceptLoop) { IsBackground = true, Name = "TivaSysCtl queries" }.Start();
-            this.Log(LogLevel.Info, "Abfrage-Port {0}", port);
+            this.Log(LogLevel.Info, "Query port {0}", port);
         }
 
         private void QueryAcceptLoop()
@@ -216,9 +216,9 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         private string InvokeCommand(string line)
         {
             var tokens = Tokenize(line);
-            if(tokens.Count < 2) throw new ArgumentException("Befehl unvollständig: " + line);
+            if(tokens.Count < 2) throw new ArgumentException("Incomplete command: " + line);
             object target = ResolveTarget(tokens[0]);
-            if(target == null) throw new ArgumentException("unbekannt: " + tokens[0]);
+            if(target == null) throw new ArgumentException("unknown: " + tokens[0]);
             string member = tokens[1];
             var args = tokens.Skip(2).ToList();
             var type = target.GetType();
@@ -241,7 +241,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                 if(!ok) continue;
                 return Format(m.Invoke(target, values));
             }
-            throw new ArgumentException(string.Format("{0}: keine passende Methode {1} mit {2} Argument(en)", tokens[0], member, args.Count));
+            throw new ArgumentException(string.Format("{0}: no matching method {1} with {2} argument(s)", tokens[0], member, args.Count));
         }
 
         private object ResolveTarget(string path)
@@ -368,7 +368,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             bool sram = address >= SramBase && address + (ulong)count <= SramBase + SramSize;
             if(!flash && !sram)
             {
-                return "MEM:ERR:nur Flash 0x00000000-0x000FFFFF und SRAM 0x20000000-0x2003FFFF lesbar, Peripherie im Reiter Peripherie";
+                return "MEM:ERR:only flash 0x00000000-0x000FFFFF and SRAM 0x20000000-0x2003FFFF can be read here, peripherals in the Peripherals tab";
             }
             var bytes = machine.SystemBus.ReadBytes(address, count, true);
             return "MEM:" + address.ToString("X8") + ":" + BitConverter.ToString(bytes).Replace("-", "");
@@ -396,7 +396,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             {"R0", "R0"}, {"R1", "R1"}, {"R2", "R2"}, {"R3", "R3"}, {"R4", "R4"}, {"R5", "R5"}, {"R6", "R6"},
             {"R7", "R7"}, {"R8", "R8"}, {"R9", "R9"}, {"R10", "R10"}, {"R11", "R11"}, {"R12", "R12"},
             {"SP", "SP"}, {"LR", "LR"}, {"PC", "PC"}, {"CPSR", "xPSR"}, {"PRIMASK", "PRIMASK"},
-            {"FAULTMASK", "FAULTMASK"}, {"BasePri", "BASEPRI"}, {"Control", "CONTROL"}, {"OtherSP", "SP_inaktiv"},
+            {"FAULTMASK", "FAULTMASK"}, {"BasePri", "BASEPRI"}, {"Control", "CONTROL"}, {"OtherSP", "SP_inactive"},
         };
 
         // "ST:<Zeit ns>:<Reset-Anzahl>:<letzter Reset ns>:<Systemtakt Hz>:<CPU-Zustand>:<halted 0/1>:

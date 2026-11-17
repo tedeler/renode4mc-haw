@@ -50,7 +50,7 @@ function SessionStatus({ experiment, solution, background }) {
       </span>
       {solution && (
         <span className="solution-badge" title={experiment.solution?.label}>
-          Musterlösung
+          Reference solution
         </span>
       )}
       {live ? (
@@ -65,15 +65,15 @@ function SessionStatus({ experiment, solution, background }) {
       ) : (
         <span
           className="preview-badge"
-          title={`Vorschau der Bedienelemente. Firmware (.out/.elf) wählen und Start klicken${
-            background ? ` – „${background}“ läuft noch und wird dabei beendet` : ''
+          title={`Preview of the controls. Choose a firmware file (.out/.elf) and click Start${
+            background ? ` – "${background}" is still running and will be stopped` : ''
           }`}
         >
-          Vorschau · keine Firmware{background ? ` · „${background}“ läuft noch` : ''}
+          Preview · no firmware{background ? ` · "${background}" still running` : ''}
         </span>
       )}
       {lastError && (
-        <span className="panel-error" onClick={clearError} title={`${lastError} – klicken zum Schließen`}>
+        <span className="panel-error" onClick={clearError} title={`${lastError} – click to close`}>
           ⚠ {lastError}
         </span>
       )}
@@ -85,7 +85,7 @@ function SessionStatus({ experiment, solution, background }) {
 function Board({ experiment }) {
   const { leds, ledLevels } = useControlSocket();
   return (
-    <Widget title="Board" subtitle="LEDs & Taster" className="gpio">
+    <Widget title="Board" subtitle="LEDs & push buttons" className="gpio">
       <div className="board-row">
         {experiment.leds?.length > 0 && (
           <div className="led-row">
@@ -119,7 +119,7 @@ function usePanels(experiment, scopeOn, simOn) {
     if (scopeOn)
       list.push({
         id: 'scope',
-        title: 'Oszilloskop',
+        title: 'Oscilloscope',
         zone: 'visual',
         grow: 3,
         minH: 260,
@@ -137,7 +137,7 @@ function usePanels(experiment, scopeOn, simOn) {
     if (e.pendulum)
       list.push({
         id: 'pendulum',
-        title: 'Pendel',
+        title: 'Pendulum',
         zone: 'visual',
         grow: 3,
         minH: 240,
@@ -163,7 +163,7 @@ function usePanels(experiment, scopeOn, simOn) {
     if (e.bcd)
       list.push({
         id: 'bcd',
-        title: '7-Segment',
+        title: '7-segment',
         zone: 'visual',
         grow: 1.2,
         minH: 150,
@@ -217,7 +217,7 @@ function usePanels(experiment, scopeOn, simOn) {
           />
         ),
       });
-    list.push({ id: 'diag', title: 'Diagnose', zone: 'control', grow: 0, minH: 90, el: <Diagnostics /> });
+    list.push({ id: 'diag', title: 'Diagnostics', zone: 'control', grow: 0, minH: 90, el: <Diagnostics /> });
     return list;
   }, [e, scopeOn, simOn]);
   return useMemo(
@@ -240,7 +240,7 @@ function Panel({ experiment, solution, background }) {
           className="btn small tool-btn reset-btn"
           disabled={!running}
           onClick={() => send({ type: 'reset' })}
-          title="Reset-Taster des Boards: nur der Mikrocontroller startet neu, die Firmware bleibt geladen"
+          title="Reset button of the board: only the microcontroller restarts, the firmware stays loaded"
         >
           ⟲ Reset
         </button>
@@ -249,7 +249,7 @@ function Panel({ experiment, solution, background }) {
         className={`btn small tool-btn ${simOn ? 'on' : ''}`}
         onClick={toggleSim}
         aria-pressed={simOn}
-        title="Firmware, CPU-Zustand, Debugger, Register und Meldungen anzeigen"
+        title="Show firmware, CPU state, debugger, registers and messages"
       >
         Simulation
       </button>
@@ -257,9 +257,9 @@ function Panel({ experiment, solution, background }) {
         className={`btn small tool-btn ${scopeOn ? 'on' : ''}`}
         onClick={toggleScope}
         aria-pressed={scopeOn}
-        title={`Oszilloskop ${scopeOn ? 'ausblenden' : 'einblenden'}`}
+        title={`${scopeOn ? 'Hide' : 'Show'} oscilloscope`}
       >
-      〰 Oszi
+      〰 Scope
       </button>
     </>
   );

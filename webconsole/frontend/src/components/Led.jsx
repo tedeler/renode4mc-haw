@@ -11,7 +11,7 @@ export default function Led({ label, color = '#22c55e', on, level }) {
   const pct = Math.round(b * 100);
   const lit = b > 0.02;
   const glowAlpha = Math.round(b * 0x88).toString(16).padStart(2, '0');
-  const state = dimmed ? `gedimmt ${pct} %` : on ? 'an' : 'aus';
+  const state = dimmed ? `dimmed ${pct} %` : on ? 'on' : 'off';
   return (
     <div className="led">
       <div
@@ -23,7 +23,7 @@ export default function Led({ label, color = '#22c55e', on, level }) {
             : 'inset 0 -3px 6px #0006',
         }}
         aria-label={`${label}: ${state}`}
-        title={dimmed ? `PWM: mittlere Helligkeit ${pct} %` : undefined}
+        title={dimmed ? `PWM: average brightness ${pct} %` : undefined}
         role="img"
       />
       <span className="led-label">{label}</span>

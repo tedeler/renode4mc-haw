@@ -1,5 +1,5 @@
-/* Ersatz für _c_int00 des TI-Laufzeitsystems (nur für die gcc-Builds der Musterlösungen):
- * .data aus dem Flash kopieren, .bss löschen, main() aufrufen. */
+/* Replacement for _c_int00 of the TI run-time library (only for the gcc builds of the reference solutions):
+ * copy .data from flash, clear .bss, call main(). */
 #include <stdint.h>
 extern uint32_t _etext, _data, _edata, _bss, _ebss;
 extern int main(void);

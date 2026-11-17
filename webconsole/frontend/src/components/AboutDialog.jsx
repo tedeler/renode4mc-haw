@@ -10,7 +10,7 @@ function formatDate(iso) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
-    : d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+    : d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 /** Über-Dialog: Version, Git-Stand, Link zum Repository. */
@@ -47,39 +47,39 @@ export default function AboutDialog({ open, onClose }) {
           </span>
         </h2>
         <p className="about-sub">
-          Simulator für das Mikrocontroller-Labor (TI TM4C1294) auf Basis von Renode
+          Simulator for the microcontroller lab (TI TM4C1294), based on Renode
           <br />
-          HAW Hamburg · Fakultät EMI · Microcontroller Lab
+          HAW Hamburg · Faculty EMI · Microcontroller Lab
         </p>
 
         <dl className="about-facts">
           <dt>Version</dt>
-          <dd>{INFO.version || 'unbekannt'}</dd>
+          <dd>{INFO.version || 'unknown'}</dd>
 
-          <dt>Git-Commit</dt>
+          <dt>Git commit</dt>
           <dd>
             {short ? (
               <>
                 <a href={commitUrl} target="_blank" rel="noopener noreferrer" title={INFO.commit}>
                   <code>{short}</code>
                 </a>
-                {INFO.dirty && <span className="about-dirty"> + lokale Änderungen</span>}
+                {INFO.dirty && <span className="about-dirty"> + local changes</span>}
                 {INFO.branch && <span className="about-muted"> ({INFO.branch})</span>}
               </>
             ) : (
-              <span className="about-muted">unbekannt</span>
+              <span className="about-muted">unknown</span>
             )}
           </dd>
 
           {INFO.commitDate && (
             <>
-              <dt>Stand</dt>
+              <dt>Date</dt>
               <dd>{formatDate(INFO.commitDate)}</dd>
             </>
           )}
 
-          <dt>Gebaut</dt>
-          <dd>{formatDate(INFO.buildDate) || 'unbekannt'}</dd>
+          <dt>Built</dt>
+          <dd>{formatDate(INFO.buildDate) || 'unknown'}</dd>
 
           <dt>Repository</dt>
           <dd>
@@ -91,7 +91,7 @@ export default function AboutDialog({ open, onClose }) {
 
         <div className="about-actions">
           <button type="button" className="btn primary" onClick={onClose} autoFocus>
-            Schließen
+            Close
           </button>
         </div>
       </div>

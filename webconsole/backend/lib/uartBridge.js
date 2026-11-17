@@ -24,7 +24,7 @@ class UartBridge {
         if (this.sock && !this.sock.destroyed) this.sock.write(Buffer.from(data));
       });
     });
-    console.log(`[uart] WebSocket auf Port ${wsPort}`);
+    console.log(`[uart] WebSocket on port ${wsPort}`);
   }
 
   _remember(chunk) {
@@ -46,7 +46,7 @@ class UartBridge {
   async attach(timeoutMs, isAlive = () => true) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (!isAlive()) throw new Error('Renode-Prozess wurde beendet');
+      if (!isAlive()) throw new Error('Renode process has terminated');
       try {
         this.sock = await new Promise((resolve, reject) => {
           const s = net.connect({ host: this.renodeHost, port: this.renodePort });
@@ -62,13 +62,13 @@ class UartBridge {
         this.sock.on('close', () => {
           this.sock = null;
         });
-        console.log('[uart] mit Renode verbunden');
+        console.log('[uart] connected to Renode');
         return;
       } catch {
         await sleep(300);
       }
     }
-    throw new Error('Renode-UART-Socket nicht erreichbar');
+    throw new Error('Renode UART socket not reachable');
   }
 
   /** Trennt Renode und zwingt alle Browser zum Reconnect (Code 4000 = Neustart). */

@@ -1,532 +1,532 @@
-# Web-Konsole: TM4C1294-Simulation im Browser
+# Web console: TM4C1294 simulation in the browser
 
-Die Web-Konsole ist eine zweite Bedienoberfläche für den Simulator in `sim/`. Statt `ucsim` auf dem
-eigenen Rechner läuft alles in **einem Docker-Container**: Studierende öffnen eine Webseite,
-wählen einen Versuch, laden die von CCS gebaute `.out`-Datei hoch und bedienen die simulierte
-Hardware im Browser. Welche Bedienelemente es gibt, legt der Versuch fest: LEDs, Taster, ein
-UART-Terminal, OLED-Display, Ultraschallsensoren, Keypads, 7-Segment-Anzeige, Pendeldisplay.
+The web console is a second user interface for the simulator in `sim/`. Instead of running `ucsim`
+on your own computer, everything runs in **one Docker container**: students open a web page,
+choose an experiment, upload the `.out` file built by CCS and operate the simulated hardware in
+the browser. The experiment defines which controls are available: LEDs, push buttons, a UART
+terminal, OLED display, ultrasonic sensors, keypads, 7-segment display, pendulum display.
 
-Im Container gibt es keinen Compiler und keine IDE. Gebaut wird wie bisher mit CCS bzw. `make`
-(siehe [TOOLCHAIN.md](TOOLCHAIN.md)). Der Container nimmt nur das fertige ELF entgegen. Er ist
-**zustandslos**: Die Firmware liegt in `/tmp`, nichts wird dauerhaft gespeichert.
+The container has no compiler and no IDE. You build the firmware as before with CCS or `make`
+(see [TOOLCHAIN.md](TOOLCHAIN.md)). The container only accepts the finished ELF file. It is
+**stateless**: the firmware is stored in `/tmp`, nothing is stored permanently.
 
 ```
- CCS / make ──▶ programm.out ──Upload──▶ Web-Konsole (Docker) ──▶ Renode (sim/) ──▶ Browser-Bedienfeld
+ CCS / make ──▶ program.out ──upload──▶ web console (Docker) ──▶ Renode (sim/) ──▶ control panel in the browser
 ```
 
-Einstieg Schritt für Schritt: [ANLEITUNG.md](ANLEITUNG.md); Kurzanleitung zum Starten:
+Step-by-step introduction: [GUIDE.md](GUIDE.md); short guide for starting:
 [`webconsole/README.md`](../webconsole/README.md).
-Beispielprogramme: [Example 04](../examples/example04_pendeldisplay/README.md) nutzt das Pendeldisplay
-von Example 2, [Example 05](../examples/example05_timer_ccp/README.md) die Timer-Pins von Example 3.
-[Example 03](../examples/example03_webkonsole/README.md) braucht OLED, MB1242 und Keypad, die heute kein
-mitgelieferter Versuch enthält (Versuchsdatei dafür: [ANLEITUNG.md, Abschnitt 3](ANLEITUNG.md#3-neuen-versuch-hinzufügen)).
+Example programs: [Example 04](../examples/example04_pendeldisplay/README.md) uses the pendulum display
+of Example 2, [Example 05](../examples/example05_timer_ccp/README.md) the timer pins of Example 3.
+[Example 03](../examples/example03_webkonsole/README.md) needs an OLED, an MB1242 and a keypad, which no
+experiment in the repository contains today (experiment file for it: [GUIDE.md, section 3](GUIDE.md#3-adding-a-new-experiment)).
 
 ---
 
-## 1. Architektur
+## 1. Architecture
 
-Drei Schichten in einem Container:
+Three layers in one container:
 
 ```
-┌──────────────────────────── Docker-Container ──────────────────────────────────────────────┐
+┌──────────────────────────── Docker container ──────────────────────────────────────────────┐
 │                                                                                             │
-│  Node.js / Express  (Entrypoint: node server.js)                                            │
-│  ├─ HTTP :3000   statische React-SPA, POST /upload, GET /api/experiments, /api/status       │
-│  ├─ RenodeManager      startet/beendet Renode als Child-Prozess (cwd = sim/)                │
+│  Node.js / Express  (entry point: node server.js)                                           │
+│  ├─ HTTP :3000   static React SPA, POST /upload, GET /api/experiments, /api/status          │
+│  ├─ RenodeManager      starts/stops Renode as a child process (cwd = sim/)                  │
 │  ├─ UartBridge   :3333 WebSocket  ⇄  TCP 127.0.0.1:3335  (UartHostTerminal.ServeTcp, UART0) │
-│  └─ ControlBridge:3334 WebSocket  ⇄  TCP 127.0.0.1:1234  (Renode-Monitor, Telnet)           │
-│                                   ⇄  TCP 127.0.0.1:1235  (Abfrage-Port, TivaSysCtl)         │
-│                                   ⇠  WS  127.0.0.1:9000  (LED-Bridge, sim/models)           │
+│  └─ ControlBridge:3334 WebSocket  ⇄  TCP 127.0.0.1:1234  (Renode monitor, Telnet)           │
+│                                   ⇄  TCP 127.0.0.1:1235  (query port, TivaSysCtl)           │
+│                                   ⇠  WS  127.0.0.1:9000  (LED bridge, sim/models)           │
 │                                                                                             │
 │  Renode 1.17.0 (headless):  renode --disable-gui --port 1234                                │
 │                             -e "$elf=@/tmp/app.elf; s @/tmp/renode4mc-experiments/<id>.resc"│
-│  └─ sim/tm4c1294.resc + sim/platforms/tm4c1294ncpdt.repl + erzeugte <id>.repl               │
-│     (.resc/.repl erzeugt aus sim/experiments/<id>.json, siehe EXPERIMENTS.md)               │
+│  └─ sim/tm4c1294.resc + sim/platforms/tm4c1294ncpdt.repl + generated <id>.repl              │
+│     (.resc/.repl generated from sim/experiments/<id>.json, see EXPERIMENTS.md)              │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
-         ▲ :3000 HTTP            ▲ :3333 UART-WS              ▲ :3334 Control-WS
-         └────────────────────── Browser (React, xterm.js, Canvas) ─────────────────────────────┘
+         ▲ :3000 HTTP            ▲ :3333 UART WS              ▲ :3334 control WS
+         └────────────────────── browser (React, xterm.js, canvas) ─────────────────────────────┘
 ```
 
-**Warum Brücken und kein direkter WebSocket zu Renode?** Renode stellt UART, Monitor und GPIO
-nicht als WebSocket bereit, sondern als TCP-Socket. Das sind das UART-Terminal (`UartHostTerminal.ServeTcp`,
-Port 3335), der Telnet-Monitor (`--port`, 1234) und der Abfrage-Port (`TivaSysCtl.ServeQueries`, 1235).
-Die Ausnahme ist die LED-Bridge aus `sim/models/WebSocketBridge.cs`.
-Das Backend übersetzt deshalb zwischen beiden Welten. Das hat zwei Vorteile:
+**Why bridges and not a direct WebSocket to Renode?** Renode does not provide UART, monitor and GPIO
+as WebSockets but as TCP sockets. These are the UART terminal (`UartHostTerminal.ServeTcp`,
+port 3335), the Telnet monitor (`--port`, 1234) and the query port (`TivaSysCtl.ServeQueries`, 1235).
+The exception is the LED bridge from `sim/models/WebSocketBridge.cs`.
+The backend therefore translates between the two worlds. This has two advantages:
 
-- Die internen Ports (1234, 1235, 3335, 9000) bleiben im Container. Exponiert sind nur 3000, 3333 und 3334.
-- Der Browser kann **keine beliebigen Monitor-Befehle** senden. Er schickt nur Ereignisse wie
-  „Taster SW1 gedrückt“. Das Backend baut daraus Befehle, und zwar ausschließlich mit Renode-Pfaden
-  aus der Versuchs-Konfiguration. Ein Monitor-Zugang wäre sonst ein Zugang zum Container,
-  denn Renode kann Python und C# ausführen.
+- The internal ports (1234, 1235, 3335, 9000) stay inside the container. Only 3000, 3333 and 3334 are exposed.
+- The browser **cannot send arbitrary monitor commands**. It only sends events such as
+  "push button SW1 pressed". The backend builds commands from them, using only Renode paths from
+  the experiment configuration. Monitor access would otherwise be access to the container,
+  because Renode can execute Python and C#.
 
-### Vorschau nach der Auswahl
+### Preview after selecting an experiment
 
-Sobald ein Versuch ausgewählt ist, zeigt die Web-Konsole seine Bedienelemente – auch ohne Firmware
-(`GET /api/experiments/<id>`). In dieser **Vorschau** (Kennzeichen „Vorschau · keine Firmware“ in der
-Kopfzeile) gibt es keine WebSocket-Verbindung: LEDs und Anzeigen bleiben dunkel, Taster und Keypad
-melden „Keine Firmware geladen“. Schieberegler (Abstand, Pendelfrequenz), Oszilloskop-Kanäle und die
-Terminal-Einstellung lassen sich schon einstellen (`POST /api/terminal`); nach dem Start verbinden
-sich dieselben Widgets mit der Simulation und übernehmen diese Werte. Läuft im Backend noch ein
-anderer Versuch, zeigt die Kopfzeile das an; Start beendet ihn, Zurückwählen zeigt ihn wieder live.
-Nach **Stop** bleibt der Versuch als Vorschau stehen.
+As soon as an experiment is selected, the web console shows its controls – even without firmware
+(`GET /api/experiments/<id>`). In this **preview** (badge "Preview · no firmware" in the header bar)
+there is no WebSocket connection: LEDs and displays stay dark, push buttons and keypad report
+"No firmware loaded". Sliders (distance, pendulum frequency), oscilloscope channels and the
+terminal settings can already be set (`POST /api/terminal`); after the start, the same widgets
+connect to the simulation and take over these values. If another experiment is still running in
+the backend, the header bar shows this; Start stops it, selecting it again shows it live.
+After **Stop**, the experiment stays visible as a preview.
 
-### Ablauf beim Klick auf „Start“
+### What happens when you click "Start"
 
-1. Der Browser sendet `POST /upload` (`multipart/form-data`: `experiment_id`, `file`).
-2. Das Backend prüft die Versuchs-ID (Datei `sim/experiments/<id>.json` muss existieren und gültig
-   sein) und die ELF-Signatur (`0x7F 'E' 'L' 'F'`). Aus der Versuchsdatei erzeugt es `.repl` und
-   `.resc` in `GENERATED_DIR`.
-3. Die Browser-WebSockets werden mit Code `4000` geschlossen. Das Frontend verbindet sich danach
-   sofort neu.
-4. Die Datei wird nach `/tmp/app.elf` verschoben. Renode läuft dauerhaft (siehe unten): Über den
-   Monitor setzt das Backend mit `Clear` Maschine und Emulation zurück, setzt `$elf`, `$queryPort`
-   und gegebenenfalls `$uartBaud`/`$uartFormat` und führt `include @<id>.resc` aus.
-5. Das Backend wartet, bis das UART-Terminal (Port 3335) und der Monitor (Port 1234) erreichbar
-   sind. Das UART-Terminal entsteht erst, wenn das `.resc`-Skript gelaufen ist.
-6. Antwort **HTTP 200** mit der Versuchs-Konfiguration. Das Frontend baut das Bedienfeld auf.
+1. The browser sends `POST /upload` (`multipart/form-data`: `experiment_id`, `file`).
+2. The backend checks the experiment ID (the file `sim/experiments/<id>.json` must exist and be
+   valid) and the ELF signature (`0x7F 'E' 'L' 'F'`). It generates `.repl` and `.resc` in
+   `GENERATED_DIR` from the experiment file.
+3. The browser WebSockets are closed with code `4000`. The frontend reconnects immediately.
+4. The file is moved to `/tmp/app.elf`. Renode runs permanently (see below): via the monitor the
+   backend resets machine and emulation with `Clear`, sets `$elf`, `$queryPort` and, if needed,
+   `$uartBaud`/`$uartFormat`, and runs `include @<id>.resc`.
+5. The backend waits until the UART terminal (port 3335) and the monitor (port 1234) are reachable.
+   The UART terminal only exists after the `.resc` script has run.
+6. Response **HTTP 200** with the experiment configuration. The frontend builds the control panel.
 
-**Renode im Dauerbetrieb** (Standard): Das Backend startet Renode schon beim eigenen Start und
-übersetzt dabei alle C#-Modelle aus `sim/models` (~10 s, Log „bereit: … Modelle übersetzt“). Ein
-Start dauert danach ~0,3–0,5 s statt ~11 s (gemessen 12.11.2026: ~1,6 s .NET-Start, ~6,3 s Übersetzen
-der Modelle, ~1 s Maschine, ~0,7 s Beenden des alten Prozesses). Renode überspringt bereits
-übersetzte Dateien („has already been compiled“), deshalb läuft das erzeugte `.resc` unverändert.
-`Clear` statt `mach rem`, weil sonst die virtuelle Zeit der neuen Maschine beim Stand der alten
-weiterliefe und das `start` im `.resc` ignoriert würde. „Stop“ entfernt nur die Maschine.
-Renode wird neu gestartet, wenn sich eine Modelldatei geändert hat (Änderungsdatum), wenn der
-Prozess nicht mehr läuft oder wenn das Laden fehlschlägt (einmal wiederholt). Modelle mit eigenen
-Ports geben sie in `Dispose()` frei (`TivaSysCtl` Abfrage-Port, `UartHostTerminal`,
-`WebSocketBridge` – Letztere hängt nicht am Bus und meldet sich dafür bei `MachineRemoved` an).
-`RENODE_PERSISTENT=0` stellt das frühere Verhalten her (je Start ein neuer Renode-Prozess).
+**Renode in permanent operation** (default): the backend starts Renode already when it starts
+itself and compiles all C# models from `sim/models` (~10 s, log "ready: … models compiled"). After
+that a start takes ~0.3–0.5 s instead of ~11 s (measured 12 Nov 2026: ~1.6 s .NET start, ~6.3 s
+compiling the models, ~1 s machine, ~0.7 s stopping the old process). Renode skips files that have
+already been compiled ("has already been compiled"), so the generated `.resc` runs unchanged.
+`Clear` instead of `mach rem`, because otherwise the virtual time of the new machine would continue
+from that of the old one and the `start` in the `.resc` would be ignored. "Stop" only removes the
+machine. Renode is restarted when a model file has changed (modification time), when the process
+is no longer running or when loading fails (retried once). Models with their own ports release
+them in `Dispose()` (`TivaSysCtl` query port, `UartHostTerminal`, `WebSocketBridge` – the latter is
+not attached to the bus and registers for `MachineRemoved` instead).
+`RENODE_PERSISTENT=0` restores the earlier behaviour (a new Renode process for every start).
 
-Schlägt der Start fehl (z. B. Fehler im `.resc`), antwortet das Backend mit HTTP 500. Die letzten
-Zeilen des Renode-Logs stehen dann in `log` und werden im Browser aufklappbar angezeigt.
+If the start fails (e.g. an error in the `.resc`), the backend answers with HTTP 500. The last
+lines of the Renode log are then in `log` and are shown in the browser in an expandable section.
 
-### Woher die Anzeigen kommen
+### Where the displayed values come from
 
-| Anzeige | Quelle | Verfahren |
+| Display | Source | Method |
 |---|---|---|
-| LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **Push**: jede Pegeländerung (`LED<n>=<0|1>`), bei PWM zusätzlich die gemittelte Helligkeit (`LEDB<n>=<Promille>`, `LEDB<n>=-` = wieder an/aus) |
-| UART0 | `sysbus.uart0.host` (PC-Terminal) → `ServeTcp 3335` | Bytestrom, unverändert durchgereicht; das PC-Terminal dekodiert die Leitung mit seiner eigenen Einstellung (Abschnitt „UART-Leitung als Flanken“) |
-| Simulations-Anzeige | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode-Log | **Polling** alle 500 ms, nur solange die Anzeige offen ist |
-| Leitungen (Oszilloskop) | `sysbus.uart0 GetEdges` | **Polling** alle 100 ms, nur solange ein Browser die Leitung abonniert hat |
-| OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **Polling** alle 100 ms, nur bei Änderung übertragen |
-| LEDs mit `path` (andere Versuche) | `<path> State` | Polling alle 100 ms |
+| LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **push**: every level change (`LED<n>=<0|1>`), with PWM also the averaged brightness (`LEDB<n>=<per mille>`, `LEDB<n>=-` = plain on/off again) |
+| UART0 | `sysbus.uart0.host` (PC terminal) → `ServeTcp 3335` | byte stream, passed through unchanged; the PC terminal decodes the line with its own settings (section "UART line as signal edges") |
+| simulation panel | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode log | **polling** every 500 ms, only while the panel is open |
+| lines (oscilloscope) | `sysbus.uart0 GetEdges` | **polling** every 100 ms, only while a browser has subscribed to the line |
+| OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **polling** every 100 ms, only transferred on change |
+| LEDs with `path` (other experiments) | `<path> State` | polling every 100 ms |
 
-Befehle aus dem Browser haben Vorrang vor dem Polling: Die Monitor-Warteschlange wird vorne
-eingereiht.
+Commands from the browser have priority over polling: they are put at the front of the monitor queue.
 
-### Bedienoberfläche (Layout)
+### User interface (layout)
 
-- **Desktop** (Fenster ab 760 × 520 px): alles passt auf eine Seite, die Seite scrollt nie. Die Panels
-  stehen in Spalten (Standard: Anzeigen | UART/printf | Board, Sensor, Diagnose; unter 1280 px Breite
-  zwei Spalten) und teilen sich die Höhe. Pendel, OLED, Keypad und 7-Segment-Anzeige skalieren mit.
-  - Kopfzeile eines Panels anklicken (oder ▾): ein-/ausklappen – die übrigen Panels bekommen den Platz.
-    Eingeklappte Panels laufen weiter (Terminal, Anzeigen, WebSockets).
-  - Kopfzeile ziehen: Panel verschieben; an den linken/rechten Rand oder auf die Trennlinie zwischen zwei
-    Spalten ziehen = neue Spalte an dieser Stelle (blaue senkrechte Linie; höchstens 6 Spalten und so viele,
-    wie bei mindestens 240 px Breite passen).
-  - Trennlinie zwischen Spalten ziehen: Breite ändern, Doppelklick: beide gleich breit.
-  - HAW-Logo oben links anklicken: Über-Dialog mit Versionsnummer, Git-Commit (Link auf GitHub) und
-    Link zum Repository.
-  - Kopfzeile rechts: 〰 Oszi ein-/ausblenden, ⊟/⊞ alle ein-/ausklappen, **↺ Standardlayout**
-    (zurück zur Standardanordnung, alles sichtbar; mobil am Ende der Sprungleiste).
-- **Handy / kleines Fenster**: eine Spalte in Layout-Reihenfolge, die Seite scrollt. Die Leiste unter der
-  Kopfzeile springt zu jedem Panel (eingeklappte gestrichelt, Diagnose farbig bei Meldungen); Setup
-  (Versuch, Firmware, Start/Stop) ist einklappbar und nach dem Start eingeklappt; Reihenfolge über den
-  Griff ⠿ ändern.
-- Position, Breite und Ein-/Ausklappzustand der Panels werden je Versuch im Browser gespeichert
-  (`localStorage`, Schlüssel `renode4mc.layout.v1.<Versuch>`) und beim nächsten Start dieses Versuchs
-  wiederhergestellt. Kommt eine neue Diagnose-Meldung, klappt das Diagnose-Panel auf.
-- Code: `webconsole/frontend/src/layout/Workspace.jsx` (Panels werden per Portal in stabile DOM-Knoten
-  gerendert und beim Verschieben nur umgehängt), Panel-Liste mit Standardspalte/Höhenanteil in
-  `components/ControlPanel.jsx`.
+- **Desktop** (window of at least 760 × 520 px): everything fits on one page, the page never scrolls.
+  The panels are arranged in columns (default: displays | UART/printf | board, sensor, diagnostics;
+  below 1280 px width two columns) and share the height. Pendulum, OLED, keypad and 7-segment
+  display scale with it.
+  - Click the title bar of a panel (or ▾): collapse/expand – the other panels get the space.
+    Collapsed panels keep running (terminal, displays, WebSockets).
+  - Drag the title bar: move the panel; drag it to the left/right edge or onto the divider between
+    two columns = new column at this position (blue vertical line; at most 6 columns and as many as
+    fit with a width of at least 240 px).
+  - Drag the divider between columns: change the width; double-click: make both equally wide.
+  - Click the HAW logo at the top left: About dialog with version number, Git commit (link to
+    GitHub) and link to the repository.
+  - Right side of the header bar: show/hide 〰 Scope, ⊟/⊞ collapse/expand all, **↺ Default layout**
+    (back to the default arrangement, everything visible; on mobile at the end of the jump bar).
+- **Phone / small window**: one column in layout order, the page scrolls. The bar below the header
+  jumps to each panel (collapsed ones dashed, Diagnostics coloured when there are messages); the
+  setup (experiment, firmware, start/stop) can be collapsed and is collapsed after the start; change
+  the order with the grip ⠿.
+- Position, width and collapsed state of the panels are saved per experiment in the browser
+  (`localStorage`, key `renode4mc.layout.v1.<experiment>`) and restored the next time this experiment
+  is started. When a new diagnostic message arrives, the Diagnostics panel expands.
+- Code: `webconsole/frontend/src/layout/Workspace.jsx` (panels are rendered via a portal into stable
+  DOM nodes and only re-attached when they are moved), panel list with default column/height share
+  in `components/ControlPanel.jsx`.
 
 ---
 
-## 2. Simulierte Hardware
+## 2. Simulated hardware
 
-Basis ist die Plattform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, GPIO A–Q, Timer,
-**UART 0–7, I2C 0–9**). Welche Geräte zusätzlich angeschlossen sind, beschreibt die Versuchsdatei
+The basis is the platform `sim/platforms/tm4c1294ncpdt.repl` (Cortex-M4F, SYSCTL, GPIO A–Q, timers,
+**UART 0–7, I2C 0–9**). Which devices are connected in addition is described by the experiment file
 `sim/experiments/<id>.json` ([EXPERIMENTS.md](EXPERIMENTS.md)).
 
-### Example 1 („Simple Elemente“)
+### Example 1 ("Simple elements")
 
 `sim/experiments/example1.json`:
 
-| Baustein | Pins / Adresse | Modell | Bedienung im Browser |
+| Component | Pins / address | Model | Operation in the browser |
 |---|---|---|---|
-| LEDs D1, D2, D3, D4 | PN1, PN0, PF4, PF0 | `TivaGPIOPort` → `wsBridge` | Anzeige |
-| Taster USR_SW1, USR_SW2 | PJ0, PJ1 (gedrückt = LOW, Pull-up auf der Platine: `"pull": "up"`) | `TivaGPIOPort` (Eingang) | Knopf: gedrückt halten = LOW |
-| UART0 | PA0 RX, PA1 TX | `TivaUART` | Terminal (xterm.js), Eingaben gehen an RX; Baudrate/Format des Terminals wählbar |
-| PC-Terminal | an UART0, 115200 8N1 | `UartHostTerminal` | Einstellung unter dem Terminal (Baud, Daten, Parität, Stopp) |
-| Ultraschall HC-SR04 | Trigger PD0 (Ausgang), Echo PD1 (Eingang) | `HcSr04` | Schieberegler 0–350 cm (Start 65 cm; außerhalb 3–300 cm kein Echo) |
+| LEDs D1, D2, D3, D4 | PN1, PN0, PF4, PF0 | `TivaGPIOPort` → `wsBridge` | display |
+| push buttons USR_SW1, USR_SW2 | PJ0, PJ1 (pressed = LOW, pull-up on the board: `"pull": "up"`) | `TivaGPIOPort` (input) | button: keep pressed = LOW |
+| UART0 | PA0 RX, PA1 TX | `TivaUART` | terminal (xterm.js), input goes to RX; baud rate/format of the terminal selectable |
+| PC terminal | on UART0, 115200 8N1 | `UartHostTerminal` | settings below the terminal (baud, data, parity, stop) |
+| ultrasonic HC-SR04 | trigger PD0 (output), echo PD1 (input) | `HcSr04` | slider 0–350 cm (start 65 cm; outside 3–300 cm no echo) |
 
-Weitere Geräte für eigene Versuche (Elementtypen in [EXPERIMENTS.md](EXPERIMENTS.md)):
+Further devices for your own experiments (element types in [EXPERIMENTS.md](EXPERIMENTS.md)):
 
-| Baustein | Pins / Adresse (Standard) | Modell | Bedienung im Browser |
+| Component | Pins / address (default) | Model | Operation in the browser |
 |---|---|---|---|
-| I2C-Master | I2C0: PB2 SCL, PB3 SDA | `TivaI2C` | – |
-| OLED SSD1306 128×64 (`oled`) | I2C0, 0x3C | `SSD1306I2C` | Canvas, 4-fach vergrößert |
-| Ultraschall MB1242 (`mb1242`) | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
-| Keypad 4×3 (`keypad`) | Zeilen = MCU-Ausgänge, Spalten = MCU-Eingänge (Pull-down im Modell) | `KeypadMatrix` | Tastenfeld |
+| I2C master | I2C0: PB2 SCL, PB3 SDA | `TivaI2C` | – |
+| OLED SSD1306 128×64 (`oled`) | I2C0, 0x3C | `SSD1306I2C` | canvas, 4× magnified |
+| ultrasonic MB1242 (`mb1242`) | I2C0, 0x70 | `MaxBotixI2C` | slider 0–400 cm |
+| keypad 4×3 (`keypad`) | rows = MCU outputs, columns = MCU inputs (pull-down in the model) | `KeypadMatrix` | keypad |
 
-### Die neuen Modelle (`sim/models/`)
+### The models (`sim/models/`)
 
-| Datei | Kurzbeschreibung |
+| File | Short description |
 |---|---|
-| `TivaUART.cs` | PL011-ähnlicher UART des TM4C129. DR (mit FE/PE/BE/OE), RSR, FR, IBRD/FBRD/LCRH (auch BRK), CTL (HSE, EOT, LBE), CC, IFLS, IM/RIS/MIS/ICR, ID-Register. Sende- und Empfangs-FIFO 16 Zeichen, Overrun. RX-, RT-, TX-, FE-, PE-, BE- und OE-Interrupt. Clock-Gating `RCGCUART`. Sendet Flanken mit Baudraten-Timing (TXFF/TXFE/BUSY zeitrichtig), empfängt durch Abtasten der Flanken in der Bitmitte. Prüft, ob PA0/PA1 per AFSEL/DEN/PCTL als U0RX/U0TX geschaltet sind. |
-| `UartLine.cs` | Gemeinsame Teile der UART-Leitung: Format und Bitdauer, Encoder (Byte → Flanken), Decoder (Flanken → Zeichen, Framing-/Paritätsfehler, Break), Flankenpuffer `SignalRecorder` für das Oszilloskop, Zeitgeber in ns. |
-| `UartHostTerminal.cs` | PC mit Terminalprogramm am anderen Ende von UART0. Dekodiert die Flanken mit `TerminalBaudRate`/`Format` und gibt Bytes an das Socket-Terminal; Tastatureingaben werden Flanken auf U0RX. |
-| `TivaI2C.cs` | I2C-Master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, Repeated Start, Adress-NACK als `ERROR`+`ADRACK`, Master-Interrupt, Clock-Gating `RCGCI2C`. Damit Warteschleifen der Form „erst BUSY abwarten, dann nicht-BUSY“ nicht hängen, liefert der erste Lesezugriff auf MCS nach einem Befehl `BUSY=1`. |
-| `SSD1306I2C.cs` | OLED-Controller: Control-Byte (Co/DC), Page-, Horizontal- und Vertical-Addressing, Spalten- und Page-Bereich, Display an/aus, Invertieren, Segment-Remap (A0/A1), COM-Scanrichtung (C0/C8). `GetFrame`/`GetFrameIfChanged` liefern das sichtbare Bild als Base64. |
-| `MaxBotixI2C.cs` | Ultraschallsensor MB1242: `0x51` schreiben startet die Messung, 2 Bytes lesen liefern cm. Property `Distance` (0–765). |
-| `PendulumDisplay.cs` | Pendeldisplay (Example 2): 8 LED-Eingänge, Sync-Ausgang (HIGH = rechts), Bewegung `sin(2·π·t/T)` in virtueller Zeit, Periode zur Laufzeit über `PeriodUs` einstellbar (0,05–100 Hz), Nachleuchtbild je Schwungrichtung. `GetFrame` liefert `PD:<Spalten>:<Periode in µs>:<Phase>:<LEDs>:<Base64>`. |
-| `Oscilloscope.cs` | Oszilloskop der Web-Konsole (in der Basisplattform als `sysbus.scope`): zeichnet die Pegelwechsel ausgewählter Pins mit virtueller Zeit auf (Auflösung 1 µs). `Probe "PD0,PD1"` wählt die Pins, `GetEvents` liefert `SC:<jetzt ns>:<Pins>:<Pegel>:<i,dt ns,Pegel;…>:<verworfen>`. Gemessen wird der Pinpegel wie mit einem Tastkopf (`TivaGPIOPort.PadLevel`): getriebener Ausgang, von außen getriebener Eingang, Pull-up/-down oder offen. UART-Pins (PA0/PA1, wenn als U0RX/U0TX geschaltet) zeigen dieselben Flanken wie die UART-Leitung: TX mit Baudrate und Format der Firmware, RX mit der Einstellung des PC-Terminals. |
-| `KeypadMatrix.cs` | Tastenmatrix mit echter Multiplex-Elektrik: Spalte = ODER über (Zeile HIGH UND Taste gedrückt). Zeilen-Scan und Interrupt-Betrieb funktionieren wie auf Hardware. `SetKey <zeile> <spalte> <true|false>`. |
+| `TivaUART.cs` | PL011-like UART of the TM4C129. DR (with FE/PE/BE/OE), RSR, FR, IBRD/FBRD/LCRH (also BRK), CTL (HSE, EOT, LBE), CC, IFLS, IM/RIS/MIS/ICR, ID registers. Transmit and receive FIFO with 16 characters, overrun. RX, RT, TX, FE, PE, BE and OE interrupts. Clock gating `RCGCUART`. Transmits signal edges with baud-rate timing (TXFF/TXFE/BUSY with correct timing), receives by sampling the edges in the middle of each bit. Checks whether PA0/PA1 are configured as U0RX/U0TX via AFSEL/DEN/PCTL. |
+| `UartLine.cs` | Common parts of the UART line: format and bit duration, encoder (byte → edges), decoder (edges → characters, framing/parity errors, break), edge buffer `SignalRecorder` for the oscilloscope, timer in ns. |
+| `UartHostTerminal.cs` | PC with a terminal program at the other end of UART0. Decodes the edges with `TerminalBaudRate`/`Format` and passes the bytes to the socket terminal; keyboard input becomes edges on U0RX. |
+| `TivaI2C.cs` | I2C master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, repeated start, address NACK as `ERROR`+`ADRACK`, master interrupt, clock gating `RCGCI2C`. So that wait loops of the form "first wait for BUSY, then for not-BUSY" do not hang, the first read of MCS after a command returns `BUSY=1`. |
+| `SSD1306I2C.cs` | OLED controller: control byte (Co/DC), page, horizontal and vertical addressing, column and page range, display on/off, invert, segment remap (A0/A1), COM scan direction (C0/C8). `GetFrame`/`GetFrameIfChanged` return the visible image as Base64. |
+| `MaxBotixI2C.cs` | Ultrasonic sensor MB1242: writing `0x51` starts the measurement, reading 2 bytes returns cm. Property `Distance` (0–765). |
+| `PendulumDisplay.cs` | Pendulum display (Example 2): 8 LED inputs, sync output (HIGH = right), movement `sin(2·π·t/T)` in virtual time, period adjustable at run time via `PeriodUs` (0.05–100 Hz), afterglow image per swing direction. `GetFrame` returns `PD:<columns>:<period in µs>:<phase>:<LEDs>:<Base64>`. |
+| `Oscilloscope.cs` | Oscilloscope of the web console (in the base platform as `sysbus.scope`): records the level changes of selected pins in virtual time (resolution 1 µs). `Probe "PD0,PD1"` selects the pins, `GetEvents` returns `SC:<now ns>:<pins>:<levels>:<i,dt ns,level;…>:<dropped>`. The pin level is measured like with a probe (`TivaGPIOPort.PadLevel`): driven output, input driven from outside, pull-up/-down or floating. UART pins (PA0/PA1 when configured as U0RX/U0TX) show the same edges as the UART line: TX with the baud rate and format of the firmware, RX with the settings of the PC terminal. |
+| `KeypadMatrix.cs` | Key matrix with real multiplexing behaviour: column = OR over (row HIGH AND key pressed). Row scanning and interrupt operation work as on hardware. `SetKey <row> <column> <true|false>`. |
 
-**Keypad-Multiplexing.** Ein Klick auf „5“ sendet nicht „Taste 5“. Das Frontend schlägt die
-Taste in seiner Matrix-Zuordnung nach und sendet die Koordinate (Zeile 1, Spalte 1). Das Modell
-verbindet dann die Zeilenleitung PK1 elektrisch mit der Spaltenleitung PK5. Die Spalte wird
-erst HIGH, wenn die Firmware die Zeile HIGH treibt. Die Firmware muss die Taste also wie auf
-echter Hardware per Zeilen-Scan ermitteln. Ein Programm, das die Spalten liest, ohne die Zeilen
-zu treiben, sieht keinen Tastendruck. Das ist didaktisch gewollt.
+**Keypad multiplexing.** Clicking "5" does not send "key 5". The frontend looks the key up in its
+matrix mapping and sends the coordinate (row 1, column 1). The model then connects the row line
+PK1 electrically to the column line PK5. The column only becomes HIGH when the firmware drives the
+row HIGH. So the firmware has to find the key by scanning the rows, just as on real hardware. A
+program that reads the columns without driving the rows does not see a key press. This is
+intended for teaching purposes.
 
-### Example 2: Pendeldisplay
+### Example 2: pendulum display
 
-`sim/experiments/example2.json` ergänzt die Basisplattform um ein Pendeldisplay und den
-Ultraschallsensor MB1242. LEDs D1–D4 und UART0 sind dieselben wie in Example 1; Taster hat Example 2 nicht.
+`sim/experiments/example2.json` adds a pendulum display and the ultrasonic sensor MB1242 to the base
+platform. LEDs D1–D4 and UART0 are the same as in Example 1; Example 2 has no push buttons.
 
-| Baustein | Pins / Adresse | Modell | Bedienung im Browser |
+| Component | Pins / address | Model | Operation in the browser |
 |---|---|---|---|
-| Pendeldisplay, 8 LEDs | PM0–PM7 (Ausgang); stehendes Pendel, Drehpunkt unten, PM0 oben an der Spitze | `PendulumDisplay` | schwingender Stab (dunkelgrau) mit LEDs und abklingender Leuchtspur (Nachleuchtdauer einstellbar) |
-| Pendel-Signal | PL0 (Eingang): HIGH = rechts, LOW = links | `PendulumDisplay.Sync` | – |
-| Ultraschall MB1242 | I2C0, 0x70 | `MaxBotixI2C` | Schieberegler 0–400 cm |
+| pendulum display, 8 LEDs | PM0–PM7 (outputs); upright pendulum, pivot at the bottom, PM0 at the top at the tip | `PendulumDisplay` | swinging rod (dark grey) with LEDs and a fading light trail (afterglow time adjustable) |
+| pendulum signal | PL0 (input): HIGH = right, LOW = left | `PendulumDisplay.Sync` | – |
+| ultrasonic MB1242 | I2C0, 0x70 | `MaxBotixI2C` | slider 0–400 cm |
 
-`PendulumDisplay.cs` bildet ein Pendel nach, das mit `x(t) = sin(2·π·t/T)` schwingt
-(T = `periodUs`, Standard 100 000 µs = 10 Hz). Der Ausgang `Sync` ist HIGH, solange `x > 0` ist,
-also steigende Flanke beim Durchgang nach rechts, fallende beim Durchgang nach links. Alle Zeiten
-sind **virtuelle** Simulationszeit.
+`PendulumDisplay.cs` models a pendulum that swings with `x(t) = sin(2·π·t/T)`
+(T = `periodUs`, default 100 000 µs = 10 Hz). The output `Sync` is HIGH as long as `x > 0`,
+i.e. a rising edge when passing the centre to the right, a falling edge when passing to the left.
+All times are **virtual** simulated time.
 
-**Frequenz einstellen:** Im Browser gibt es dafür einen Schieberegler (Bereich aus
-`minFrequency`/`maxFrequency` der Versuchs-JSON, in Example 2: 0,1–20 Hz). Das Backend setzt die
-Property `PeriodUs` des Modells (0,05–100 Hz). Die neue Periode gilt ab dem nächsten Durchgang durch
-die Mitte. Dort ist die Auslenkung bei jeder Frequenz null, das Pendel läuft also ohne Sprung
-weiter. Intern rechnet das Modell deshalb in Phasen (Anzahl halber Schwingungen), nicht in Zeit.
+**Setting the frequency:** the browser has a slider for this (range from `minFrequency`/`maxFrequency`
+of the experiment JSON, in Example 2: 0.1–20 Hz). The backend sets the property `PeriodUs` of the
+model (0.05–100 Hz). The new period takes effect from the next pass through the centre. There the
+deflection is zero at every frequency, so the pendulum continues without a jump. That is why the
+model computes internally in phases (number of half oscillations), not in time.
 
-Bei jedem Pegelwechsel einer LED überträgt das Modell den bisherigen LED-Zustand auf die
-Winkelstücke, die das Pendel seitdem überstrichen hat. Der Schwenkbereich ist dabei in `columns`
-(Standard 120) gleich breite Stücke von `x = −1` bis `x = +1` geteilt. Es gibt ein Bild pro
-Schwungrichtung, jeweils vom letzten Schwung. Das Frontend zeigt beide überlagert (wie das Auge)
-oder einzeln. So sieht man sofort, ob Hin- und Rückschwung übereinanderpassen.
+On every level change of an LED, the model transfers the previous LED state to the angle segments
+that the pendulum has swept since then. The swing range is divided into `columns` (default 120)
+equally wide segments from `x = −1` to `x = +1`. There is one image per swing direction, each from
+the last swing. The frontend shows both overlaid (like the eye) or separately. This way you
+immediately see whether the swings in both directions match.
 
-Damit die Zeitpunkte der LED-Wechsel genau genug sind, stellt Example 2 die Zeitscheibe von
-Renode auf 10 µs (`"quantumUs": 10`, erzeugt `emulation SetGlobalQuantum "0.00001"`; Renode-Standard 100 µs).
+So that the times of the LED changes are precise enough, Example 2 sets Renode's time slice to
+10 µs (`"quantumUs": 10`, generates `emulation SetGlobalQuantum "0.00001"`; Renode default 100 µs).
 
-### Monitor-Befehle (zum Ausprobieren ohne Browser)
+### Monitor commands (for trying things out without a browser)
 
-Renode lässt sich auch direkt starten: `node tools/check_experiment.js --out /tmp/v example1`, dann `cd sim` und
+You can also start Renode directly: `node tools/check_experiment.js --out /tmp/v example1`, then `cd sim` and
 `renode --console -e "\$elf=@../examples/example01_blinky/example01_blinky.out; s @/tmp/v/example1.resc"`.
-Danach `nc localhost 3335` für den UART. Im Monitor:
+Then `nc localhost 3335` for the UART. In the monitor:
 
 ```
-sysbus.gpioJ OnGPIO 0 false            # USR_SW1 drücken (LOW)
-sysbus.gpioJ OnGPIO 0 true             # loslassen
-sysbus.gpioD.hcsr04 Distance 42        # HC-SR04: Abstand 42 cm
+sysbus.gpioJ OnGPIO 0 false            # press USR_SW1 (LOW)
+sysbus.gpioJ OnGPIO 0 true             # release it
+sysbus.gpioD.hcsr04 Distance 42        # HC-SR04: distance 42 cm
 
-# Versuch mit OLED, MB1242 und Keypad (z. B. webkonsole aus ANLEITUNG.md, Abschnitt 3):
-sysbus.gpioK.keypad SetKey 1 1 true    # Keypad: Zeile 1, Spalte 1 ("5") drücken
+# experiment with OLED, MB1242 and keypad (e.g. webkonsole from GUIDE.md, section 3):
+sysbus.gpioK.keypad SetKey 1 1 true    # keypad: press row 1, column 1 ("5")
 sysbus.gpioK.keypad SetKey 1 1 false
-sysbus.i2c0.sensor Distance 42         # MB1242: Abstand 42 cm
-sysbus.i2c0.oled GetFrame              # Framebuffer als Base64
+sysbus.i2c0.sensor Distance 42         # MB1242: distance 42 cm
+sysbus.i2c0.oled GetFrame              # frame buffer as Base64
 
 # Example 2 (s @/tmp/v/example2.resc):
-sysbus.gpioM.pendel SyncLevel          # aktueller Pegel an PL0 (True = Pendel rechts)
-sysbus.gpioM.pendel Leds               # aktueller LED-Zustand (Bit n = LED n)
-sysbus.gpioM.pendel PeriodUs 80000     # Pendel auf 12,5 Hz (ab dem nächsten Nulldurchgang)
-sysbus.gpioM.pendel GetFrame           # "PD:<Spalten>:<Periode in us>:<Phase>:<LEDs>:<Base64>"
-sysbus.gpioM.pendel GetEvents          # "EV:<t>:<Phase>:<LEDs>:<Periode>:<t,Phase,LEDs,Periode;…>" (LED-Wechsel seit letztem Aufruf)
+sysbus.gpioM.pendel SyncLevel          # current level on PL0 (True = pendulum right)
+sysbus.gpioM.pendel Leds               # current LED state (bit n = LED n)
+sysbus.gpioM.pendel PeriodUs 80000     # pendulum at 12.5 Hz (from the next zero crossing)
+sysbus.gpioM.pendel GetFrame           # "PD:<columns>:<period in us>:<phase>:<LEDs>:<Base64>"
+sysbus.gpioM.pendel GetEvents          # "EV:<t>:<phase>:<LEDs>:<period>:<t,phase,LEDs,period;…>" (LED changes since the last call)
 ```
 
 ---
 
-## 3. Protokolle
+## 3. Protocols
 
 ### HTTP
 
-| Methode, Pfad | Beschreibung |
+| Method, path | Description |
 |---|---|
-| `GET /api/experiments` | Liste der Versuche `[{ id, title, solution }]` (alle gültigen `sim/experiments/*.json`; `solution` = `{ label, available }` oder `null`) |
-| `GET /api/experiments/<id>` | Konfiguration eines Versuchs ohne Start (Vorschau): `{ experiment, terminal: { baud, format } }`; 404 unbekannt, 500 ungültige Versuchsdatei |
-| `POST /api/terminal` | `{ experiment_id, baud, format }` – Terminal-Einstellung eines nicht laufenden Versuchs merken (gilt beim Start); 400 bei ungültigen Werten oder wenn der Versuch gerade läuft |
-| `GET /api/status` | `{ running, experiment, solution }` – stellt nach einem Neuladen der Seite das Bedienfeld wieder her |
-| `POST /api/solution` | JSON `{ experiment_id }`: Musterlösung des Versuchs (`sim/solutions/<Beispiel>.elf`) starten, Antwort wie `/upload` mit `solution: true` ([LABORE.md](LABORE.md)) |
-| `POST /upload` | `multipart/form-data`: `experiment_id`, `file` (`.out`/`.elf`/`.axf`, max. 16 MB). Antwort 200 `{ status: "running", experiment }`, sonst 400/500 `{ error, log? }` |
-| `POST /api/stop` | Simulation beenden |
+| `GET /api/experiments` | list of experiments `[{ id, title, solution }]` (all valid `sim/experiments/*.json`; `solution` = `{ label, available }` or `null`) |
+| `GET /api/experiments/<id>` | configuration of an experiment without starting it (preview): `{ experiment, terminal: { baud, format } }`; 404 unknown, 500 invalid experiment file |
+| `POST /api/terminal` | `{ experiment_id, baud, format }` – remember the terminal settings of an experiment that is not running (used at the start); 400 for invalid values or if the experiment is running |
+| `GET /api/status` | `{ running, experiment, solution }` – restores the control panel after the page is reloaded |
+| `POST /api/solution` | JSON `{ experiment_id }`: start the reference solution of the experiment (`sim/solutions/<example>.elf`), response as for `/upload` with `solution: true` ([LABS.md](LABS.md)) |
+| `POST /upload` | `multipart/form-data`: `experiment_id`, `file` (`.out`/`.elf`/`.axf`, max. 16 MB). Response 200 `{ status: "running", experiment }`, otherwise 400/500 `{ error, log? }` |
+| `POST /api/stop` | stop the simulation |
 
-### UART-WebSocket (`ws://<host>:3333`)
+### UART WebSocket (`ws://<host>:3333`)
 
-Binärframes in beide Richtungen, Bytes unverändert. Neue Clients bekommen die letzten 16 KB der
-Ausgabe. Beim Neustart von Renode schließt der Server mit Code **4000**: Das Terminal wird
-geleert, und das Frontend verbindet sich sofort neu.
+Binary frames in both directions, bytes unchanged. New clients receive the last 16 KB of the
+output. When Renode restarts, the server closes with code **4000**: the terminal is cleared and
+the frontend reconnects immediately.
 
-### Control-WebSocket (`ws://<host>:3334`)
+### Control WebSocket (`ws://<host>:3334`)
 
-JSON-Nachrichten.
+JSON messages.
 
-Browser → Server:
+Browser → server:
 
 ```jsonc
-{ "type": "button", "id": "SW1", "pressed": true }          // id aus der Versuchs-JSON
-{ "type": "keypad", "row": 1, "col": 1, "pressed": true }   // Matrix-Koordinate, nicht die Taste
-{ "type": "sensor", "value": 120 }                          // cm, wird auf min..max begrenzt
-{ "type": "pendulum", "frequency": 12.5 }                   // Hz, auf minFrequency..maxFrequency begrenzt
-{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // PC-Terminal; gilt auch nach Neustarts
-{ "type": "subscribe", "signals": ["uart0.tx", "uart0.rx"] } // Flanken abonnieren (Oszilloskop)
+{ "type": "button", "id": "SW1", "pressed": true }          // id from the experiment JSON
+{ "type": "keypad", "row": 1, "col": 1, "pressed": true }   // matrix coordinate, not the key
+{ "type": "sensor", "value": 120 }                          // cm, limited to min..max
+{ "type": "pendulum", "frequency": 12.5 }                   // Hz, limited to minFrequency..maxFrequency
+{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // PC terminal; also valid after restarts
+{ "type": "subscribe", "signals": ["uart0.tx", "uart0.rx"] } // subscribe to edges (oscilloscope)
 { "type": "unsubscribe", "signals": ["uart0.tx"] }
-{ "type": "reset" }                                         // Reset-Taster: nur der Mikrocontroller
-{ "type": "watch", "sim": true,                             // Simulations-Anzeige an (false = aus)
-  "memory": { "addr": "ticks", "count": 128 },              //   optional: Speicher (hex-Adresse oder Symbol)
-  "periph": "UART0" }                                       //   optional: Modul aus "simmeta"
-{ "type": "cpuStatsReset" }                                 // CPU-Statistik neu beginnen
-{ "type": "pause" }                                         // Ausführung anhalten (Zeit steht)
-{ "type": "continue" }                                      // weiterlaufen
-{ "type": "step", "count": 1 }                              // count Befehle (1–10000) ausführen, dann anhalten;
-                                                            //   schläft die CPU (WFI): bis zum nächsten Interrupt
-{ "type": "clearDiagnostics" }                              // Diagnose-Liste leeren
-{ "type": "scope", "sources": ["PD0", "PL0"] }               // Oszilloskop: Pins dieses Browsers (max. 5, [] = aus)
+{ "type": "reset" }                                         // reset button: only the microcontroller
+{ "type": "watch", "sim": true,                             // simulation panel on (false = off)
+  "memory": { "addr": "ticks", "count": 128 },              //   optional: memory (hex address or symbol)
+  "periph": "UART0" }                                       //   optional: module from "simmeta"
+{ "type": "cpuStatsReset" }                                 // restart the CPU statistics
+{ "type": "pause" }                                         // pause execution (time stands still)
+{ "type": "continue" }                                      // continue
+{ "type": "step", "count": 1 }                              // execute count instructions (1–10000), then pause;
+                                                            //   if the CPU is sleeping (WFI): until the next interrupt
+{ "type": "clearDiagnostics" }                              // clear the diagnostics list
+{ "type": "scope", "sources": ["PD0", "PL0"] }               // oscilloscope: pins of this browser (max. 5, [] = off)
 ```
 
-Taster: gedrückt = Pin an GND (`activeLow`) bzw. VCC, **losgelassen = Pin offen**
-(`<port> ReleaseInput <pin>`). Ohne Pull-up in der Firmware liest der Pin dann 0, und die Diagnose
-meldet den offenen Eingang.
+Push buttons: pressed = pin connected to GND (`activeLow`) or VCC, **released = pin open**
+(`<port> ReleaseInput <pin>`). Without a pull-up in the firmware the pin then reads 0, and the
+Diagnostics panel reports the floating input.
 
-Server → Browser:
+Server → browser:
 
 ```jsonc
 { "type": "hello", "experiment": {…}, "renode": "running", "leds": {"D1": false, …}, "fb": {…}, "pd": {…} }
-{ "type": "leds", "states": { "D1": true, "D2": false, … }, "levels": { "LED1": 0.25 } }   // levels: nur LEDs mit PWM (0..1)
+{ "type": "leds", "states": { "D1": true, "D2": false, … }, "levels": { "LED1": 0.25 } }   // levels: only LEDs with PWM (0..1)
 { "type": "fb", "width": 128, "height": 64, "on": true, "invert": false, "data": "<Base64>" }
 { "type": "pd", "columns": 120, "periodUs": 100000, "phase": 4210, "leds": 62, "data": "<Base64>" }
 { "type": "pdev", "now": [t, phi, leds, periodUs], "ev": [[t, phi, leds, periodUs], …], "frozen": false }
-{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // an alle, nach jeder Änderung
+{ "type": "uartconfig", "baud": 9600, "format": "7N1" }     // to everyone, after every change
 { "type": "signals", "signals": [{ "name": "uart0.tx", "label": "U0TX (PA1)", "idle": 1,
                                    "protocol": { "kind": "uart", "baud": 115107.914, "format": "8N1" } }, …] }
 { "type": "edges", "name": "uart0.tx", "now": 1100000, "level": 1,
-  "edges": [[1000000, 0], [1008687, 1], …], "lost": 0 }        // lost nur, wenn > 0
-{ "type": "reset" }                                        // Reset wurde ausgelöst (an alle)
-{ "type": "sim",                                           // alle 500 ms an Clients mit watch
+  "edges": [[1000000, 0], [1008687, 1], …], "lost": 0 }        // lost only if > 0
+{ "type": "reset" }                                        // a reset was triggered (to everyone)
+{ "type": "sim",                                           // every 500 ms to clients with watch
   "experiment": { "id", "title" },
   "firmware": { "name": "TestUartCom.out", "size": 12596, "sha256": "2ae16a99b4cc9b4c", "loadedAt": 1794075220000 },
   "renode": { "version": "1.17.0", "startedAt": … },
-  "time": { "virtualNs": 425424000, "wallMs": 6000, "speed": 0.98 },        // speed = Simulationszeit/Echtzeit
+  "time": { "virtualNs": 425424000, "wallMs": 6000, "speed": 0.98 },        // speed = simulated time / real time
   "cpu": { "state": "Running", "halted": false, "pc": "0x00000272", "symbol": "main", "sysclk": 16000000 },
   "resets": { "count": 1, "lastNs": 437400000 },
   "uart": { "mcu": { "baud": 9599.5, "format": "7N1" }, "terminal": { "baud": 9600, "format": "7N1" } },
-  "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: Framing-Fehler …", "count": 3, "last": … }],
-  "stopped": false,                                        // Pause, Einzelschritt oder Schritt wartet auf Interrupt
-  "frozen": false,                                         // Simulationszeit steht (Pause, Einzelschritt)
+  "warnings": [{ "level": "warning", "text": "uart0.host: Terminal: framing error …", "count": 3, "last": … }],
+  "stopped": false,                                        // pause, single step, or a step waiting for an interrupt
+  "frozen": false,                                         // simulated time stands still (pause, single step)
   "cpuStats": { "total": { "ns", "instr", "sleepNs", "isrNs", "normalNs", "isrCount", "wakes" },
-                "recent": { … seit der vorigen Meldung … },
+                "recent": { … since the previous message … },
                 "vectors": [{ "vector": 35, "name": "INT_TIMER0A", "count", "instr", "ns" }, …],
                 "sleeping", "isrDepth", "nsPerInstr" },
-  "regs": [{ "name": "R0", "value": 0 }, …, { "name": "xPSR", … }],    // Kernregister
-  "disasm": [{ "addr": 2314, "bytes": "e672", "text": "b #-796" }, …], // nur wenn angehalten
-  "memory": { "request": "ticks", "symbol": "ticks", "addr": 536870916, "data": "0E000000…" },  // je Client
+  "regs": [{ "name": "R0", "value": 0 }, …, { "name": "xPSR", … }],    // core registers
+  "disasm": [{ "addr": 2314, "bytes": "e672", "text": "b #-796" }, …], // only while paused
+  "memory": { "request": "ticks", "symbol": "ticks", "addr": 536870916, "data": "0E000000…" },  // per client
   "periph": { "module": "UART0", "noClock": false, "regs": [{ "name": "UART0_FR_R", "addr": …, "value": 144 }, …] } }
-{ "type": "simmeta", "modules": ["SYSCTL", "NVIC", "SysTick", "GPIO A", …, "I2C9"] }   // nach watch
-{ "type": "bcd", "digits": "--29", "enable": "01", "data": "29" }     // BCD-Anzeige (Lab 1)
-{ "type": "cio", "data": "<Base64>" }                                  // printf-Ausgabe (CCS-Konsole)
-{ "type": "diag", "level": "warning", "message": "…", "count": 1 }    // Warnung/Fehler aus Renode
+{ "type": "simmeta", "modules": ["SYSCTL", "NVIC", "SysTick", "GPIO A", …, "I2C9"] }   // after watch
+{ "type": "bcd", "digits": "--29", "enable": "01", "data": "29" }     // BCD display (Lab 1)
+{ "type": "cio", "data": "<Base64>" }                                  // printf output (CCS console)
+{ "type": "diag", "level": "warning", "message": "…", "count": 1 }    // warning/error from Renode
 { "type": "diagReset" }
 { "type": "scope", "now": 1234567000, "pins": ["PD0", "PL0"], "levels": [0, 1], "ev": [0, 1000, 1, …], "dropped": 0 }
 { "type": "renode", "state": "stopped" }
 { "type": "error", "message": "…" }
 ```
 
-`hello` enthält zusätzlich `uartConfig: { baud, format }`, die aktuelle Einstellung des
-PC-Terminals.
-Im `hello` stehen zusätzlich `bcd`, `cio` (bisherige printf-Ausgabe, Base64) und `diagnostics`
-(Liste). Die Diagnose sammelt jede Renode-Logzeile mit `[WARNING]`/`[ERROR]` des laufenden
-Versuchs, gleiche Meldungen mit Zähler, höchstens 100.
+`hello` also contains `uartConfig: { baud, format }`, the current settings of the PC terminal.
+`hello` also contains `bcd`, `cio` (printf output so far, Base64) and `diagnostics` (list). The
+diagnostics collect every Renode log line with `[WARNING]`/`[ERROR]` of the running experiment;
+identical messages are counted, at most 100.
 
-`fb.data` ist der Framebuffer im SSD1306-Page-Format, wie er auf dem Display zu sehen ist:
-Byte-Index = `page * width + x`, Bit `y % 8` (Bit 0 oben).
+`fb.data` is the frame buffer in SSD1306 page format, as it is seen on the display:
+byte index = `page * width + x`, bit `y % 8` (bit 0 at the top).
 
-`pd.data` ist das Pendelbild: erst `columns` Bytes für den Schwung links → rechts, dann
-`columns` Bytes für rechts → links. Byte `c` gehört zum Winkelstück `c` (0 = ganz links),
-Bit `n` = LED `n` (Bit 0 oben an der Pendelspitze). `pd.phase` ist die Lage des Pendels in
-1/10000 einer halben Schwingung (0 = Mitte nach rechts, 5000 = ganz rechts, 10000 = Mitte nach
-links, 15000 = ganz links), `pd.leds` der LED-Zustand im Moment der Abfrage.
+`pd.data` is the pendulum image: first `columns` bytes for the swing left → right, then
+`columns` bytes for right → left. Byte `c` belongs to angle segment `c` (0 = far left),
+bit `n` = LED `n` (bit 0 at the top at the tip of the pendulum). `pd.phase` is the position of the
+pendulum in 1/10000 of a half oscillation (0 = centre moving right, 5000 = far right, 10000 = centre
+moving left, 15000 = far left), `pd.leds` is the LED state at the time of the query.
 
-`pdev` enthält jeden LED-Wechsel seit dem letzten Abruf mit virtueller Zeit `t` (µs seit Start)
-und Phase `phi` (1/10000 halbe Schwingung, fortlaufend), dazu den Jetzt-Zustand `now`. Das Modell
-merkt sich die Wechsel (`GetEvents`), das Backend holt sie mit jedem Poll ab (10/s). Das Frontend
-spielt damit Stab, LEDs und Leuchtspur **etwa 300 ms verzögert, aber zeitlich exakt** wieder: Zwischen
-zwei Stützstellen läuft die Phase mit `2/Periode` weiter, der LED-Zustand gilt bis zum nächsten
-Wechsel.
+`pdev` contains every LED change since the last call with virtual time `t` (µs since start)
+and phase `phi` (1/10000 half oscillation, continuous), plus the current state `now`. The model
+remembers the changes (`GetEvents`), the backend fetches them with every poll (10/s). The frontend
+uses them to replay rod, LEDs and light trail **delayed by about 300 ms, but exactly in time**:
+between two data points the phase advances at `2/period`, and the LED state is valid until the
+next change.
 
-Renode treibt die virtuelle Zeit ungleichmäßig voran (gemessen: pro 100 ms Wanduhr zwischen 0,3 und
-150 ms; unter Last im Mittel nur 13–18 % Echtzeit, in Schüben). Die Wiedergabe hat deshalb eine
-eigene, stetige Uhr: Ausgleichsgerade virtuelle Zeit über Wanduhrzeit der letzten 3 s → Grundtempo;
-der Abstand zum Soll (hinter der Geraden, mindestens 300 ms Wanduhr bzw. 1,5 × der größte Rückstand
-eines Schubs) wird über ~1 s sanft ausgeglichen (höchstens ±25 %), Tempoänderungen werden mit 150 ms
-geglättet, und kurz vor dem Ende der Daten wird abgebremst statt angehalten. Weicht das Tempo der
-Simulation um mehr als 10 % von Echtzeit ab (ohne Last läuft Renode oft etwas schneller), steht unter
-dem Pendel „Simulation: xx % Echtzeit“ – das Pendel schwingt dann auf dem Bildschirm entsprechend
-langsamer bzw. schneller, die Zeiten in der Firmware stimmen trotzdem.
-(Vorher wurde der Zeitversatz bei jeder Nachricht sprunghaft nachgeführt: Bei 2 Hz sah man ruckartige
-Tempowechsel, unter Last stand der Stab meist still und sprang, zeitweise sogar rückwärts.) Das Bild entsteht nur aus der Leuchtspur: Jede leuchtende LED zeichnet den Bogen, den sie
-überstreicht, und die Spur klingt exponentiell ab, so dass sie nach der eingestellten
-**Nachleuchtdauer** (Regler 1 ms – 1 s, Standard **1 s**, je Versuch mit `"afterglowMs"` in der
-Versuchs-JSON einstellbar; die Dauer gilt in virtueller Zeit) unter 5 % liegt. Mit dem Standard
-steht sofort ein ganzes Bild, auch wenn die Simulation langsamer als Echtzeit läuft. Mit 10 ms sieht man bei
-jeder Frequenz nur ein kurzes Stück Spur hinter dem Stab; ein stehendes Bild wie für das Auge
-entsteht bei 10 Hz ab etwa 50–100 ms. Die Ansicht „Standbild“ zeigt stattdessen das Bild aus
-`pd.data` (letzter Schwung je Richtung, ohne Abklingen). Die Zuordnung virtuelle Zeit → Wanduhr wird laufend nachgeführt; startet Renode neu
-(Zeit beginnt bei 0), wird die Zeitlinie verworfen.
+Renode advances the virtual time unevenly (measured: per 100 ms of wall-clock time between 0.3 and
+150 ms; under load on average only 13–18 % of real time, in bursts). That is why the replay has its
+own steady clock: a regression line of virtual time over wall-clock time of the last 3 s → base
+speed; the distance to the target (behind the line, at least 300 ms of wall-clock time or 1.5 × the
+largest lag of a burst) is smoothly compensated over ~1 s (at most ±25 %), speed changes are
+smoothed over 150 ms, and shortly before the end of the data the replay slows down instead of
+stopping. If the speed of the simulation differs from real time by more than 10 % (without load,
+Renode often runs slightly faster), "Simulation: xx % of real time" is shown below the pendulum – the
+pendulum on the screen then swings correspondingly slower or faster, but the timing inside the
+firmware is still correct.
+(Previously the time offset was adjusted abruptly with every message: at 2 Hz you saw jerky speed
+changes; under load the rod mostly stood still and jumped, sometimes even backwards.) The image is
+made only of the light trail: every LED that is on draws the arc it sweeps, and the trail fades
+exponentially, so that it is below 5 % after the set **afterglow time** (slider 1 ms – 1 s, default
+**1 s**, adjustable per experiment with `"afterglowMs"` in the experiment JSON; the time is virtual
+time). With the default, a complete image is shown immediately, even if the simulation runs slower
+than real time. With 10 ms you only see a short piece of trail behind the rod at any frequency; a
+stationary image like for the eye appears at 10 Hz from about 50–100 ms. The view "Still image"
+instead shows the image from `pd.data` (last swing per direction, without fading). The mapping of
+virtual time → wall-clock time is updated continuously; if Renode restarts (time starts at 0), the
+timeline is discarded.
 
-### UART-Leitung als Flanken (Signalstrom)
+### UART line as signal edges (signal stream)
 
-UART0 überträgt keine Bytes, sondern Pegelwechsel mit Zeitstempel in **Nanosekunden virtueller
-Zeit** (`sim/models/UartLine.cs`). Der Sender (`TivaUART`) rechnet die Flankenzeiten aus IBRD,
-FBRD, LCRH, CTL.HSE und dem UART-Takt (Systemtakt aus RSCLKCFG/PLLFREQ bzw. PIOSC) aus; jede
-Flankenzeit wird einzeln gerundet, die Bitabstände stimmen also auf 1 ns. Der Empfänger tastet
-in der Bitmitte ab, gemessen ab der fallenden Flanke des Startbits und mit **seiner** Baudrate:
+UART0 does not transfer bytes but level changes with time stamps in **nanoseconds of virtual time**
+(`sim/models/UartLine.cs`). The transmitter (`TivaUART`) computes the edge times from IBRD, FBRD,
+LCRH, CTL.HSE and the UART clock (system clock from RSCLKCFG/PLLFREQ or PIOSC); every edge time is
+rounded separately, so the bit spacing is correct to 1 ns. The receiver samples in the middle of
+the bit, measured from the falling edge of the start bit and with **its own** baud rate:
 
-- Mikrocontroller → PC: `UartHostTerminal` (Einstellung im UART-Monitor) dekodiert U0TX.
-- PC → Mikrocontroller: Tastatureingaben werden mit der Terminal-Einstellung zu Flanken auf U0RX;
-  `TivaUART` dekodiert sie mit der Einstellung der Firmware und meldet FE/PE/BE in DR und RIS.
+- Microcontroller → PC: `UartHostTerminal` (settings in the UART monitor) decodes U0TX.
+- PC → microcontroller: keyboard input is turned into edges on U0RX with the terminal settings;
+  `TivaUART` decodes them with the settings of the firmware and reports FE/PE/BE in DR and RIS.
 
-Passt die Einstellung nicht zusammen, entstehen falsche Zeichen wie an der echten Hardware (z. B.
-7N1-Firmware, Terminal 8N1: 0xC8/0x86 statt „H“). Achtung, auch das ist echt: Ändert man die
-Einstellung, während die Firmware **lückenlos** sendet, kann sich der Empfänger auf eine falsche
-fallende Flanke einrasten und dort bleiben (bei „H“ in 7N1 kommen dann unsichtbare 0x06). Abhilfe
-wie im Labor: Firmware neu starten. Die Terminal-Einstellung wird vor dem Start gesetzt
-(`$uartBaud`, `$uartFormat` im `.resc`), die ersten Zeichen kommen dann richtig an.
+If the settings do not match, wrong characters appear as on real hardware (e.g. 7N1 firmware,
+terminal 8N1: 0xC8/0x86 instead of "H"). Note, this is also realistic: if you change the settings
+while the firmware is transmitting **without gaps**, the receiver can lock onto a wrong falling edge
+and stay there (with "H" in 7N1 you then get invisible 0x06). The remedy is the same as in the lab:
+restart the firmware. The terminal settings are set before the start (`$uartBaud`, `$uartFormat`
+in the `.resc`), so the first characters arrive correctly.
 
-**Für das Oszilloskop:** Das Backend fragt `GetEdges` nur ab, solange ein Browser eine Leitung
-abonniert hat. Jede `edges`-Nachricht enthält alle Pegelwechsel seit der vorigen, bis zur Zeit
-`now` ist die Leitung vollständig bekannt (dazwischen konstant `level`). Zeiten sind ganze Zahlen,
-streng steigend, jede Flanke wechselt den Pegel. Beim ersten Abo werden alte Flanken verworfen.
-Das Modell puffert bis zu 200 000 Flanken je Leitung; was davon verloren geht, steht in `lost`.
-Flankenformat am Renode-Monitor: `SE:<name>:<now>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;…`
-(erste Zeit absolut, weitere relativ). Leitungen werden in der Versuchs-JSON unter `signals`
-eingetragen.
+**For the oscilloscope:** the backend only queries `GetEdges` while a browser has subscribed to a
+line. Every `edges` message contains all level changes since the previous one; up to the time `now`
+the line is completely known (constant `level` in between). Times are integers, strictly
+increasing, every edge changes the level. On the first subscription old edges are discarded.
+The model buffers up to 200 000 edges per line; how many of them were lost is given in `lost`.
+Edge format at the Renode monitor: `SE:<name>:<now>:<level>:<baud>:<format>:<lost>:<t0>,<l>;<dt>,<l>;…`
+(first time absolute, further ones relative). Lines are entered in the experiment JSON under `signals`.
 
-### Reset-Taster und Simulations-Anzeige
+### Reset button and simulation panel
 
-Der Knopf **Reset** in der Statuszeile entspricht dem Reset-Taster des Boards:
-`sysbus.sysctl ResetMcu` setzt CPU und alle Peripherie auf dem Chip zurück (alles, was direkt am
-Systembus hängt). Die Firmware im Flash bleibt, die CPU startet über die Vektortabelle neu. Geräte
-außerhalb des Chips behalten ihren Zustand: PC-Terminal mit Einstellung, Sensorwert, OLED, Pendel,
-Keypad, Pegel an GPIO-Eingängen. Ein Zeichen, das der UART gerade sendet, bricht ab. Damit lässt
-sich auch ein Empfänger, der in einem lückenlosen Zeichenstrom falsch eingerastet ist, wieder
-synchronisieren.
+The **Reset** button in the status bar corresponds to the reset button of the board:
+`sysbus.sysctl ResetMcu` resets the CPU and all peripherals on the chip (everything that is directly
+attached to the system bus). The firmware in flash stays, the CPU restarts via the vector table.
+Devices outside the chip keep their state: PC terminal with its settings, sensor value, OLED,
+pendulum, keypad, levels on GPIO inputs. A character that the UART is currently sending is aborted.
+This also lets you resynchronise a receiver that has locked onto the wrong edge in a gap-less
+character stream.
 
-Der Knopf **Simulation** blendet die Simulations-Anzeige ein (standardmäßig aus): geladene
-Firmware (Name, Größe, SHA-256, Zeitpunkt), CPU-Zustand mit PC und Funktion aus der ELF-Datei
-(Hinweis, wenn die CPU in einer Endlosschleife des Startup-Codes hängt, z. B. `IntDefaultHandler`),
-Systemtakt, Anzahl der Resets, Simulationszeit, Echtzeit und Tempo (Simulationszeit pro Echtzeit),
-Renode-Version, UART0-Einstellung von Firmware und Terminal mit Abweichung. Darunter vier Reiter:
+The **Simulation** button shows the simulation panel (off by default): loaded firmware (name, size,
+SHA-256, time), CPU state with PC and function from the ELF file (note if the CPU is stuck in an
+endless loop of the start-up code, e.g. `IntDefaultHandler`), system clock, number of resets,
+simulated time, real time and speed (simulated time per real time), Renode version, UART0 settings
+of firmware and terminal with the error. Below there are tabs:
 
-- **CPU-Register:** R0–R12, SP, LR, PC, xPSR (Flags N Z C V, Nummer der laufenden Ausnahme),
-  PRIMASK, FAULTMASK, BASEPRI, CONTROL, inaktiver SP; geänderte Werte gelb. Ist die Simulation
-  angehalten, daneben die nächsten Befehle ab PC (Disassembly von Renode).
-- **Speicher:** Hex-Dump ab einer Adresse oder einem Symbol aus der ELF-Datei (z. B. `ticks`), nur
-  Flash und SRAM; geänderte Bytes gelb.
-- **Peripherie:** alle Register eines Moduls (SYSCTL, NVIC, SysTick, GPIO A–Q, UART0–7, TIMER0–7,
-  I2C0–9) mit den Namen aus `tm4c1294ncpdt.h`, Wert hex und binär. Gelesen wird **ohne
-  Nebenwirkung** (`sysbus.sysctl PeekRegisters`): UARTDR nimmt kein Zeichen aus dem FIFO,
-  I2CMCS verbraucht kein BUSY, und ein Modul ohne Takt wird angezeigt statt gewarnt.
-- **Meldungen:** Warnungen und Fehler aus dem Renode-Log (z. B. Framing-Fehler, Pin nicht als UART
-  geschaltet), gleiche Meldungen gezählt.
+- **CPU registers:** R0–R12, SP, LR, PC, xPSR (flags N Z C V, number of the running exception),
+  PRIMASK, FAULTMASK, BASEPRI, CONTROL, inactive SP; changed values in yellow. While the simulation
+  is paused, the next instructions from PC are shown next to it (disassembly from Renode).
+- **Memory:** hex dump from an address or a symbol of the ELF file (e.g. `ticks`), only flash and
+  SRAM; changed bytes in yellow.
+- **Peripherals:** all registers of a module (SYSCTL, NVIC, SysTick, GPIO A–Q, UART0–7, TIMER0–7,
+  I2C0–9) with the names from `tm4c1294ncpdt.h`, value in hex and binary. They are read **without
+  side effects** (`sysbus.sysctl PeekRegisters`): UARTDR does not take a character from the FIFO,
+  I2CMCS does not use up a BUSY, and a module without clock is shown instead of producing a warning.
+- **Messages:** warnings and errors from the Renode log (e.g. framing errors, pin not configured as
+  UART), identical messages are counted.
 
-**Debugger** (oben im Panel): **Pause** hält die ganze Simulation an (Simulationszeit steht),
-**Schritt** führt 1, 10, 100 oder 1000 Befehle aus und hält dann an (`sysbus.sysctl StepCpu n`, die
-Zeit läuft dabei mit), **Weiter** setzt fort. Schläft die CPU per WFI, endet ein Schritt wie am Board
-erst mit dem nächsten Interrupt: Die ganze Simulation (Timer, UART, Pendel, Oszilloskop …) läuft bis
-dahin weiter, danach steht die CPU vor dem ersten Befehl der Interrupt-Routine. Dauert das länger als
-etwa 1,5 s Wanduhr, zeigt das Panel „läuft bis zum nächsten Interrupt“ (Zustand `Wake`); Pause und
-Weiter brechen das ab. Renodes eigenes `cpu Step` rechnet bei schlafender CPU je Schritt nur eine
-Befehlszeit (≈ 91 ns) weiter – bis zu einem 1-ms-Timer wären über 10 000 Schritte nötig.
-**CPU-Zeit** (Übersicht und eigener Reiter): Anteil der Simulationszeit im Schlaf (WFI), in
-Interrupt-Routinen und im Normalbetrieb – seit Start/Reset und für den letzten Abfrageabstand, dazu je
-Interrupt Aufrufe, Zeit, Anteil und Befehle je Aufruf (`sysbus.sysctl GetCpuStats`, Namen `INT_xxx`
-aus dem Header). Renode rechnet je Befehl eine feste Befehlszeit (1/`PerformanceInMips`, ≈ 91 ns):
-Wachzeit = Befehle × Befehlszeit, Schlaf = Rest; ISR = Befehle vom Eintritt bis zum Rücksprung
-(verschachtelt je Vektor ohne die inneren). Stapeln beim Eintritt und Flash-Wartezyklen sind nicht
-modelliert – die Werte zeigen Verhältnisse, nicht exakte Board-Zeiten. Reset der MCU oder „Statistik
-neu beginnen“ setzt sie zurück.
-Pause hält das Pendel sofort dort an, wo es gerade angezeigt wird (die Anzeige läuft der CPU ~0,3 s
-hinterher – kein Sprung zur CPU-Zeit). Der erste Einzelschritt zeigt dann genau den Zeitpunkt der
-CPU (`pdev.frozen`), jeder weitere ebenso; nach Weiter läuft die Wiedergabe aus dem Stand wieder an. Reset aus der Pause startet die Firmware neu und
-läuft weiter.
+**Debugger** (at the top of the panel): **Pause** stops the whole simulation (simulated time stands
+still), **Step** executes 1, 10, 100 or 1000 instructions and then pauses (`sysbus.sysctl StepCpu n`,
+time advances meanwhile), **Continue** resumes. If the CPU sleeps with WFI, a step ends – as on the
+board – only with the next interrupt: the whole simulation (timers, UART, pendulum, oscilloscope …)
+keeps running until then; afterwards the CPU stands before the first instruction of the interrupt
+routine. If this takes longer than about 1.5 s of wall-clock time, the panel shows "stepping until
+the next interrupt" (state `Wake`); Pause and Continue abort it. Renode's own `cpu Step` only
+advances one instruction time (≈ 91 ns) per step when the CPU is sleeping – more than 10 000 steps
+would be needed to reach a 1 ms timer.
+**CPU time** (overview and its own tab): share of the simulated time spent sleeping (WFI), in
+interrupt routines and in normal operation – since start/reset and for the last query interval,
+plus per interrupt the calls, time, share and instructions per call (`sysbus.sysctl GetCpuStats`,
+names `INT_xxx` from the header). Renode counts a fixed instruction time per instruction
+(1/`PerformanceInMips`, ≈ 91 ns): awake time = instructions × instruction time, sleep = the rest;
+ISR = instructions from entry to return (for nested interrupts, each vector without the inner ones).
+Register stacking on entry and flash wait states are not modelled – the values show ratios, not the
+exact times of the board. A reset of the MCU or "Restart statistics" resets them.
+Pause stops the pendulum immediately where it is currently shown (the display runs ~0.3 s behind
+the CPU – no jump to the CPU time). The first single step then shows exactly the time of the CPU
+(`pdev.frozen`), and so does every further one; after Continue the replay starts again from where
+it stands. Reset while paused restarts the firmware and continues running.
 
-### Oszilloskop
+### Oscilloscope
 
-Über die Schaltfläche **„〰 Oszi“** oben rechts in der Kopfzeile (mobil: in der Sprungleiste) kommt
-ein Oszilloskop als Panel dazu – oben in die Spalte der Anzeigen, ohne Anzeigen als eigene Spalte; wie
-jedes Panel verschieb- und einklappbar (wieder ausblendbar; der Zustand und alle Einstellungen bleiben im Browser gespeichert, die
-Einstellungen je Versuch). Es zeigt die Digitalsignale an den Pins als 3,3-V-Logik mit dem
-gewohnten Gitter (10 × 8 Teilungen, Mittelachsen mit Feinteilung):
+With the button **"〰 Scope"** at the top right of the header bar (on mobile: in the jump bar) an
+oscilloscope is added as a panel – at the top of the display column, or as its own column if there
+are no displays; like every panel it can be moved and collapsed (and hidden again; the state and all
+settings are saved in the browser, the settings per experiment). It shows the digital signals at the
+pins as 3.3 V logic with the usual grid (10 × 8 divisions, centre axes with fine divisions):
 
-- **4 Kanäle**: Quelle per Dropdown (zuerst die benannten Signale des Versuchs, dann alle Pins
-  PA0…PQ4 nach Port), V/div (0,5–5 V), Lage. Marke links = 0-V-Linie des Kanals.
-- **Zeitbasis** 1 µs/div bis 1 s/div (1-2-5), **Triggerpunkt** horizontal verschiebbar.
-- **Trigger** auf CH1–CH4 oder einen **externen Eingang** (beliebiger Pin, wird nicht gezeichnet),
-  **Pegel** 0–3,3 V, **steigende/fallende Flanke**, Modus Auto/Normal/Einzel, Run/Stop.
-- Ein offener (hochohmiger) Pin erscheint gestrichelt auf halber Höhe.
+- **4 channels**: source via drop-down (first the named signals of the experiment, then all pins
+  PA0…PQ4 by port), V/div (0.5–5 V), position. The mark on the left = 0 V line of the channel.
+- **Time base** 1 µs/div to 1 s/div (1-2-5), the **trigger position** can be moved horizontally.
+- **Trigger** on CH1–CH4 or an **external input** (any pin, not drawn),
+  **level** 0–3.3 V, **rising/falling edge**, mode auto/normal/single, run/stop.
+- A floating (high-impedance) pin appears dashed at half height.
 
-Ablauf: Der Browser meldet seine Quellen (`scope`), das Backend stellt in Renode die Vereinigung
-der Quellen aller Browser ein (`sysbus.scope Probe`) und holt mit jedem Poll die Pegelwechsel ab.
-`ev` ist flach `[i, dt, Pegel, …]`: `i` = Index in `pins`, `dt` = ns seit dem vorigen Wechsel
-(beim ersten: seit Start), Pegel 0 = LOW, 1 = HIGH, 2 = offen. Triggern und Zeichnen passiert im
-Browser auf der virtuellen Zeit; Auto läuft frei, wenn 250 ms (virtuell) bzw. zwei Bildbreiten lang
-keine Flanke kommt. Je Abruf werden höchstens 10 000 Wechsel übertragen; bei mehr (z. B. eine
-Endlosschleife, die einen Pin toggelt, ca. 400 000 Wechsel/s) fehlen die ältesten, und das
-Oszilloskop meldet „Flanken verloren“. Ports ohne Tastkopf führen keine Pegel nach – ohne
-Oszilloskop kostet das Modell keine Rechenzeit (mit Tastkopf an einem 400-kHz-Signal ca. 7 %).
+How it works: the browser reports its sources (`scope`), the backend sets the union of the sources
+of all browsers in Renode (`sysbus.scope Probe`) and fetches the level changes with every poll.
+`ev` is flat `[i, dt, level, …]`: `i` = index in `pins`, `dt` = ns since the previous change
+(for the first one: since start), level 0 = LOW, 1 = HIGH, 2 = floating. Triggering and drawing
+happen in the browser on the virtual time; auto runs freely if there is no edge for 250 ms (virtual)
+or two screen widths. At most 10 000 changes are transferred per query; if there are more (e.g. an
+endless loop that toggles a pin, about 400 000 changes/s), the oldest ones are missing and the
+oscilloscope reports "edges lost". Ports without a probe do not track levels – without the
+oscilloscope the model costs no computing time (with a probe on a 400 kHz signal about 7 %).
 
-Benannte Signale je Versuch in der Versuchs-JSON:
+Named signals per experiment in the experiment JSON:
 
 ```jsonc
 "scope": {
-  "signals": [ { "pin": "PD0", "label": "HC-SR04 Trigger" }, … ],   // Dropdown-Einträge oben
-  "channels": ["PL0", "PM7", "PD0", "PD1"],                         // Startbelegung CH1..CH4
-  "trigger": { "source": "PL0", "edge": "rising" }                  // Kanal-Pin oder externer Pin
+  "signals": [ { "pin": "PD0", "label": "HC-SR04 trigger" }, … ],   // drop-down entries at the top
+  "channels": ["PL0", "PM7", "PD0", "PD1"],                         // initial channels CH1..CH4
+  "trigger": { "source": "PL0", "edge": "rising" }                  // channel pin or external pin
 }
 ```
 
 ### Reconnect
 
-Alle WebSockets im Frontend nutzen `useReconnectingWebSocket`. Bricht eine Verbindung ab,
-verbindet der Hook mit wachsendem Abstand neu (300 ms bis 5 s, mit Zufallsanteil). Bei Code 4000
-(gewollter Neustart), beim Wechsel zurück auf den Tab und bei wiederhergestellter
-Netzverbindung verbindet er sofort.
+All WebSockets in the frontend use `useReconnectingWebSocket`. If a connection breaks, the hook
+reconnects with increasing intervals (300 ms to 5 s, with a random component). With code 4000
+(intended restart), when you return to the tab, and when the network connection is restored, it
+reconnects immediately.
 
 ---
 
-## 4. Eigenen Versuch anlegen
+## 4. Creating your own experiment
 
-Ein Versuch ist **eine Datei** `sim/experiments/<id>.json`. Sie zählt die Bedienelemente auf und legt
-für jedes die Pins fest; Renode-Plattform (`.repl`) und Startskript (`.resc`) erzeugt das Backend
-daraus selbst (`lib/experimentSpec.js`, Ablage in `GENERATED_DIR`). Datei ablegen → der Versuch
-erscheint in der Auswahlliste.
+An experiment is **one file** `sim/experiments/<id>.json`. It lists the controls and devices and
+defines the pins for each of them; the backend generates the Renode platform (`.repl`) and start
+script (`.resc`) from it itself (`lib/experimentSpec.js`, stored in `GENERATED_DIR`). Put the file
+there → the experiment appears in the selection list.
 
 ```bash
-node tools/check_experiment.js mein_versuch.json   # prüfen (wie das Backend), Exit-Code 1 bei Fehlern
-node tools/check_experiment.js --types             # Elementtypen und Anschlüsse
+node tools/check_experiment.js my_experiment.json  # check (like the backend), exit code 1 on errors
+node tools/check_experiment.js --types             # element types and terminals
 ```
 
-Format, Elementtypen, Prüfregeln und ein Beispiel: [EXPERIMENTS.md](EXPERIMENTS.md). Der ganze Ablauf
-Schritt für Schritt (auch im Docker-Betrieb und mit Musterlösung): [ANLEITUNG.md, Abschnitt 3](ANLEITUNG.md#3-neuen-versuch-hinzufügen).
+Format, element types, check rules and an example: [EXPERIMENTS.md](EXPERIMENTS.md). The whole
+procedure step by step (also with Docker and with a reference solution): [GUIDE.md, section 3](GUIDE.md#3-adding-a-new-experiment).
 
-Ungültige Versuche werden nicht angezeigt, und der Grund steht im Server-Log. Renode-Pfade, Ports und
-Pins der Taster werden nie an den Browser geschickt.
+Invalid experiments are not shown, and the reason is in the server log. Renode paths, ports and
+pins of the push buttons are never sent to the browser.
 
 ---
 
-## 5. Betrieb
+## 5. Operation
 
 ### Docker
 
@@ -535,18 +535,18 @@ cd webconsole
 docker compose up --build            # -> http://localhost:3000
 ```
 
-Den Git-Stand für den Über-Dialog (Klick aufs HAW-Logo) übergeben – `.git` ist nicht im
-Build-Kontext, ohne diese Angaben zeigt der Dialog „unbekannt“:
+Pass the Git version for the About dialog (click on the HAW logo) – `.git` is not in the build
+context; without these values the dialog shows "unknown":
 
 ```bash
 GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build
 ```
 
-Beim lokalen Bauen (`npm run build`/`npm run dev`) liest Vite den Stand direkt aus dem Repository,
-nicht eingecheckte Änderungen werden als „+ lokale Änderungen“ angezeigt. Die Versionsnummer kommt aus
+When building locally (`npm run build`/`npm run dev`), Vite reads the version directly from the
+repository; uncommitted changes are shown as "+ local changes". The version number comes from
 `webconsole/frontend/package.json`.
 
-oder ohne Compose (Build-Kontext ist das Repository):
+Or without Compose (the build context is the repository):
 
 ```bash
 docker build -f webconsole/Dockerfile -t renode4mc-webconsole \
@@ -554,169 +554,168 @@ docker build -f webconsole/Dockerfile -t renode4mc-webconsole \
 docker run --rm --init -p 3000:3000 -p 3333:3333 -p 3334:3334 renode4mc-webconsole
 ```
 
-Das Image installiert Renode **1.17.0 portable**, dieselbe Version wie in
-[INSTALL_LINUX.md](INSTALL_LINUX.md), für amd64 und arm64. Es läuft als Benutzer `node` ohne
-Root-Rechte.
+The image installs Renode **1.17.0 portable**, the same version as in
+[INSTALL_LINUX.md](INSTALL_LINUX.md), for amd64 and arm64. It runs as user `node` without root rights.
 
-**`/tmp` muss ausführbar sein.** Renode entpackt beim Start seine CPU-Bibliothek nach `/tmp` und
-lädt sie von dort. Wer `/tmp` als tmpfs einhängt (wie die `docker-compose.yml`), braucht die Option
-`exec`, also `--tmpfs /tmp:exec,mode=1777`. Docker hängt tmpfs sonst mit `noexec` ein, und Renode
-bricht beim Laden der Plattform mit `failed to map segment from shared object` ab.
+**`/tmp` must be executable.** On start-up Renode unpacks its CPU library to `/tmp` and loads it
+from there. If you mount `/tmp` as tmpfs (as `docker-compose.yml` does), you need the option `exec`,
+i.e. `--tmpfs /tmp:exec,mode=1777`. Otherwise Docker mounts tmpfs with `noexec`, and Renode aborts
+while loading the platform with `failed to map segment from shared object`.
 
-**Mehrere Studierende:** Ein Container simuliert genau **eine** Instanz. Ein neuer Upload beendet
-die laufende Simulation. Für einen Kurs startet man deshalb einen Container pro Person bzw.
-Arbeitsplatz, z. B. mit verschiedenen Host-Ports (`-p 3100:3000 -p 3433:3333 -p 3434:3334`). Das
-Frontend verbindet die WebSockets dann mit `VITE_UART_WS_URL`/`VITE_CONTROL_WS_URL` (zur
-Build-Zeit), sonst mit Port 3333/3334 auf demselben Host.
+**Several students:** one container simulates exactly **one** instance. A new upload stops the
+running simulation. For a course you therefore start one container per person or workstation,
+e.g. with different host ports (`-p 3100:3000 -p 3433:3333 -p 3434:3334`). The frontend then
+connects the WebSockets using `VITE_UART_WS_URL`/`VITE_CONTROL_WS_URL` (at build time), otherwise
+using ports 3333/3334 on the same host.
 
-### Ohne Docker (Entwicklung)
+### Without Docker (development)
 
-Voraussetzungen: Node.js ≥ 18 und Renode (siehe [INSTALL_LINUX.md](INSTALL_LINUX.md), Schritt 6).
+Requirements: Node.js ≥ 18 and Renode (see [INSTALL_LINUX.md](INSTALL_LINUX.md), step 6).
 
 ```bash
-cd webconsole/frontend && npm install && npm run build      # oder: npm run dev (Port 5173)
+cd webconsole/frontend && npm install && npm run build      # or: npm run dev (port 5173)
 cd ../backend && npm install
 RENODE_BIN=~/renode/renode PUBLIC_DIR=../frontend/dist npm start
 ```
 
-### Umgebungsvariablen (Backend)
+### Environment variables (backend)
 
-| Variable | Standard | Bedeutung |
+| Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | 3000 | HTTP |
-| `UART_WS_PORT` / `CONTROL_WS_PORT` | 3333 / 3334 | WebSocket-Ports |
-| `RENODE_BIN` | `renode` | Renode-Startprogramm |
-| `RENODE_HEADLESS_FLAG` | `--disable-gui` | in Renode 1.17 gleichbedeutend mit `--disable-xwt` |
-| `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | interne Renode-Ports (3335 steht fest im erzeugten `.resc`) |
-| `RENODE_QUERY_PORT` | 1235 | Abfrage-Port (`TivaSysCtl.ServeQueries`, wird als `$queryPort` übergeben) |
-| `RENODE_START_TIMEOUT_MS` | 60000 | Wartezeit auf Renode beim Start |
-| `RENODE_PERSISTENT` | `1` | `0`: je Start ein neuer Renode-Prozess statt Dauerbetrieb |
-| `SIM_DIR` | `<repo>/sim` | Simulator-Verzeichnis (Arbeitsverzeichnis von Renode) |
-| `EXPERIMENTS_SUBDIR` | `experiments` | Versuche (`<id>.json`) relativ zu `SIM_DIR` |
-| `GENERATED_DIR` | `<tmp>/renode4mc-experiments` | hier legt das Backend die erzeugten `.repl`/`.resc` ab (beschreibbar) |
-| `ELF_PATH` | `/tmp/app.elf` | Ablageort der hochgeladenen Firmware |
-| `PUBLIC_DIR` | `backend/public` | gebautes Frontend |
-| `POLL_INTERVAL_MS` | 100 | OLED-/LED-Polling |
+| `UART_WS_PORT` / `CONTROL_WS_PORT` | 3333 / 3334 | WebSocket ports |
+| `RENODE_BIN` | `renode` | Renode start program |
+| `RENODE_HEADLESS_FLAG` | `--disable-gui` | in Renode 1.17 equivalent to `--disable-xwt` |
+| `RENODE_MONITOR_PORT` / `RENODE_UART_PORT` | 1234 / 3335 | internal Renode ports (3335 is fixed in the generated `.resc`) |
+| `RENODE_QUERY_PORT` | 1235 | query port (`TivaSysCtl.ServeQueries`, passed as `$queryPort`) |
+| `RENODE_START_TIMEOUT_MS` | 60000 | time to wait for Renode at start |
+| `RENODE_PERSISTENT` | `1` | `0`: a new Renode process for every start instead of permanent operation |
+| `SIM_DIR` | `<repo>/sim` | simulator directory (working directory of Renode) |
+| `EXPERIMENTS_SUBDIR` | `experiments` | experiments (`<id>.json`) relative to `SIM_DIR` |
+| `GENERATED_DIR` | `<tmp>/renode4mc-experiments` | the backend stores the generated `.repl`/`.resc` here (writable) |
+| `ELF_PATH` | `/tmp/app.elf` | where the uploaded firmware is stored |
+| `PUBLIC_DIR` | `backend/public` | built frontend |
+| `POLL_INTERVAL_MS` | 100 | OLED/LED polling |
 
-**Hinweis Port 3333:** `ucsim --debug` nutzt 3333 lokal für den GDB-Server. Im Container gibt es
-keinen GDB-Server. Laufen `ucsim --debug` und die Web-Konsole gleichzeitig auf einem Rechner,
-mappen Sie die Web-Konsole auf andere Host-Ports.
+**Note on port 3333:** `ucsim --debug` uses 3333 locally for the GDB server. There is no GDB server
+in the container. If `ucsim --debug` and the web console run on the same computer at the same time,
+map the web console to other host ports.
 
 ---
 
-## 6. Test
+## 6. Tests
 
-`webconsole/backend/test/e2e.js` prüft die ganze Kette mit echter Renode-Instanz und der
-Example-03-Firmware: Upload, UART-Ausgabe und -Echo, Sensor → UART und LED D1, Keypad „5“ per Matrix,
-USR_SW1 → LED D3, OLED-Frame.
+`webconsole/backend/test/e2e.js` checks the whole chain with a real Renode instance and the
+Example 03 firmware: upload, UART output and echo, sensor → UART and LED D1, keypad "5" via the
+matrix, USR_SW1 → LED D3, OLED frame.
 
-> **Achtung:** `e2e.js` lädt Versuch `example1` und prüft OLED, MB1242 und Keypad an Port K – den
-> früheren Ausbau. Seit `example1` „Simple Elemente“ ist (Abschnitt 2), fehlen diese Geräte dort;
-> der Test passt erst wieder, wenn er einen Versuch mit diesen Geräten lädt (z. B. `webkonsole` aus
-> [ANLEITUNG.md](ANLEITUNG.md#31-datei-anlegen)). `e2e_signals.js` startet ebenfalls `example1` mit der
-> Example-03-Firmware, prüft aber nur UART-Flanken; nach der Änderung nicht erneut ausgeführt.
+> **Caution:** `e2e.js` loads experiment `example1` and checks OLED, MB1242 and keypad on port K – the
+> earlier version. Since `example1` became "Simple elements" (section 2), these devices are missing
+> there; the test only fits again when it loads an experiment with these devices (e.g. `webkonsole`
+> from [GUIDE.md](GUIDE.md#31-creating-the-file)). `e2e_signals.js` also starts `example1` with the
+> Example 03 firmware, but only checks UART edges.
 
 ```bash
 cd webconsole/backend
-npm start &                                                       # oder Container
+npm start &                                                       # or the container
 node test/e2e.js ../../examples/example03_webkonsole/example03_webkonsole.out
 node test/e2e_example2.js ../../examples/example04_pendeldisplay/example04_pendeldisplay.out
 node test/e2e_signals.js ../../examples/example03_webkonsole/example03_webkonsole.out
 node test/e2e_scope.js ../../sim/solutions
 node test/e2e_timer.js                                           # example3 + sim/solutions/example05_timer_ccp.elf
-node test/e2e_labs.js <Verzeichnis mit lab01.out … lab04.out>
+node test/e2e_labs.js <directory with lab01.out … lab04.out>
 node test/e2e_step.js <schlaf_takt.elf>                           # test/firmware/schlaf_takt.c
-node test/e2e_cpustats.js <schlaf_takt.elf> <schlaf_takt_ohne_wfi.elf>   # zweites mit -DOHNE_WFI
-node test/unit_pendulum_timeline.mjs                              # ohne Backend/Renode
+node test/e2e_cpustats.js <schlaf_takt.elf> <schlaf_takt_ohne_wfi.elf>   # the second one with -DOHNE_WFI
+node test/unit_pendulum_timeline.mjs                              # without backend/Renode
 ```
 
-`test/e2e_step.js` prüft Pause und Einzelschritt mit schlafender CPU (Firmware
-`test/firmware/schlaf_takt.c`: Timer-IRQ 1 ms, UART-Zeichen alle 10 ms, Sync-IRQ des Pendels, `main`
-nur WFI): In der Pause steht alles (Zeit, Variablen, Timerzähler, Pendel, Oszilloskop, UART-Flanken,
-Terminal, Tastendruck). Ein Schritt aus WFI hält am Einsprung der Timer-ISR (TAV frisch nachgeladen),
-Interrupts im Schrittbetrieb genau 1 ms auseinander, `Schritt 3` = genau 3 Befehle. Über ~120 ms in
-Schritten müssen Timer-ISR, D1-Flanken, UART-Zeichen (Firmware = Terminal), Sync-ISR, PL0-Flanken
-am Oszilloskop und die Pendelphase zur CPU-Zeit passen. Langer Schlaf (Timer aus, Pendel 0,1 Hz):
-Zustand `Wake`, Halt direkt nach der Sync-Flanke; Pause während `Wake` und Weiter hält danach nicht
-mehr an. `test/e2e_cpustats.js` prüft die CPU-Statistik: Schlaf + ISR + Normal = Zeitraum, Aufrufe je Vektor
-= Zähler der Firmware (Timer, Pendel-Sync), Timer 1 je ms, ISR-Zeit = Befehle × Befehlszeit, > 99 %
-Schlaf mit WFI, ohne WFI kein Schlaf und > 98 % Normalbetrieb, Statistik steht in der Pause, Schritt
-in der ISR zählt genau eine Befehlszeit als ISR, Reset der MCU beginnt neu.
-`test/unit_pendulum_timeline.mjs` prüft die Wiedergabeuhr des Pendels: Pause zeigt sofort
-die CPU-Zeit, Schritte exakt, nach Weiter keine Zeitlupe und kein Sprung.
+`test/e2e_step.js` checks pause and single step with a sleeping CPU (firmware
+`test/firmware/schlaf_takt.c`: timer IRQ every 1 ms, a UART character every 10 ms, sync IRQ of the
+pendulum, `main` only WFI): while paused everything stands still (time, variables, timer counter,
+pendulum, oscilloscope, UART edges, terminal, key press). A step out of WFI stops at the entry of
+the timer ISR (TAV freshly reloaded), interrupts in step mode exactly 1 ms apart, `Step 3` = exactly
+3 instructions. Over ~120 ms in steps, timer ISR, D1 edges, UART characters (firmware = terminal),
+sync ISR, PL0 edges on the oscilloscope and the pendulum phase must match the CPU time. Long sleep
+(timer off, pendulum 0.1 Hz): state `Wake`, stop directly after the sync edge; pause during `Wake`,
+and Continue does not stop again afterwards. `test/e2e_cpustats.js` checks the CPU statistics:
+sleep + ISR + normal = period, calls per vector = counter of the firmware (timer, pendulum sync),
+timer once per ms, ISR time = instructions × instruction time, > 99 % sleep with WFI, without WFI no
+sleep and > 98 % normal operation, the statistics stand still while paused, a step in the ISR counts
+exactly one instruction time as ISR, a reset of the MCU restarts them.
+`test/unit_pendulum_timeline.mjs` checks the replay clock of the pendulum: pause immediately shows
+the CPU time, steps are exact, after Continue no slow motion and no jump.
 
-`test/e2e_signals.js` prüft den Signalstrom: `signals` mit der Baudrate der Firmware, Flanken
-streng steigend und auf dem Bitraster (8687,5 ns bei 16 MHz, IBRD 8, FBRD 44), ein unabhängiger
-Dekoder im Test liest daraus dieselben Texte wie das Terminal, Tastendruck als Flanken auf
-`uart0.rx`, Terminal auf 9600 → Zeichensalat, zurück auf 115200 → lesbar.
+`test/e2e_signals.js` checks the signal stream: `signals` with the baud rate of the firmware, edges
+strictly increasing and on the bit grid (8687.5 ns at 16 MHz, IBRD 8, FBRD 44), an independent
+decoder in the test reads the same texts from them as the terminal, a key press as edges on
+`uart0.rx`, terminal at 9600 → garbage, back at 115200 → readable.
 
-`test/e2e_scope.js` prüft das Oszilloskop mit den Musterlösungen (`sim/solutions`): Pendel-Signal
-PL0 (Periode 120,000 ms), HC-SR04-Trigger und Echo (3790 µs bei 65 cm, 450 µs nach der Flanke),
-offener Pin, Vereinigung der Quellen zweier Browser, UART-Rahmen `'#'` 9600 7N1 nach SW1.
+`test/e2e_scope.js` checks the oscilloscope with the reference solutions (`sim/solutions`): pendulum
+signal PL0 (period 120.000 ms), HC-SR04 trigger and echo (3790 µs at 65 cm, 450 µs after the edge),
+floating pin, union of the sources of two browsers, UART frame `'#'` 9600 7N1 after SW1.
 
-`test/e2e_timer.js` prüft Versuch `example3` mit der Demo `example05_timer_ccp` (Timer-Compare-Action,
-Edge-Time-Capture): am Oszilloskop LED1/PL4 mit 25 % (8,333/25,000 ms) und 50 % (16,666/16,667 ms),
-bei 0 %/100 % keine Flanken, LED2/PL6 100 ms HIGH alle 1 s, gedimmte Helligkeit von LED1 (Mittel
-ca. 0,25) und harter Puls von LED2, Stufen-LEDs, Tastendauer von Taste 0 per Capture = Dauer am
-Oszilloskop (auch über 1,05 s mit Überlauf des 24-Bit-Zählers), keine Diagnose.
+`test/e2e_timer.js` checks experiment `example3` with the demo `example05_timer_ccp` (timer compare
+action, edge-time capture): on the oscilloscope LED1/PL4 with 25 % (8.333/25.000 ms) and 50 %
+(16.666/16.667 ms), no edges at 0 %/100 %, LED2/PL6 100 ms HIGH every 1 s, dimmed brightness of
+LED1 (average about 0.25) and a hard pulse of LED2, step LEDs, duration of key 0 via capture =
+duration on the oscilloscope (also above 1.05 s with an overflow of the 24-bit counter), no diagnostics.
 
-`test/e2e_labs.js` prüft die vier Lab-Umgebungen mit ihren Musterlösungen, die Diagnose und
-`POST /api/solution` (siehe [LABORE.md](LABORE.md)).
+`test/e2e_labs.js` checks the four lab environments with their reference solutions, the diagnostics
+and `POST /api/solution` (see [LABS.md](LABS.md)).
 
-`test/e2e_example2.js` prüft Example 2 mit der Example-04-Firmware: Startmeldung, gemessene
-Pendelperiode (100,0 ms), Sensor → UART und das Pendelbild. Für 42, 123 und 7 cm muss jede der
-40 Bildspalten in **beiden** Schwungrichtungen an der richtigen Stelle das richtige Muster zeigen.
-Danach wird die Pendelfrequenz auf 15, 4, 25 und 10 Hz gestellt: Das Modell muss sie übernehmen,
-die Firmware muss die neue Periode melden, und das Bild muss weiter spaltengenau stimmen.
+`test/e2e_example2.js` checks Example 2 with the Example 04 firmware: start message, measured
+pendulum period (100.0 ms), sensor → UART and the pendulum image. For 42, 123 and 7 cm, each of the
+40 image columns must show the right pattern at the right place in **both** swing directions.
+Then the pendulum frequency is set to 15, 4, 25 and 10 Hz: the model must take it over,
+the firmware must report the new period, and the image must still be correct to the column.
 
-## Tempo der Simulation
+## Speed of the simulation
 
-Renode hält die Simulation höchstens auf Echtzeit (`AdvanceImmediately` aus): Pendel und LEDs laufen
-so schnell wie am Board. Langsamer als Echtzeit wird es, wenn Renode mehr Rechenzeit braucht, als da
-ist (der CPU-Thread und die Zeitquelle belegen bei 10-µs-Zeitscheibe je fast einen Kern). Gemessen
-(2 Kerne, Testprogramm `schlaf_takt` mit Timer-IRQ jede ms, Simulations-Panel, Oszilloskop und
-UART-Flanken aktiv) vorher 0,16 × Echtzeit, jetzt ≈ 1,0 ×. Die Bremsen und was sie ersetzt:
+Renode keeps the simulation at most at real time (`AdvanceImmediately` off): pendulum and LEDs run
+as fast as on the board. It becomes slower than real time when Renode needs more computing time
+than is available (the CPU thread and the time source each occupy almost one core with a 10 µs
+time slice). Measured (2 cores, test program `schlaf_takt` with a timer IRQ every ms, simulation
+panel, oscilloscope and UART edges active): previously 0.16 × real time, now ≈ 1.0 ×. The bottlenecks
+and what replaced them:
 
-| Bremse (gemessen) | Ersatz |
+| Bottleneck (measured) | Replacement |
 |---|---|
-| Renodes `CreateServerSocketTerminal`: Lese-Thread mit verbundenem Client dauerhaft ~100 % CPU | `UartHostTerminal.ServeTcp`: blockierendes Lesen, Senden aus eigenem Thread, Ausgabe vor dem Verbinden wird gesammelt |
-| Telnet-Monitor schreibt Antworten Zeichen für Zeichen (je ein `sendto`, ~14 000/s, ~70 % eines Kerns) und jeder Befehl kostet ~10 ms | Abfrage-Port `TivaSysCtl.ServeQueries`: alle Abfragen einer Runde in einer Zeile, Antwort gzip+Base64 in einem Schreibvorgang; Rückfall `BatchZ` über den Monitor bzw. einzelne Befehle |
-| LED-Bridge schrieb jede Pegeländerung im CPU-Thread in den Socket (1 kHz-LED = 1000 Schreibvorgänge/s) | Senden gesammelt alle 20 ms aus eigenem Thread; kurzes Blinken bleibt sichtbar (beide Wechsel) |
+| Renode's `CreateServerSocketTerminal`: the read thread uses ~100 % CPU permanently while a client is connected | `UartHostTerminal.ServeTcp`: blocking reads, sending from its own thread, output before the connection is collected |
+| the Telnet monitor writes answers character by character (one `sendto` each, ~14 000/s, ~70 % of a core) and every command costs ~10 ms | query port `TivaSysCtl.ServeQueries`: all queries of one round in one line, answer gzip+Base64 in one write; fallback `BatchZ` via the monitor or individual commands |
+| the LED bridge wrote every level change into the socket in the CPU thread (1 kHz LED = 1000 writes/s) | sending collected every 20 ms from its own thread; short blinks stay visible (both changes) |
 
-Die Abfragen laufen weiter in der Warteschlange des Monitors (nie gleichzeitig mit Monitor-Befehlen).
-Programme, die ununterbrochen Peripherie-Register lesen (Polling), bleiben langsamer: Jeder Zugriff
-kostet in Renode 0,6–1 µs Rechenzeit (gemessen: Timer-Zähler in einer Schleife 0,4 ×, UART senden 0,4 ×,
-GPIO lesen 0,7 ×). Eine gröbere Zeitscheibe brächte dort etwa +25 %, würde aber die Genauigkeit
-(Pendelbild, Interrupt-Zeitpunkte) verändern – deshalb nicht umgesetzt.
+The queries still go through the monitor queue (never at the same time as monitor commands).
+Programs that read peripheral registers all the time (polling) remain slower: every access costs
+0.6–1 µs of computing time in Renode (measured: timer counter in a loop 0.4 ×, UART transmit 0.4 ×,
+GPIO read 0.7 ×). A coarser time slice would gain about +25 % there, but would change the accuracy
+(pendulum image, interrupt times) – so it was not implemented.
 
-Messen: `node test/perf_tempo.js <firmware.elf> [0|1 Anzeige] [Sekunden] [Versuch]` (Backend läuft).
+Measuring: `node test/perf_tempo.js <firmware.elf> [0|1 panel] [seconds] [experiment]` (backend running).
 
-## 7. Bekannte Einschränkungen
+## 7. Known limitations
 
-- **Eine Simulation pro Container**, keine Benutzerverwaltung, keine Authentifizierung. Für den
-  Betrieb im Netz gehört der Container hinter einen Reverse-Proxy mit Anmeldung.
-- **Timing:** Renode ist nicht zyklengenau (siehe [ROADMAP.md](ROADMAP.md)). UART0 sendet mit
-  Baudraten-Timing (Flanken auf 1 ns genau), I2C ohne Busverzögerung. Die Ultraschall-Messung ist
-  sofort fertig. Der RX-Timeout-Interrupt (RT) ist vereinfacht („Daten liegen an“), µDMA fehlt.
-- **Tempo bei Warteschleifen auf Register:** Jeder Registerzugriff kostet in Renode einige µs
-  Rechenzeit. Eine Firmware, die z. B. bei 9600 Baud ununterbrochen `UARTFR.TXFF` abfragt, läuft
-  deshalb langsamer als Echtzeit (Anzeige „Tempo“, etwa 0,2×). Die Simulationszeit bleibt exakt.
-- **HC-SR04** (Lab 2/3) hat das Zeitverhalten des echten Moduls, die Messung des MB1242 (I2C) ist
-  sofort fertig.
-- **OLED:** Scrolling, Kontrast und Display-Offset (`D3`) sind nicht modelliert. Die Anzeige wird
-  mit 10 Bildern/s aktualisiert.
-- **Pendeldisplay:** ideale Sinusschwingung mit fester Amplitude, ohne Dämpfung; die Periode
-  ändert sich nur, wenn man sie einstellt (sprunghaft am nächsten Nulldurchgang).
-  LEDs leuchten ohne Nachglühen, die Anzeige zeigt je Richtung nur den letzten Schwung.
-- **Oszilloskop:** nur Digitalpegel (0 V/3,3 V bzw. offen), keine Anstiegszeiten oder analogen
-  Spannungen; Auflösung 1 µs. UART-Pins zeigen die Flanken der UART-Leitung (ns-genau, auf
-  1 µs gerundet). I2C-Pins zeigen keine Busaktivität (das I2C-Modell treibt keine Pins).
-- **Taster ohne Prellen;** Entprell-Code lässt sich im Simulator nicht prüfen.
-- **I2C:** nur Master-Betrieb, kein FIFO/µDMA/Burst. Empfangene Bytes werden einzeln vom Gerät
-  gelesen.
-- Getestet mit Renode 1.17.0 (portable, Linux x64), Chromium und Node.js 22: `test/e2e.js` (mit dem
-  früheren Ausbau von `example1`), `test/e2e_example2.js` und die
-  Bedienung im Browser, auch mit dem Verzeichnis-Layout des Images (`/opt/renode`,
-  `SIM_DIR=/opt/renode4mc/sim`, Benutzer ohne Root-Rechte). Das Docker-Image selbst konnte in der
-  Entwicklungsumgebung **nicht gebaut** werden (kein Zugriff auf Docker Hub) – beim ersten
-  `docker compose up --build` bitte prüfen.
+- **One simulation per container**, no user management, no authentication. For use on a network the
+  container belongs behind a reverse proxy with login.
+- **Timing:** Renode is not cycle-accurate (see [ROADMAP.md](ROADMAP.md)). UART0 transmits with
+  baud-rate timing (edges correct to 1 ns), I2C without bus delay. The ultrasonic measurement is
+  finished immediately. The RX time-out interrupt (RT) is simplified ("data available"), µDMA is missing.
+- **Speed with wait loops on registers:** every register access costs some µs of computing time in
+  Renode. A firmware that, for example, polls `UARTFR.TXFF` all the time at 9600 baud therefore runs
+  slower than real time (display "Speed", about 0.2×). The simulated time stays exact.
+- **HC-SR04** (Lab 2/3) has the timing behaviour of the real module; the measurement of the MB1242
+  (I2C) is finished immediately.
+- **OLED:** scrolling, contrast and display offset (`D3`) are not modelled. The display is updated
+  10 times per second.
+- **Pendulum display:** ideal sine oscillation with a fixed amplitude, without damping; the period
+  only changes when you set it (abruptly at the next zero crossing).
+  LEDs light up without afterglow, the display only shows the last swing per direction.
+- **Oscilloscope:** only digital levels (0 V/3.3 V or floating), no rise times or analogue voltages;
+  resolution 1 µs. UART pins show the edges of the UART line (correct to the ns, rounded to 1 µs).
+  I2C pins show no bus activity (the I2C model does not drive any pins).
+- **Push buttons do not bounce;** debouncing code cannot be tested in the simulator.
+- **I2C:** master mode only, no FIFO/µDMA/burst. Received bytes are read from the device one by one.
+- Tested with Renode 1.17.0 (portable, Linux x64), Chromium and Node.js 22: `test/e2e.js` (with the
+  earlier version of `example1`), `test/e2e_example2.js` and operation in the browser, also with the
+  directory layout of the image (`/opt/renode`, `SIM_DIR=/opt/renode4mc/sim`, user without root
+  rights). The Docker image itself could **not be built** in the development environment (no access
+  to Docker Hub) – please check this on the first `docker compose up --build`.

@@ -84,7 +84,7 @@ namespace Antmicro.Renode.Peripherals.Sensors
                 lastEchoUs = echoUs;
                 gen = ++generation;
             }
-            this.Log(LogLevel.Debug, "HC-SR04: Messung gestartet, Echo {0} us", echoUs);
+            this.Log(LogLevel.Debug, "HC-SR04: measurement started, echo {0} us", echoUs);
             machine.ScheduleAction(TimeInterval.FromMicroseconds(EchoDelayUs), _ =>
             {
                 lock(sync) { if(gen != generation) return; }

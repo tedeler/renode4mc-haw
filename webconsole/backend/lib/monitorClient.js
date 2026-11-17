@@ -55,7 +55,7 @@ class MonitorClient extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     let lastErr;
     while (Date.now() < deadline) {
-      if (!isAlive()) throw new Error('Renode-Prozess wurde beendet');
+      if (!isAlive()) throw new Error('Renode process has terminated');
       try {
         await this._connectOnce();
         return;
@@ -64,7 +64,7 @@ class MonitorClient extends EventEmitter {
         await new Promise((r) => setTimeout(r, 300));
       }
     }
-    throw new Error(`Renode-Monitor nicht erreichbar: ${lastErr ? lastErr.message : 'Timeout'}`);
+    throw new Error(`Renode monitor not reachable: ${lastErr ? lastErr.message : 'timeout'}`);
   }
 
   _connectOnce() {
@@ -132,8 +132,8 @@ class MonitorClient extends EventEmitter {
     const wasConnected = this.connected;
     this.connected = false;
     this.socket = null;
-    if (this.current) this._finish(new Error('Monitor-Verbindung geschlossen'));
-    for (const q of this.queue.splice(0)) q.reject(new Error('Monitor-Verbindung geschlossen'));
+    if (this.current) this._finish(new Error('Monitor connection closed'));
+    for (const q of this.queue.splice(0)) q.reject(new Error('Monitor connection closed'));
     if (wasConnected) this.emit('close');
   }
 
@@ -143,9 +143,9 @@ class MonitorClient extends EventEmitter {
    * @param {{priority?: boolean}} opts priority=true stellt den Befehl vor Polling-Befehle
    */
   execute(cmd, { priority = false } = {}) {
-    if (/[\r\n]/.test(cmd)) return Promise.reject(new Error('Ungültiger Befehl'));
+    if (/[\r\n]/.test(cmd)) return Promise.reject(new Error('Invalid command'));
     return new Promise((resolve, reject) => {
-      if (!this.connected) return reject(new Error('Monitor nicht verbunden'));
+      if (!this.connected) return reject(new Error('Monitor not connected'));
       const job = { cmd, resolve, reject, timer: null };
       if (priority) {
         const firstNonPrio = this.queue.findIndex((j) => !j.priority);
@@ -166,7 +166,7 @@ class MonitorClient extends EventEmitter {
    */
   runExclusive(fn) {
     return new Promise((resolve, reject) => {
-      if (!this.connected) return reject(new Error('Monitor nicht verbunden'));
+      if (!this.connected) return reject(new Error('Monitor not connected'));
       this.queue.push({ run: fn, resolve, reject, timer: null, cmd: '(Abfrage)' });
       this._next();
     });
@@ -188,7 +188,7 @@ class MonitorClient extends EventEmitter {
     this.current = job;
     this.buffer = '';
     if (job.run) {
-      job.timer = setTimeout(() => this._finish(new Error('Timeout bei Abfrage')), this.commandTimeoutMs);
+      job.timer = setTimeout(() => this._finish(new Error('Timeout during query')), this.commandTimeoutMs);
       Promise.resolve()
         .then(job.run)
         .then(
@@ -205,7 +205,7 @@ class MonitorClient extends EventEmitter {
         this.buffer = '';
         this._finish(null, out);
       } else {
-        this._finish(new Error(`Timeout bei "${job.cmd}"`));
+        this._finish(new Error(`Timeout during "${job.cmd}"`));
       }
     }, this.commandTimeoutMs);
     this.socket.write(`${job.cmd}\r\n`);

@@ -65,24 +65,24 @@ async function waitFor(fn, timeoutMs = 5000) {
   await Promise.all([u, c].map((ws) => new Promise((r) => ws.once('open', r))));
   const send = (m) => c.send(JSON.stringify(m));
 
-  check('UART: Startmeldung', await waitFor(() => /Example 03 Web-Konsole/.test(uart)));
+  check('UART: Startmeldung', await waitFor(() => /Example 03 Web console/.test(uart)));
 
   send({ type: 'sensor', value: 42 });
-  check('Sensor 42 cm -> UART', await waitFor(() => /Abstand:\s+42 cm/.test(uart)));
+  check('Sensor 42 cm -> UART', await waitFor(() => /Distance:\s+42 cm/.test(uart)));
   check('Sensor < 50 cm -> LED D1 an', await waitFor(() => leds.D1 === true));
   send({ type: 'sensor', value: 250 });
   check('Sensor 250 cm -> LED D1 aus', await waitFor(() => leds.D1 === false));
 
   send({ type: 'keypad', row: 1, col: 1, pressed: true });
-  check('Keypad Zeile 1/Spalte 1 -> Taste 5', await waitFor(() => /Taste: 5/.test(uart)));
+  check('Keypad Zeile 1/Spalte 1 -> Taste 5', await waitFor(() => /Key: 5/.test(uart)));
   send({ type: 'keypad', row: 1, col: 1, pressed: false });
-  check('Keypad loslassen', await waitFor(() => /Taste losgelassen/.test(uart)));
+  check('Keypad loslassen', await waitFor(() => /Key released/.test(uart)));
 
   const d3 = leds.D3;
   send({ type: 'button', id: 'SW1', pressed: true });
   await sleep(150);
   send({ type: 'button', id: 'SW1', pressed: false });
-  check('USR_SW1 -> UART', await waitFor(() => /USR_SW1 gedrueckt/.test(uart)));
+  check('USR_SW1 -> UART', await waitFor(() => /USR_SW1 pressed/.test(uart)));
   check('USR_SW1 -> LED D3 umgeschaltet', await waitFor(() => leds.D3 === !d3));
 
   u.send('x');

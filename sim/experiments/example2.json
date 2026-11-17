@@ -1,16 +1,16 @@
 {
-  "title": "Example 2 – EK-TM4C1294XL: Pendeldisplay, Ultraschall, UART",
-  "description": "Pendeldisplay (8 LEDs an PM0–PM7, PM0 = Spitze, Sync an PL0), Ultraschall MB1242 an I2C0, UART0, LEDs D1–D4",
+  "title": "Example 2 – EK-TM4C1294XL: pendulum display, ultrasonic sensor, UART",
+  "description": "Pendulum display (8 LEDs on PM0–PM7, PM0 = tip, sync on PL0), ultrasonic sensor MB1242 on I2C0, UART0, LEDs D1–D4",
   "uart": {
     "baud": 115200,
     "format": "8N1",
-    "label": "UART0 (PA0 RX / PA1 TX) – virtueller COM-Port"
+    "label": "UART0 (PA0 RX / PA1 TX) – virtual COM port"
   },
   "quantumUs": 10,
   "elements": [
     {
       "type": "pendulum",
-      "label": "8 LEDs an PM0–PM7 (PM0 oben an der Spitze, Drehpunkt unten), Signal an PL0: HIGH = rechts, LOW = links",
+      "label": "8 LEDs on PM0–PM7 (PM0 at the top, at the tip; pivot at the bottom), signal on PL0: HIGH = right, LOW = left",
       "frequency": 10,
       "minFrequency": 0.1,
       "maxFrequency": 20,
@@ -33,7 +33,7 @@
     },
     {
       "type": "mb1242",
-      "label": "MB1242 an I2C0, 0x70",
+      "label": "MB1242 on I2C0, 0x70",
       "bus": "i2c0",
       "address": "0x70",
       "min": 0,

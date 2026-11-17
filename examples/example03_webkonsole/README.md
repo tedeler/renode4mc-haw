@@ -1,145 +1,145 @@
-# Example 03 – Web-Konsole: UART, I2C, Keypad und Taster
+# Example 03 – Web console: UART, I2C, keypad and push buttons
 
-**Ziel:** Ein Programm, das alle Bedienelemente der [Web-Konsole](../../docs/WEBCONSOLE.md)
-benutzt. Es gibt Meldungen über **UART0** aus, liest einen **Ultraschallsensor** und beschreibt ein
-**OLED-Display** über **I2C**. Ein **Keypad** wird im Multiplexverfahren abgefragt, die **Taster**
-lösen Interrupts aus. Erst im **Simulator** (Web-Konsole), dann auf dem **Board** mit
-Zusatz-Hardware.
+**Goal:** a program that uses all controls of the [web console](../../docs/WEBCONSOLE.md).
+It prints messages via **UART0**, reads an **ultrasonic sensor** and writes to an
+**OLED display** via **I2C**. A **keypad** is read by multiplexing, and the **push buttons**
+trigger interrupts. First in the **simulator** (web console), then on the **board** with
+additional hardware.
 
-**Vorher:** [Example 01](../example01_blinky/README.md) (GPIO, Clock-Gating) und
-[Example 02](../example02_timer_blink/README.md) (Timer, Interrupt).
+**Before you start:** [Example 01](../example01_blinky/README.md) (GPIO, clock gating) and
+[Example 02](../example02_timer_blink/README.md) (timer, interrupt).
 
 | | |
 |---|---|
-| Board | EK-TM4C1294XL (TM4C1294NCPDT), Takt 16 MHz (unverändert) |
-| LEDs | D1 = PN1 (Abstand < 50 cm), D2 = PN0 (Herzschlag 1 Hz), D3 = PF4 / D4 = PF0 (Taster) |
-| Taster | USR_SW1 = PJ0, USR_SW2 = PJ1 (gedrückt = LOW), Interrupt bei fallender Flanke |
-| UART0 | PA0 RX / PA1 TX, 115200 Baud, 8N1 (virtueller COM-Port des Boards) |
+| Board | EK-TM4C1294XL (TM4C1294NCPDT), clock 16 MHz (unchanged) |
+| LEDs | D1 = PN1 (distance < 50 cm), D2 = PN0 (heartbeat 1 Hz), D3 = PF4 / D4 = PF0 (push buttons) |
+| Push buttons | USR_SW1 = PJ0, USR_SW2 = PJ1 (pressed = LOW), interrupt on falling edge |
+| UART0 | PA0 RX / PA1 TX, 115200 baud, 8N1 (virtual COM port of the board) |
 | I2C0 | PB2 SCL / PB3 SDA, 100 kHz |
-| OLED | SSD1306 128×64, I2C-Adresse 0x3C |
-| Ultraschall | MaxBotix MB1242 (I2CXL-MaxSonar), I2C-Adresse 0x70 |
-| Keypad 4×3 | Zeilen PK0–PK3 (Ausgang), Spalten PK4–PK6 (Eingang, Pull-down, Interrupt) |
-| Timer | Timer0A, 100 ms periodisch |
-| Dateien | `main.c`, `example03_webkonsole.projectspec`, `Makefile` |
+| OLED | SSD1306 128×64, I2C address 0x3C |
+| Ultrasonic sensor | MaxBotix MB1242 (I2CXL-MaxSonar), I2C address 0x70 |
+| Keypad 4×3 | rows PK0–PK3 (outputs), columns PK4–PK6 (inputs, pull-down, interrupt) |
+| Timer | Timer0A, 100 ms periodic |
+| Files | `main.c`, `example03_webkonsole.projectspec`, `Makefile` |
 
 ---
 
-## 1. Was Sie lernen
+## 1. What you learn
 
-- **UART:** Baudrate aus dem Takt berechnen (`IBRD`/`FBRD`), Pins auf die alternative Funktion
-  umschalten (`AFSEL`, `PCTL`), Senden mit Abfrage von `TXFF`, Empfangen mit `RXFE`.
-- **I2C-Master:** Adresse in `MSA`, Daten in `MDR`, Ablauf über `MCS` (START, RUN, STOP, ACK).
-  Danach auf das Ende warten und den Fehler prüfen (`BUSY`, `ERROR`).
-- **Gerät am Bus:** Das OLED bekommt pro Übertragung ein Steuerbyte (`0x00` = Befehle,
-  `0x40` = Bilddaten). Der Sensor misst nach dem Befehl `0x51` und liefert 2 Bytes.
-- **Multiplexing:** Mit 4 + 3 Leitungen lassen sich 12 Tasten abfragen. Die Firmware treibt eine
-  Zeile HIGH und liest die Spalten.
-- **Interrupts von mehreren Quellen** (Timer, Port J, Port K): Die ISR setzt nur ein Flag, die
-  Arbeit erledigt die Hauptschleife.
+- **UART:** compute the baud rate from the clock (`IBRD`/`FBRD`), switch pins to the alternate
+  function (`AFSEL`, `PCTL`), transmit by polling `TXFF`, receive by polling `RXFE`.
+- **I2C master:** address in `MSA`, data in `MDR`, sequence via `MCS` (START, RUN, STOP, ACK).
+  Then wait for the end and check for errors (`BUSY`, `ERROR`).
+- **Devices on the bus:** the OLED receives a control byte with every transfer (`0x00` = commands,
+  `0x40` = image data). The sensor measures after the command `0x51` and returns 2 bytes.
+- **Multiplexing:** with 4 + 3 lines you can read 12 keys. The firmware drives one row HIGH
+  and reads the columns.
+- **Interrupts from several sources** (timer, port J, port K): the ISR only sets a flag, the
+  main loop does the work.
 
-## 2. Das Programm verstehen (`main.c`)
+## 2. Understanding the program (`main.c`)
 
-Alle Register und Bits kommen aus `tm4c1294ncpdt.h` (siehe Example 01); im Programm steht keine Adresse.
+All registers and bits come from `tm4c1294ncpdt.h` (see Example 01); the program contains no addresses.
 
-| Register (Datenblatt) | Name in `tm4c1294ncpdt.h` | Adresse | Wirkung hier |
+| Register (data sheet) | Name in `tm4c1294ncpdt.h` | Address | Effect here |
 |---|---|---|---|
-| `RCGCUART` / `PRUART` | `SYSCTL_RCGCUART_R` / `SYSCTL_PRUART_R` | `0x400FE618` / `0x400FEA18` | `…_R0` (Bit 0): Takt für UART0 |
-| `RCGCI2C` / `PRI2C` | `SYSCTL_RCGCI2C_R` / `SYSCTL_PRI2C_R` | `0x400FE620` / `0x400FEA20` | `…_R0` (Bit 0): Takt für I2C0 |
-| `UARTIBRD` / `UARTFBRD` | `UART0_IBRD_R` / `UART0_FBRD_R` | `0x4000C024` / `0x4000C028` | 8 / 44 → 115200 Baud bei 16 MHz |
-| `UARTLCRH` | `UART0_LCRH_R` | `0x4000C02C` | `UART_LCRH_WLEN_8 \| UART_LCRH_FEN`: 8 Datenbits, FIFO an |
+| `RCGCUART` / `PRUART` | `SYSCTL_RCGCUART_R` / `SYSCTL_PRUART_R` | `0x400FE618` / `0x400FEA18` | `…_R0` (bit 0): clock for UART0 |
+| `RCGCI2C` / `PRI2C` | `SYSCTL_RCGCI2C_R` / `SYSCTL_PRI2C_R` | `0x400FE620` / `0x400FEA20` | `…_R0` (bit 0): clock for I2C0 |
+| `UARTIBRD` / `UARTFBRD` | `UART0_IBRD_R` / `UART0_FBRD_R` | `0x4000C024` / `0x4000C028` | 8 / 44 → 115200 baud at 16 MHz |
+| `UARTLCRH` | `UART0_LCRH_R` | `0x4000C02C` | `UART_LCRH_WLEN_8 \| UART_LCRH_FEN`: 8 data bits, FIFO on |
 | `UARTCTL` | `UART0_CTL_R` | `0x4000C030` | `UART_CTL_UARTEN`, `UART_CTL_TXE`, `UART_CTL_RXE` |
-| `I2CMCR` | `I2C0_MCR_R` | `0x40020020` | `I2C_MCR_MFE`: Master einschalten |
-| `I2CMTPR` | `I2C0_MTPR_R` | `0x4002000C` | 7 → 100 kHz bei 16 MHz |
-| `I2CMSA` / `I2CMDR` / `I2CMCS` | `I2C0_MSA_R` / `I2C0_MDR_R` / `I2C0_MCS_R` | `0x40020000` / `…08` / `…04` | Adresse+R/W, Datenbyte, Befehl/Status (`I2C_MCS_RUN`, `…_START`, `…_STOP`, `…_ACK`) |
-| `GPIOIEV` (Port K) | `GPIO_PORTK_IEV_R` | `0x4006140C` | Spalten: Interrupt bei steigender Flanke |
+| `I2CMCR` | `I2C0_MCR_R` | `0x40020020` | `I2C_MCR_MFE`: switch the master on |
+| `I2CMTPR` | `I2C0_MTPR_R` | `0x4002000C` | 7 → 100 kHz at 16 MHz |
+| `I2CMSA` / `I2CMDR` / `I2CMCS` | `I2C0_MSA_R` / `I2C0_MDR_R` / `I2C0_MCS_R` | `0x40020000` / `…08` / `…04` | address+R/W, data byte, command/status (`I2C_MCS_RUN`, `…_START`, `…_STOP`, `…_ACK`) |
+| `GPIOIEV` (port K) | `GPIO_PORTK_IEV_R` | `0x4006140C` | columns: interrupt on rising edge |
 
-Zwei Dinge, die die Headerdatei **nicht** enthält und die deshalb in `main.c` stehen:
-- die Pin-Funktionen für `GPIOPCTL` (Datenblatt, Tabelle „GPIO Pins and Alternate Functions“:
-  PA0/PA1 → Funktion 1 = U0RX/U0TX, PB2/PB3 → Funktion 2 = I2C0SCL/I2C0SDA) und
-- die NVIC-Nummern: `IRQ_GPIOJ = INT_GPIOJ − 16 = 51` → Bit 19 in `NVIC_EN1_R` (51 − 32).
+Two things that the header file does **not** contain and that are therefore defined in `main.c`:
+- the pin functions for `GPIOPCTL` (data sheet, table "GPIO Pins and Alternate Functions":
+  PA0/PA1 → function 1 = U0RX/U0TX, PB2/PB3 → function 2 = I2C0SCL/I2C0SDA) and
+- the NVIC numbers: `IRQ_GPIOJ = INT_GPIOJ − 16 = 51` → bit 19 in `NVIC_EN1_R` (51 − 32).
 
-**Einzelne Pins schreiben:** `GPIO_PORTK_DATA_BITS_R[maske] = wert` ändert nur die Pins, deren Bit in
-`maske` gesetzt ist (Adressmaskierung des `GPIODATA`-Registers, Datenblatt Kapitel GPIO, „Data Register Operation“).
+**Writing single pins:** `GPIO_PORTK_DATA_BITS_R[mask] = value` only changes the pins whose bit is
+set in `mask` (address masking of the `GPIODATA` register, data sheet chapter GPIO, "Data Register Operation").
 
-**Baudrate:** `BRD = 16 000 000 / (16 · 115 200) = 8,6806` → `IBRD = 8`,
-`FBRD = round(0,6806 · 64) = 44`.
+**Baud rate:** `BRD = 16 000 000 / (16 · 115 200) = 8.6806` → `IBRD = 8`,
+`FBRD = round(0.6806 · 64) = 44`.
 
-**I2C-Takt:** `TPR = 16 MHz / (2 · (6 + 4) · 100 kHz) − 1 = 7`.
+**I2C clock:** `TPR = 16 MHz / (2 · (6 + 4) · 100 kHz) − 1 = 7`.
 
-**Keypad-Abfrage:**
+**Reading the keypad:**
 
 ```c
-// Ruhezustand: alle Zeilen HIGH -> ein Tastendruck macht seine Spalte HIGH -> Interrupt (GPIOK_Handler)
-for (zeile = 0; zeile < 4; zeile++) {
-    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile;          // nur diese Zeile HIGH
-    spalten = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> 4;
-    if (spalten) { taste = keymap[zeile][erste gesetzte Spalte]; break; }
+// idle state: all rows HIGH -> a key press makes its column HIGH -> interrupt (GPIOK_Handler)
+for (row = 0; row < 4; row++) {
+    GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << row;            // only this row HIGH
+    cols = (GPIO_PORTK_DATA_BITS_R[KP_COLS] & KP_COLS) >> 4;
+    if (cols) { key = keymap[row][first column that is set]; break; }
 }
-GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // wieder alle Zeilen HIGH
+GPIO_PORTK_DATA_BITS_R[KP_ROWS] = KP_ROWS;                  // all rows HIGH again
 ```
 
-## 3. Variante A: Im Simulator (Web-Konsole)
+## 3. Option A: in the simulator (web console)
 
-1. Bauen: in CCS (Import wie in Example 01, `example03_webkonsole.projectspec`) oder
+1. Build: in CCS (import as in Example 01, `example03_webkonsole.projectspec`) or
    ```bash
-   cd ~/praktikum/renode4mc-haw/examples/example03_webkonsole
+   cd ~/lab/renode4mc-haw/examples/example03_webkonsole
    make
    ```
-2. Web-Konsole starten (einmalig bauen dauert einige Minuten):
+2. Start the web console (the first build takes a few minutes):
    ```bash
-   cd ~/praktikum/renode4mc-haw/webconsole
+   cd ~/lab/renode4mc-haw/webconsole
    docker compose up --build
    ```
-3. Einen Versuch mit OLED, MB1242 und Keypad anlegen – die fertige Datei `sim/experiments/webkonsole.json`
-   steht in der [Anleitung, Abschnitt 3](../../docs/ANLEITUNG.md#3-neuen-versuch-hinzufügen). Der
-   mitgelieferte Versuch „Simple Elemente“ (`example1`) hat nur LEDs, Taster, UART und einen HC-SR04;
-   dort fehlen OLED, Sensor und Keypad (wie bei `ucsim`, siehe unten).
-4. http://localhost:3000 öffnen, diesen Versuch wählen, `example03_webkonsole.out` auswählen, **Start**.
+3. Create an experiment with OLED, MB1242 and keypad – the ready-made file `sim/experiments/webkonsole.json`
+   is shown in the [guide, section 3](../../docs/GUIDE.md#3-adding-a-new-experiment). The
+   experiment "Simple elements" (`example1`) that comes with the repository only has LEDs, push
+   buttons, UART and an HC-SR04; OLED, sensor and keypad are missing there (as with `ucsim`, see below).
+4. Open http://localhost:3000, choose this experiment, select `example03_webkonsole.out`, **Start**.
 
-Was Sie sehen sollten:
+What you should see:
 
-- Im **Terminal**: `renode4mc-haw - Example 03 Web-Konsole`, danach `Abstand: 100 cm`.
-- Auf dem **OLED**: Titel, `ABSTAND: 100 CM`, `TASTE: -`, `UART: -`.
-- **D2** blinkt mit 1 Hz.
-- **Schieberegler** unter 50 cm: **D1** geht an, Terminal und OLED zeigen den neuen Abstand.
-- **Keypad** „5“ drücken: `Taste: 5`, beim Loslassen `Taste losgelassen`.
-- **USR_SW1**/**USR_SW2**: **D3**/**D4** werden umgeschaltet.
-- Ins **Terminal** tippen: Die Zeichen kommen zurück (Echo), das letzte steht auf dem OLED.
+- In the **terminal**: `renode4mc-haw - Example 03 Web console`, then `Distance: 100 cm`.
+- On the **OLED**: title, `DISTANCE: 100 CM`, `KEY: -`, `UART: -`.
+- **D2** blinks at 1 Hz.
+- **Slider** below 50 cm: **D1** goes on, terminal and OLED show the new distance.
+- Press **keypad** "5": `Key: 5`, when released `Key released`.
+- **USR_SW1**/**USR_SW2**: **D3**/**D4** are toggled.
+- Type into the **terminal**: the characters come back (echo), the last one is shown on the OLED.
 
-`make sim` (also `ucsim`) startet nur den einfachen Simulator: Dort blinkt D2, aber OLED, Sensor
-und Keypad fehlen. Der Simulator meldet einmal je Adresse *„kein Gerät unter Adresse 0x3C“*.
+`make sim` (i.e. `ucsim`) only starts the simple simulator: there D2 blinks, but OLED, sensor
+and keypad are missing. The simulator reports once per address *"no device at address 0x3C"*.
 
-### Selbst ausprobieren
+### Try it yourself
 
-- Entfernen Sie `SYSCTL_RCGCI2C_R |= …`. Das Programm bleibt in der Warteschleife auf `PRI2C`
-  hängen, und es erscheint keine Ausgabe. Warum? Entfernen Sie zusätzlich `(SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0`
-  aus der Bedingung. Jetzt warnt der Simulator *„I2C0: Zugriff … ohne Takt!“*.
-- Ändern Sie `OLED_ADDR` auf `0x3D`. Was gibt `i2c_wait()` zurück?
-- Entfernen Sie in `keypad_scan()` das Setzen der Zeile (`GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << zeile`).
-  Welche Taste wird erkannt?
+- Remove `SYSCTL_RCGCI2C_R |= …`. The program stays in the wait loop on `PRI2C`, and no output
+  appears. Why? Also remove `(SYSCTL_PRI2C_R & SYSCTL_PRI2C_R0) == 0` from the condition. Now the
+  simulator warns *"I2C0: access … without clock!"*.
+- Change `OLED_ADDR` to `0x3D`. What does `i2c_wait()` return?
+- In `keypad_scan()`, remove setting the row (`GPIO_PORTK_DATA_BITS_R[KP_ROWS] = 1u << row`).
+  Which key is detected?
 
-## 4. Variante B: Auf dem Board
+## 4. Option B: on the board
 
-Zusätzlich zum EK-TM4C1294XL nötig: SSD1306-OLED-Modul (I2C, 3,3 V), MB1242-Sensor (3,3–5 V) und
-ein 4×3-Folienkeypad. Anschluss laut Tabelle oben. Pull-up-Widerstände für SCL/SDA haben die
-meisten OLED-Module bereits. Import, Bauen und Debuggen funktionieren wie in Example 02, Abschnitt 4.
-Den UART sehen Sie z. B. mit `picocom -b 115200 /dev/ttyACM0`.
+In addition to the EK-TM4C1294XL you need: an SSD1306 OLED module (I2C, 3.3 V), an MB1242 sensor
+(3.3–5 V) and a 4×3 membrane keypad. Connect them as in the table above. Most OLED modules already
+have pull-up resistors for SCL/SDA. Import, build and debug work as in Example 02, section 4.
+You can watch the UART e.g. with `picocom -b 115200 /dev/ttyACM0`.
 
-> **Hinweis:** Auf der Hardware prellen Taster und Keypad. Das Programm entprellt nicht, weil der
-> Simulator kein Prellen nachbildet. Ergänzen Sie dafür eine Sperrzeit (z. B. 50 ms über `ticks`).
+> **Note:** on the hardware, push buttons and keypad bounce. The program does not debounce, because
+> the simulator does not model bouncing. Add a lock-out time for this (e.g. 50 ms using `ticks`).
 
-## 5. Aufgaben
+## 5. Exercises
 
-1. Geben Sie zusätzlich die Zeit seit dem Start (in Sekunden, aus `ticks`) auf OLED-Zeile 2 aus.
-2. Senden Sie über das Terminal den Befehl `L` → alle LEDs aus, `H` → alle an.
-3. Schalten Sie den UART-Empfang auf Interrupt um (`UART0_IM_R` mit `UART_IM_RXIM`/`UART_IM_RTIM`, `UART0_Handler`, NVIC IRQ `INT_UART0 − 16` = 5).
-4. Bauen Sie eine Code-Sperre: Nach der Eingabe `1234#` auf dem Keypad leuchtet D1 für 2 s.
+1. Also show the time since start (in seconds, from `ticks`) in OLED line 2.
+2. Send the command `L` via the terminal → all LEDs off, `H` → all on.
+3. Switch the UART reception to interrupt mode (`UART0_IM_R` with `UART_IM_RXIM`/`UART_IM_RTIM`, `UART0_Handler`, NVIC IRQ `INT_UART0 − 16` = 5).
+4. Build a code lock: after entering `1234#` on the keypad, D1 lights up for 2 s.
 
-## 6. Hinweise zum Simulator
+## 6. Notes on the simulator
 
-- Der UART sendet zeitrichtig mit der eingestellten Baudrate (`TXFF`/`BUSY` wie auf dem Board). I2C
-  überträgt ohne Busverzögerung; Busy-Abfragen sind trotzdem nötig, weil das Programm sonst auf der
-  Hardware nicht läuft.
-- Der Ultraschallsensor liefert sofort den eingestellten Wert. Die echte Messung dauert ca. 80 ms,
-  deshalb liest das Programm erst beim nächsten 100-ms-Takt.
-- Details zu den Modellen: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), Abschnitt 2.
+- The UART transmits with correct timing at the configured baud rate (`TXFF`/`BUSY` as on the
+  board). I2C transfers without bus delay; polling the busy flag is still necessary, because
+  otherwise the program does not work on the hardware.
+- The ultrasonic sensor returns the set value immediately. The real measurement takes about 80 ms,
+  which is why the program only reads the value at the next 100 ms tick.
+- Details about the models: [docs/WEBCONSOLE.md](../../docs/WEBCONSOLE.md), section 2.

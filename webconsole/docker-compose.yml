@@ -1,5 +1,5 @@
 # Start:  cd webconsole && docker compose up --build      ->  http://localhost:3000
-# Mit Git-Stand im Über-Dialog (Klick aufs HAW-Logo):
+# With the Git version in the About dialog (click on the HAW logo):
 #   GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build
 services:
   webconsole:
@@ -13,12 +13,12 @@ services:
     image: renode4mc-webconsole:latest
     init: true
     ports:
-      - "3000:3000"   # Web-Oberfläche + Upload
-      - "3333:3333"   # UART-WebSocket
-      - "3334:3334"   # Control-WebSocket
-    # Zustandslos: die hochgeladene Firmware liegt nur im RAM-Dateisystem des Containers.
-    # "exec" ist Pflicht: Renode entpackt seine CPU-Bibliothek (tlib) nach /tmp und lädt sie
-    # von dort. Docker hängt tmpfs sonst mit noexec ein -> "failed to map segment from shared object".
+      - "3000:3000"   # web interface + upload
+      - "3333:3333"   # UART WebSocket
+      - "3334:3334"   # control WebSocket
+    # Stateless: the uploaded firmware is only stored in the RAM file system of the container.
+    # "exec" is required: Renode unpacks its CPU library (tlib) to /tmp and loads it
+    # from there. Otherwise Docker mounts tmpfs with noexec -> "failed to map segment from shared object".
     tmpfs:
       - /tmp:exec,mode=1777
     restart: unless-stopped

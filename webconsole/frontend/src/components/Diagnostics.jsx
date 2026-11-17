@@ -23,21 +23,21 @@ export default function Diagnostics() {
   const level = errors ? 'error' : diagnostics.length ? 'warning' : 'ok';
   return (
     <Widget
-      title="Diagnose"
+      title="Diagnostics"
       className={`diag diag-${level}`}
-      subtitle={diagnostics.length ? 'das Programm verhält sich auf dem Board so nicht wie gedacht' : undefined}
+      subtitle={diagnostics.length ? 'on the real board the program would not behave as intended' : undefined}
       badge={
         diagnostics.length > 0 && (
           <span className={`count-badge ${level}`}>
             {diagnostics.length}
-            {errors ? ` · ${errors} Fehler` : ''}
+            {errors ? ` · ${errors} error${errors === 1 ? '' : 's'}` : ''}
           </span>
         )
       }
       actions={
         diagnostics.length > 0 && (
           <button className="btn small" onClick={() => send({ type: 'clearDiagnostics' })}>
-            Leeren
+            Clear
           </button>
         )
       }
@@ -46,14 +46,14 @@ export default function Diagnostics() {
         <ul className="diag-list">
           {diagnostics.map((d) => (
             <li key={d.message} className={d.level}>
-              <span className="diag-level">{d.level === 'error' ? 'Fehler' : 'Warnung'}</span>
+              <span className="diag-level">{d.level === 'error' ? 'Error' : 'Warning'}</span>
               <span className="diag-msg">{d.message}</span>
               {d.count > 1 && <span className="diag-count">×{d.count}</span>}
             </li>
           ))}
         </ul>
       ) : (
-        <div className="meta">Keine Konfigurationsfehler gemeldet.</div>
+        <div className="meta">No configuration errors reported.</div>
       )}
     </Widget>
   );

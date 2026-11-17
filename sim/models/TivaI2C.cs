@@ -104,7 +104,7 @@ namespace Antmicro.Renode.Peripherals.I2C
         {
             if((mcr & McrMfe) == 0)
             {
-                this.Log(LogLevel.Warning, "I2C{0}: MCS geschrieben, aber Master nicht freigegeben (I2CMCR.MFE = 0).", clockBit);
+                this.Log(LogLevel.Warning, "I2C{0}: MCS written, but the master is not enabled (I2CMCR.MFE = 0).", clockBit);
                 return;
             }
 
@@ -131,8 +131,8 @@ namespace Antmicro.Renode.Peripherals.I2C
                 {
                     if(missingWarned.Add(address))
                     {
-                        this.Log(LogLevel.Warning, "I2C{0}: kein Gerät unter Adresse 0x{1:X2} (Adress-NACK). " +
-                            "Weitere Zugriffe auf diese Adresse werden nicht mehr gemeldet.", clockBit, address);
+                        this.Log(LogLevel.Warning, "I2C{0}: no device at address 0x{1:X2} (address NACK). " +
+                            "Further accesses to this address are not reported again.", clockBit, address);
                     }
                     current = null;
                     currentAddress = -1;
@@ -153,7 +153,7 @@ namespace Antmicro.Renode.Peripherals.I2C
                     Finish();
                     return;
                 }
-                this.Log(LogLevel.Warning, "I2C{0}: Befehl 0x{1:X} ohne vorheriges START ignoriert.", clockBit, value);
+                this.Log(LogLevel.Warning, "I2C{0}: command 0x{1:X} without a preceding START ignored.", clockBit, value);
                 error = true;
                 Finish();
                 return;
@@ -232,8 +232,8 @@ namespace Antmicro.Renode.Peripherals.I2C
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,
-                    "I2C{0}: Zugriff (Offset 0x{1:X}) ohne Takt! RCGCI2C Bit {0} muss gesetzt werden " +
-                    "(SysCtlPeripheralEnable). Auf der Hardware führt das zu einem Fault.",
+                    "I2C{0}: access (offset 0x{1:X}) without clock! RCGCI2C bit {0} must be set " +
+                    "(SysCtlPeripheralEnable). On real hardware this causes a fault.",
                     clockBit, offset);
                 clockWarned = true;
             }

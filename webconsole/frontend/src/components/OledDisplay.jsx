@@ -81,7 +81,7 @@ export default function OledDisplay({ width = 128, height = 64, scale = 4, label
   }, [width, height]);
 
   return (
-    <Widget title="OLED-Display" subtitle={label} className="oled">
+    <Widget title="OLED display" subtitle={label} className="oled">
       <ScaleBox maxScale={1.5} minH={90} flowMaxH={300}>
         <div className="oled-bezel">
           <canvas ref={canvasRef} width={width * scale} height={height * scale} className="oled-canvas" />

@@ -28,7 +28,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         {
             if(rows < 1 || rows > 8 || columns < 1 || columns > 4)
             {
-                throw new ArgumentException("KeypadMatrix: 1..8 Zeilen und 1..4 Spalten");
+                throw new ArgumentException("KeypadMatrix: 1..8 rows and 1..4 columns");
             }
             Rows = rows;
             Columns = columns;
@@ -63,11 +63,11 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
         {
             if(row < 0 || row >= Rows || column < 0 || column >= Columns)
             {
-                throw new ArgumentException(string.Format("Taste ({0},{1}) existiert nicht", row, column));
+                throw new ArgumentException(string.Format("Key ({0},{1}) does not exist", row, column));
             }
             lock(sync)
             {
-                this.Log(LogLevel.Debug, "Keypad: Zeile {0}, Spalte {1} {2}", row, column, pressed ? "gedrückt" : "losgelassen");
+                this.Log(LogLevel.Debug, "Keypad: row {0}, column {1} {2}", row, column, pressed ? "pressed" : "released");
                 pressedKeys[row, column] = pressed;
                 Update();
             }

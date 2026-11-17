@@ -35,10 +35,10 @@ const UART_PIN_FUNCTION = 1;
 
 /** Fest belegte Pins: dürfen nicht verwendet werden */
 const RESERVED_PINS = {
-  PC0: 'JTAG/SWD TCK (Debugger)',
-  PC1: 'JTAG/SWD TMS (Debugger)',
-  PC2: 'JTAG TDI (Debugger)',
-  PC3: 'JTAG TDO/SWO (Debugger)',
+  PC0: 'JTAG/SWD TCK (debugger)',
+  PC1: 'JTAG/SWD TMS (debugger)',
+  PC2: 'JTAG TDI (debugger)',
+  PC3: 'JTAG TDO/SWO (debugger)',
 };
 
 /** I2C-Pins der Busse, die auf dem Board herausgeführt und im Simulator verdrahtet sind */
@@ -46,14 +46,14 @@ const I2C_PINS = { i2c0: ['PB2', 'PB3'] };
 
 /** Pins, die auf dem EK-TM4C1294XL schon mit etwas verbunden sind (nur Hinweis) */
 const BOARD_PINS = {
-  PA0: 'dem Debug-Chip (virtueller COM-Port, U0RX)',
-  PA1: 'dem Debug-Chip (virtueller COM-Port, U0TX)',
+  PA0: 'the debug chip (virtual COM port, U0RX)',
+  PA1: 'the debug chip (virtual COM port, U0TX)',
   PN1: 'LED D1',
   PN0: 'LED D2',
   PF4: 'LED D3',
   PF0: 'LED D4',
-  PJ0: 'Taster USR_SW1',
-  PJ1: 'Taster USR_SW2',
+  PJ0: 'push button USR_SW1',
+  PJ1: 'push button USR_SW2',
 };
 
 /** Geschützte Pins (GPIOLOCK/GPIOCR nötig, Datenblatt 10.3.4) – nur Hinweis */
@@ -85,11 +85,11 @@ const PHONE_LAYOUT = [
 // ---------------------------------------------------------------------------------------------
 
 const F = {
-  str: (v) => (typeof v === 'string' ? null : 'Text erwartet'),
-  bool: (v) => (typeof v === 'boolean' ? null : 'true oder false erwartet'),
-  num: (min, max) => (v) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? null : `Zahl ${min}..${max} erwartet`),
-  int: (min, max) => (v) => (Number.isInteger(v) && v >= min && v <= max ? null : `ganze Zahl ${min}..${max} erwartet`),
-  oneOf: (...opts) => (v) => (opts.includes(v) ? null : `erlaubt: ${opts.map((o) => JSON.stringify(o)).join(', ')}`),
+  str: (v) => (typeof v === 'string' ? null : 'text expected'),
+  bool: (v) => (typeof v === 'boolean' ? null : 'true or false expected'),
+  num: (min, max) => (v) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? null : `number ${min}..${max} expected`),
+  int: (min, max) => (v) => (Number.isInteger(v) && v >= min && v <= max ? null : `integer ${min}..${max} expected`),
+  oneOf: (...opts) => (v) => (opts.includes(v) ? null : `allowed: ${opts.map((o) => JSON.stringify(o)).join(', ')}`),
   re: (re, hint) => (v) => (typeof v === 'string' && re.test(v) ? null : hint),
   pin: (v) => checkPinName(v),
   layout: (maxRows, maxCols) => (v) =>
@@ -97,9 +97,9 @@ const F = {
     v.every((r) => Array.isArray(r) && r.length === v[0].length && r.length >= 1 && r.length <= maxCols &&
       r.every((k) => typeof k === 'string' && k.length >= 1 && k.length <= 4))
       ? null
-      : `Liste von Zeilen gleicher Länge (max. ${maxRows} x ${maxCols}), Tasten als kurzer Text`,
-  i2cAddress: (v) => (parseAddress(v) === null ? '7-Bit-I2C-Adresse, z. B. "0x3C" oder 60' : null),
-  object: (v) => (v && typeof v === 'object' && !Array.isArray(v) ? null : 'Objekt erwartet'),
+      : `list of rows of equal length (max. ${maxRows} x ${maxCols}), keys as short text`,
+  i2cAddress: (v) => (parseAddress(v) === null ? '7-bit I2C address, e.g. "0x3C" or 60' : null),
+  object: (v) => (v && typeof v === 'object' && !Array.isArray(v) ? null : 'object expected'),
 };
 
 function parseAddress(v) {
@@ -111,11 +111,11 @@ function parseAddress(v) {
 }
 
 function checkPinName(v) {
-  if (typeof v !== 'string') return 'Pinname wie "PK0" erwartet';
+  if (typeof v !== 'string') return 'pin name like "PK0" expected';
   const m = PIN_RE.exec(v);
-  if (!m) return `"${v}" ist kein Pinname (Port A–H, J–N, P, Q, Pin 0–7, z. B. "PK0")`;
+  if (!m) return `"${v}" is not a pin name (port A–H, J–N, P, Q, pin 0–7, e.g. "PK0")`;
   if (Number(m[2]) >= PORT_PINS[m[1]]) {
-    return `${v} gibt es auf dem TM4C1294NCPDT nicht (Port ${m[1]} hat nur P${m[1]}0–P${m[1]}${PORT_PINS[m[1]] - 1})`;
+    return `${v} does not exist on the TM4C1294NCPDT (port ${m[1]} only has P${m[1]}0–P${m[1]}${PORT_PINS[m[1]] - 1})`;
   }
   return null;
 }
@@ -146,17 +146,17 @@ const TYPES = {
   led: {
     gui: 'leds',
     list: true,
-    desc: 'LED an einem Ausgang (HIGH = an)',
-    fields: { id: { check: F.re(ELEMENT_ID_RE, 'Name wie "D1"'), required: true }, label: F.str, color: F.re(COLOR_RE, 'Farbe wie "#22c55e"'), pin: { check: F.pin, required: true } },
+    desc: 'LED on an output (HIGH = on)',
+    fields: { id: { check: F.re(ELEMENT_ID_RE, 'name like "D1"'), required: true }, label: F.str, color: F.re(COLOR_RE, 'colour like "#22c55e"'), pin: { check: F.pin, required: true } },
     pins: (el) => [{ key: 'pin', pin: el.pin, dir: 'out', label: `LED ${shortLabel(el)}` }],
   },
 
   button: {
     gui: 'buttons',
     list: true,
-    desc: 'Taster an einem Eingang (gedrückt: Pin auf GND bzw. 3,3 V, losgelassen: offen)',
+    desc: 'push button on an input (pressed: pin connected to GND or 3.3 V, released: open)',
     fields: {
-      id: { check: F.re(ELEMENT_ID_RE, 'Name wie "SW1"'), required: true },
+      id: { check: F.re(ELEMENT_ID_RE, 'name like "SW1"'), required: true },
       label: F.str,
       pin: { check: F.pin, required: true },
       activeLow: F.bool,
@@ -167,30 +167,30 @@ const TYPES = {
 
   bcd: {
     gui: 'bcd',
-    desc: '7-Segment-Anzeige mit BCD-Eingängen (HAW, 2 Module à 2 Ziffern, Lab 1)',
+    desc: '7-segment display with BCD inputs (HAW, 2 modules with 2 digits each, Lab 1)',
     fields: LABEL,
     model: { name: 'bcd', cls: 'Miscellaneous.BcdDisplay', cs: 'BcdDisplay.cs' },
     pinKeys: ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'EN_R', 'EN_L'],
     pins: () => [
       ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({ key: `D${i}`, dir: 'out', index: i, label: `BCD D${i}` })),
-      { key: 'EN_R', dir: 'out', index: 8, label: 'BCD EN rechts' },
-      { key: 'EN_L', dir: 'out', index: 9, label: 'BCD EN links' },
+      { key: 'EN_R', dir: 'out', index: 8, label: 'BCD EN right' },
+      { key: 'EN_L', dir: 'out', index: 9, label: 'BCD EN left' },
     ],
     widget: (el) => pick(el, ['label']),
   },
 
   hexkeypad: {
     gui: 'keypad',
-    desc: 'Hex-Keypad 4×4 der HAW (aktiv LOW, Zeilen mit Pull-up, Lab 1)',
+    desc: 'HAW hex keypad 4×4 (active LOW, rows with pull-up, Lab 1)',
     fields: { ...LABEL, layout: F.layout(4, 4), riseTimeUs: F.int(0, 100000) },
     model: { name: 'hexkeypad', cls: 'Miscellaneous.HexKeypad', cs: 'HexKeypad.cs' },
     pinKeys: ['X1', 'X2', 'X3', 'X4', 'Y1', 'Y2', 'Y3', 'Y4'],
     pins: () => [
-      ...[1, 2, 3, 4].map((i) => ({ key: `X${i}`, dir: 'out', index: i - 1, label: `Keypad X${i} (Spalte)` })),
-      ...[1, 2, 3, 4].map((i) => ({ key: `Y${i}`, dir: 'in', output: `Y${i - 1}`, label: `Keypad Y${i} (Zeile)` })),
+      ...[1, 2, 3, 4].map((i) => ({ key: `X${i}`, dir: 'out', index: i - 1, label: `Keypad X${i} (column)` })),
+      ...[1, 2, 3, 4].map((i) => ({ key: `Y${i}`, dir: 'in', output: `Y${i - 1}`, label: `Keypad Y${i} (row)` })),
     ],
     attrs: (el) => ({ riseTimeUs: el.riseTimeUs ?? 20 }),
-    check: (el) => (el.layout && (el.layout.length !== 4 || el.layout[0].length !== 4) ? ['layout: das Hex-Keypad hat 4 × 4 Tasten'] : []),
+    check: (el) => (el.layout && (el.layout.length !== 4 || el.layout[0].length !== 4) ? ['layout: the hex keypad has 4 × 4 keys'] : []),
     widget: (el, pins) => ({
       ...pick(el, ['title', 'label']),
       layout: el.layout || HEX_LAYOUT,
@@ -203,7 +203,7 @@ const TYPES = {
 
   keypad: {
     gui: 'keypad',
-    desc: 'Tastenmatrix (aktiv HIGH): Zeilen R0.. von Ausgängen, Spalten C0.. auf Eingänge (Pull-down im Modell)',
+    desc: 'key matrix (active HIGH): rows R0.. driven by outputs, columns C0.. to inputs (pull-down in the model)',
     fields: { ...LABEL, layout: F.layout(8, 4) },
     model: { name: 'keypad', cls: 'Miscellaneous.KeypadMatrix', cs: 'KeypadMatrix.cs' },
     pinKeys: (el) => {
@@ -213,8 +213,8 @@ const TYPES = {
     pins: (el) => {
       const [rows, cols] = matrixSize(el);
       return [
-        ...range(rows).map((r) => ({ key: `R${r}`, dir: 'out', index: r, label: `Keypad Zeile ${r}` })),
-        ...range(cols).map((c) => ({ key: `C${c}`, dir: 'in', output: `Col${c}`, label: `Keypad Spalte ${c}` })),
+        ...range(rows).map((r) => ({ key: `R${r}`, dir: 'out', index: r, label: `Keypad row ${r}` })),
+        ...range(cols).map((c) => ({ key: `C${c}`, dir: 'in', output: `Col${c}`, label: `Keypad column ${c}` })),
       ];
     },
     attrs: (el) => {
@@ -234,7 +234,7 @@ const TYPES = {
 
   pendulum: {
     gui: 'pendulum',
-    desc: 'LED-Pendel / Pendeldisplay: 8 LEDs (LED0 = oberste an der Spitze) und Sync-Signal',
+    desc: 'LED pendulum / pendulum display: 8 LEDs (LED0 = topmost, at the tip) and sync signal',
     fields: {
       label: F.str,
       frequency: F.num(0.05, 100),
@@ -248,8 +248,8 @@ const TYPES = {
     model: { name: 'pendel', cls: 'Miscellaneous.PendulumDisplay', cs: 'PendulumDisplay.cs' },
     pinKeys: ['LED0', 'LED1', 'LED2', 'LED3', 'LED4', 'LED5', 'LED6', 'LED7', 'SYNC'],
     pins: () => [
-      ...range(8).map((i) => ({ key: `LED${i}`, dir: 'out', index: i, label: `Pendel-LED ${i}${i === 0 ? ' (Spitze)' : ''}` })),
-      { key: 'SYNC', dir: 'in', output: 'Sync', label: 'Pendel Sync' },
+      ...range(8).map((i) => ({ key: `LED${i}`, dir: 'out', index: i, label: `Pendulum LED ${i}${i === 0 ? ' (tip)' : ''}` })),
+      { key: 'SYNC', dir: 'in', output: 'Sync', label: 'Pendulum sync' },
     ],
     attrs: (el) => ({
       periodUs: el.periodUs ?? Math.round(1e6 / (el.frequency ?? 10)),
@@ -272,7 +272,7 @@ const TYPES = {
 
   hcsr04: {
     gui: 'sensor',
-    desc: 'Ultraschallmodul HC-SR04 (Trigger/Echo, Lab 2/3)',
+    desc: 'ultrasonic module HC-SR04 (trigger/echo, Lab 2/3)',
     fields: { ...LABEL, initial: F.int(0, 1000), min: F.int(0, 1000), max: F.int(1, 1000), unit: F.str },
     model: { name: 'hcsr04', cls: 'Sensors.HcSr04', cs: 'HcSr04.cs' },
     pinKeys: ['TRIG', 'ECHO'],
@@ -287,7 +287,7 @@ const TYPES = {
 
   mb1242: {
     gui: 'sensor',
-    desc: 'Ultraschallsensor MaxBotix MB1242 am I2C-Bus',
+    desc: 'ultrasonic sensor MaxBotix MB1242 on the I2C bus',
     fields: { ...LABEL, bus: F.re(I2C_BUS_RE, 'I2C-Bus "i2c0".."i2c9"'), address: F.i2cAddress, initial: F.int(0, 765), min: F.int(0, 765), max: F.int(1, 765), unit: F.str },
     model: { name: 'sensor', cls: 'Sensors.MaxBotixI2C', cs: 'MaxBotixI2C.cs', i2c: 0x70 },
     pins: () => [],
@@ -297,7 +297,7 @@ const TYPES = {
 
   oled: {
     gui: 'oled',
-    desc: 'OLED SSD1306 am I2C-Bus',
+    desc: 'OLED SSD1306 on the I2C bus',
     fields: { label: F.str, bus: F.re(I2C_BUS_RE, 'I2C-Bus "i2c0".."i2c9"'), address: F.i2cAddress, width: F.oneOf(128, 96, 64), height: F.oneOf(64, 32, 16) },
     model: { name: 'oled', cls: 'Video.SSD1306I2C', cs: 'SSD1306I2C.cs', i2c: 0x3c },
     pins: () => [],
@@ -307,7 +307,7 @@ const TYPES = {
 
   cio: {
     gui: 'cio',
-    desc: 'printf()-Konsole wie in Code Composer Studio (TI-Laufzeitsystem)',
+    desc: 'printf() console as in Code Composer Studio (TI run-time library)',
     fields: { label: F.str },
     model: { name: 'cio', cls: 'Miscellaneous.TiCioConsole', cs: 'TiCioConsole.cs', sysbus: '<0xF0000000, +0x100>' },
     pins: () => [],
@@ -321,20 +321,20 @@ const TOP_FIELDS = {
   quantumUs: F.int(1, 1000),
   uart: F.object,
   solution: F.object,
-  elements: { check: (v) => (Array.isArray(v) ? null : 'Liste von Elementen erwartet'), required: true },
+  elements: { check: (v) => (Array.isArray(v) ? null : 'list of elements expected'), required: true },
   scope: F.object,
 };
 const UART_FIELDS = {
   rx: F.pin,
   tx: F.pin,
   baud: F.int(50, 4000000),
-  format: F.re(UART_FORMAT_RE, 'Format wie "8N1" oder "7E1"'),
+  format: F.re(UART_FORMAT_RE, 'format like "8N1" or "7E1"'),
   label: F.str,
   localEcho: F.bool,
   crlf: F.bool,
 };
 const SOLUTION_FIELDS = {
-  example: { check: F.re(ID_RE, 'Name der Musterlösung (examples/<name> bzw. sim/solutions/<name>.elf)'), required: true },
+  example: { check: F.re(ID_RE, 'name of the reference solution (examples/<name> or sim/solutions/<name>.elf)'), required: true },
   label: F.str,
 };
 // Zeitbasen des Oszilloskops (1-2-5-Folge, 1 us/div .. 1 s/div) wie im Frontend (Oscilloscope.jsx)
@@ -342,10 +342,10 @@ const SCOPE_TIMEBASES_US = [];
 for (let e = 0; e <= 6; e++) for (const m of [1, 2, 5]) if (m * 10 ** e <= 1e6) SCOPE_TIMEBASES_US.push(m * 10 ** e);
 
 const SCOPE_FIELDS = {
-  channels: (v) => (Array.isArray(v) && v.length <= 4 ? null : 'Liste mit bis zu 4 Pins'),
-  timebaseUs: (v) => (SCOPE_TIMEBASES_US.includes(v) ? null : `Zeitbasis in µs/div aus 1, 2, 5, 10, 20, 50 … 1000000`),
+  channels: (v) => (Array.isArray(v) && v.length <= 4 ? null : 'list of up to 4 pins'),
+  timebaseUs: (v) => (SCOPE_TIMEBASES_US.includes(v) ? null : `time base in µs/div, one of 1, 2, 5, 10, 20, 50 … 1000000`),
   trigger: F.object,
-  signals: (v) => (Array.isArray(v) ? null : 'Liste von { pin, label }'),
+  signals: (v) => (Array.isArray(v) ? null : 'list of { pin, label }'),
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -378,14 +378,14 @@ function checkFields(obj, fields, where, errors, extra = []) {
     if (k.startsWith('_') || extra.includes(k)) continue;
     const f = fields[k];
     if (!f) {
-      errors.push(`${where}: unbekanntes Feld "${k}" (erlaubt: ${[...Object.keys(fields), ...extra].join(', ')})`);
+      errors.push(`${where}: unknown field "${k}" (allowed: ${[...Object.keys(fields), ...extra].join(', ')})`);
       continue;
     }
     const err = (f.check || f)(v);
     if (err) errors.push(`${where}.${k}: ${err}`);
   }
   for (const [k, f] of Object.entries(fields)) {
-    if (f.required && obj[k] === undefined) errors.push(`${where}: Pflichtfeld "${k}" fehlt`);
+    if (f.required && obj[k] === undefined) errors.push(`${where}: required field "${k}" is missing`);
   }
 }
 
@@ -410,9 +410,9 @@ function build(spec, id) {
   const warnings = [];
   const fail = (extra = {}) => ({ errors, warnings, config: null, repl: null, resc: null, ...extra });
 
-  if (!ID_RE.test(id || '')) errors.push(`Dateiname "${id}": nur Buchstaben, Ziffern, _ und - (max. 64 Zeichen)`);
+  if (!ID_RE.test(id || '')) errors.push(`file name "${id}": only letters, digits, _ and - (max. 64 characters)`);
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) {
-    errors.push('Die Datei muss ein JSON-Objekt enthalten');
+    errors.push('The file must contain a JSON object');
     return fail();
   }
   checkFields(spec, TOP_FIELDS, 'Versuch', errors);
@@ -440,12 +440,12 @@ function build(spec, id) {
   elements.forEach((el, i) => {
     const where = elementName(el, i);
     if (!el || typeof el !== 'object' || Array.isArray(el)) {
-      errors.push(`elements[${i}]: Objekt erwartet`);
+      errors.push(`elements[${i}]: object expected`);
       return;
     }
     const t = TYPES[el.type];
     if (!t) {
-      errors.push(`${where}: unbekannter Typ ${JSON.stringify(el.type)} (erlaubt: ${Object.keys(TYPES).join(', ')})`);
+      errors.push(`${where}: unknown type ${JSON.stringify(el.type)} (allowed: ${Object.keys(TYPES).join(', ')})`);
       return;
     }
     const before = errors.length;
@@ -456,14 +456,14 @@ function build(spec, id) {
     // Einzel-Widgets / eindeutige Namen
     if (t.list) {
       const set = ids.get(t.gui) || new Set();
-      if (el.id && set.has(el.id)) errors.push(`${where}: id "${el.id}" kommt zweimal vor`);
+      if (el.id && set.has(el.id)) errors.push(`${where}: id "${el.id}" occurs twice`);
       set.add(el.id);
       ids.set(t.gui, set);
       if (t.gui === 'leds' && set.size > LED_BRIDGE_INPUTS) {
-        errors.push(`${where}: höchstens ${LED_BRIDGE_INPUTS} LEDs je Versuch (LED-Brücke hat ${LED_BRIDGE_INPUTS} Eingänge)`);
+        errors.push(`${where}: at most ${LED_BRIDGE_INPUTS} LEDs per experiment (the LED bridge has ${LED_BRIDGE_INPUTS} inputs)`);
       }
     } else if (guiOwner.has(t.gui)) {
-      errors.push(`${where}: die Web-Konsole hat nur ein Widget "${t.gui}" – schon belegt durch ${guiOwner.get(t.gui)}`);
+      errors.push(`${where}: the web console has only one "${t.gui}" widget – already used by ${guiOwner.get(t.gui)}`);
     } else {
       guiOwner.set(t.gui, where);
     }
@@ -475,14 +475,14 @@ function build(spec, id) {
       const keys = typeof t.pinKeys === 'function' ? t.pinKeys(el) : t.pinKeys;
       const map = el.pins;
       if (!map || typeof map !== 'object' || Array.isArray(map)) {
-        errors.push(`${where}: "pins" fehlt – Zuordnung ${keys.map((k) => `"${k}": "P.."`).join(', ')}`);
+        errors.push(`${where}: "pins" is missing – mapping ${keys.map((k) => `"${k}": "P.."`).join(', ')}`);
       } else {
         for (const k of Object.keys(map)) {
           if (k.startsWith('_')) continue;
-          if (!keys.includes(k)) errors.push(`${where}.pins: unbekannter Anschluss "${k}" (erlaubt: ${keys.join(', ')})`);
+          if (!keys.includes(k)) errors.push(`${where}.pins: unknown terminal "${k}" (allowed: ${keys.join(', ')})`);
         }
         for (const k of keys) {
-          if (map[k] === undefined) errors.push(`${where}.pins: Anschluss "${k}" fehlt`);
+          if (map[k] === undefined) errors.push(`${where}.pins: terminal "${k}" is missing`);
           else {
             const e = checkPinName(map[k]);
             if (e) errors.push(`${where}.pins.${k}: ${e}`);
@@ -495,12 +495,12 @@ function build(spec, id) {
       for (const d of defs) if (d.pin && !checkPinName(d.pin)) pins[d.key] = d.pin;
     }
     if (el.labels !== undefined) {
-      if (!el.labels || typeof el.labels !== 'object' || Array.isArray(el.labels)) errors.push(`${where}.labels: Objekt { Anschluss: Text } erwartet`);
+      if (!el.labels || typeof el.labels !== 'object' || Array.isArray(el.labels)) errors.push(`${where}.labels: object { terminal: text } expected`);
       else {
         for (const [k, v] of Object.entries(el.labels)) {
           if (k.startsWith('_')) continue;
-          if (!defs.some((d) => d.key === k)) errors.push(`${where}.labels: unbekannter Anschluss "${k}"`);
-          else if (typeof v !== 'string') errors.push(`${where}.labels.${k}: Text erwartet`);
+          if (!defs.some((d) => d.key === k)) errors.push(`${where}.labels: unknown terminal "${k}"`);
+          else if (typeof v !== 'string') errors.push(`${where}.labels.${k}: text expected`);
         }
       }
     }
@@ -509,11 +509,11 @@ function build(spec, id) {
     for (const d of defs) {
       if (!d.pin || checkPinName(d.pin)) continue;
       const who = `${where}${hasPinMap ? `.pins.${d.key}` : ''}`;
-      if (RESERVED_PINS[d.pin]) errors.push(`${who}: ${d.pin} ist fest belegt (${RESERVED_PINS[d.pin]})`);
-      if (used.has(d.pin)) errors.push(`${who}: ${d.pin} ist schon belegt durch ${used.get(d.pin)}`);
+      if (RESERVED_PINS[d.pin]) errors.push(`${who}: ${d.pin} is reserved (${RESERVED_PINS[d.pin]})`);
+      if (used.has(d.pin)) errors.push(`${who}: ${d.pin} is already used by ${used.get(d.pin)}`);
       else used.set(d.pin, who);
       if (LOCKED_PINS[d.pin]) {
-        warnings.push(`${who}: ${d.pin} ist geschützt (${LOCKED_PINS[d.pin]}) – die Firmware muss GPIOLOCK/GPIOCR entsperren`);
+        warnings.push(`${who}: ${d.pin} is protected (${LOCKED_PINS[d.pin]}) – the firmware must unlock it with GPIOLOCK/GPIOCR`);
       }
     }
 
@@ -523,7 +523,7 @@ function build(spec, id) {
       const addr = el.address !== undefined ? parseAddress(el.address) : t.model.i2c;
       if (addr !== null) {
         const key = `${bus}:${hex(addr)}`;
-        if (i2cUsed.has(key)) errors.push(`${where}: I2C-Adresse ${hex(addr)} an ${bus} ist schon belegt durch ${i2cUsed.get(key)}`);
+        if (i2cUsed.has(key)) errors.push(`${where}: I2C address ${hex(addr)} on ${bus} is already used by ${i2cUsed.get(key)}`);
         i2cUsed.set(key, where);
       }
     }
@@ -535,7 +535,7 @@ function build(spec, id) {
   for (const [bus, busPins] of Object.entries(I2C_PINS)) {
     if (![...i2cUsed.keys()].some((k) => k.startsWith(`${bus}:`))) continue;
     for (const p of busPins) {
-      if (used.has(p)) errors.push(`${used.get(p)}: ${p} ist ein Pin von ${bus.toUpperCase()} (SCL/SDA), an dem ein I2C-Gerät hängt`);
+      if (used.has(p)) errors.push(`${used.get(p)}: ${p} is a pin of ${bus.toUpperCase()} (SCL/SDA), and an I2C device is connected to that bus`);
     }
   }
   // Pins, die auf dem Board schon verdrahtet sind (Hinweis), außer sie werden genau dafür benutzt
@@ -544,15 +544,15 @@ function build(spec, id) {
       const board = d.pin && BOARD_PINS[d.pin];
       if (!board) continue;
       const sameUse = (it.el.type === 'led' && board.startsWith('LED')) || (it.el.type === 'button' && board.startsWith('Taster'));
-      if (!sameUse) warnings.push(`${it.where}: ${d.pin} ist auf dem Board mit ${board} verbunden – auf echter Hardware hängt beides am Pin`);
+      if (!sameUse) warnings.push(`${it.where}: on the board, ${d.pin} is connected to ${board} – on real hardware both are connected to the pin`);
     }
   }
   // Taster: Pull passend zur Polarität?
   for (const it of items) {
     if (it.el.type !== 'button') continue;
     const activeLow = it.el.activeLow !== false;
-    if (activeLow && it.el.pull === 'down') warnings.push(`${it.where}: Taster gegen GND (activeLow) mit Pull-down liest immer LOW`);
-    if (!activeLow && it.el.pull === 'up') warnings.push(`${it.where}: Taster gegen 3,3 V (activeLow: false) mit Pull-up liest immer HIGH`);
+    if (activeLow && it.el.pull === 'down') warnings.push(`${it.where}: a push button to GND (activeLow) with a pull-down always reads LOW`);
+    if (!activeLow && it.el.pull === 'up') warnings.push(`${it.where}: a push button to 3.3 V (activeLow: false) with a pull-up always reads HIGH`);
   }
 
   // Oszilloskop
@@ -566,11 +566,11 @@ function build(spec, id) {
     checkFields(scope.trigger, { source: F.pin, edge: F.oneOf('rising', 'falling') }, 'scope.trigger', errors);
   }
   (Array.isArray(scope.signals) ? scope.signals : []).forEach((s, i) => {
-    if (!s || typeof s !== 'object') errors.push(`scope.signals[${i}]: { pin, label } erwartet`);
+    if (!s || typeof s !== 'object') errors.push(`scope.signals[${i}]: { pin, label } expected`);
     else checkFields(s, { pin: { check: F.pin, required: true }, label: { check: F.str, required: true } }, `scope.signals[${i}]`, errors);
   });
   for (const p of Array.isArray(scope.channels) ? scope.channels : []) {
-    if (p && !checkPinName(p) && !knownPins.has(p)) warnings.push(`scope.channels: ${p} ist mit nichts verbunden`);
+    if (p && !checkPinName(p) && !knownPins.has(p)) warnings.push(`scope.channels: ${p} is not connected to anything`);
   }
 
   if (errors.length) return fail();
@@ -593,11 +593,11 @@ function resolveUartPins(uart, errors, warnings) {
   const nTx = UART_TX_PINS[tx];
   let ok = true;
   if (nRx === undefined) {
-    errors.push(`uart.rx: ${rx} kann kein UART-Empfänger sein (GPIOPCTL). Möglich: ${list(UART_RX_PINS)}`);
+    errors.push(`uart.rx: ${rx} cannot be a UART receiver (GPIOPCTL). Possible: ${list(UART_RX_PINS)}`);
     ok = false;
   }
   if (nTx === undefined) {
-    errors.push(`uart.tx: ${tx} kann kein UART-Sender sein (GPIOPCTL). Möglich: ${list(UART_TX_PINS)}`);
+    errors.push(`uart.tx: ${tx} cannot be a UART transmitter (GPIOPCTL). Possible: ${list(UART_TX_PINS)}`);
     ok = false;
   }
   if (!ok) return null;
@@ -605,20 +605,20 @@ function resolveUartPins(uart, errors, warnings) {
     const rxOf = (n) => Object.keys(UART_RX_PINS).filter((p) => UART_RX_PINS[p] === n).join('/');
     const txOf = (n) => Object.keys(UART_TX_PINS).filter((p) => UART_TX_PINS[p] === n).join('/');
     errors.push(
-      `uart: ${rx} ist U${nRx}Rx, ${tx} ist U${nTx}Tx – RX und TX müssen zum selben UART gehören ` +
+      `uart: ${rx} is U${nRx}Rx, ${tx} is U${nTx}Tx – RX and TX must belong to the same UART ` +
         `(U${nRx}: RX ${rxOf(nRx)}, TX ${txOf(nRx)}; U${nTx}: RX ${rxOf(nTx)}, TX ${txOf(nTx)})`,
     );
     return null;
   }
   if (nRx !== 0) {
     warnings.push(
-      `uart: UART${nRx} (${rx}/${tx}) – auf dem Board hängt nur UART0 (PA0/PA1) am virtuellen COM-Port; ` +
-        `an UART${nRx} braucht echte Hardware einen USB-Seriell-Adapter (3,3 V)`,
+      `uart: UART${nRx} (${rx}/${tx}) – on the board, only UART0 (PA0/PA1) is connected to the virtual COM port; ` +
+        `with UART${nRx}, real hardware needs a USB-to-serial adapter (3.3 V)`,
     );
   }
   for (const [what, p] of [['rx', rx], ['tx', tx]]) {
-    if (BOARD_PINS[p] && nRx !== 0) warnings.push(`uart.${what}: ${p} ist auf dem Board mit ${BOARD_PINS[p]} verbunden`);
-    if (LOCKED_PINS[p]) warnings.push(`uart.${what}: ${p} ist geschützt – die Firmware muss GPIOLOCK/GPIOCR entsperren`);
+    if (BOARD_PINS[p] && nRx !== 0) warnings.push(`uart.${what}: on the board, ${p} is connected to ${BOARD_PINS[p]}`);
+    if (LOCKED_PINS[p]) warnings.push(`uart.${what}: ${p} is protected – the firmware must unlock it with GPIOLOCK/GPIOCR`);
   }
   return { n: nRx, rx, tx };
 }
@@ -731,8 +731,8 @@ function generate(spec, id, items, warnings, uartPins) {
   const sc = spec.scope || {};
   const signals = [
     ...scopeSignals,
-    { pin: urx, label: `U${un}RX (vom Terminal)` },
-    { pin: utx, label: `U${un}TX (zum Terminal)` },
+    { pin: urx, label: `U${un}RX (from terminal)` },
+    { pin: utx, label: `U${un}TX (to terminal)` },
   ];
   for (const s of sc.signals || []) {
     const old = signals.find((x) => x.pin === s.pin);
@@ -750,16 +750,16 @@ function generate(spec, id, items, warnings, uartPins) {
   // --- .repl -------------------------------------------------------------------------------
   const L = [];
   L.push(`// ${spec.title}`);
-  L.push(`// ERZEUGT aus experiments/${id}.json – nicht von Hand ändern (Prüfen: node tools/check_experiment.js).`);
-  L.push('// Erweiterung der Plattform platforms/tm4c1294ncpdt.repl (wird NACH ihr geladen).');
+  L.push(`// GENERATED from experiments/${id}.json – do not edit by hand (check with: node tools/check_experiment.js).`);
+  L.push('// Extension of the platform platforms/tm4c1294ncpdt.repl (loaded AFTER it).');
   L.push('');
-  L.push(`// PC-Terminal an UART${un} (RX ${urx}, TX ${utx}${un === 0 ? ', virtueller COM-Port des Boards' : ''}); Einstellung in der Web-Konsole änderbar`);
+  L.push(`// PC terminal on UART${un} (RX ${urx}, TX ${utx}${un === 0 ? ', virtual COM port of the board' : ''}); settings can be changed in the web console`);
   L.push(`host: UART.UartHostTerminal @ ${uartName}`);
   L.push(`    baudRate: ${baud}`);
   L.push(`    format: "${format}"`);
   if (bridge > 0) {
     L.push('');
-    L.push(`// LED-Anzeige im Browser (${LED_BRIDGE}), Eingänge 0..${bridge - 1} = LEDs in der Reihenfolge der Versuchsdatei`);
+    L.push(`// LED display in the browser (${LED_BRIDGE}), inputs 0..${bridge - 1} = LEDs in the order of the experiment file`);
     L.push('wsBridge: Miscellaneous.WebSocketBridge');
   }
   for (const d of devices) {
@@ -780,7 +780,7 @@ function generate(spec, id, items, warnings, uartPins) {
   const resc = (replPath) => {
     const R = [];
     R.push(`:name: ${spec.title}`);
-    R.push(`:description: erzeugt aus experiments/${id}.json`);
+    R.push(`:description: generated from experiments/${id}.json`);
     R.push('');
     R.push('$elf?=@/tmp/app.elf');
     R.push(`$uartBaud?=${baud}`);

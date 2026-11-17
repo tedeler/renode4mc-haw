@@ -40,7 +40,7 @@ const TIMEBASES = [];
 for (let e = 3; e <= 9; e++) for (const m of [1, 2, 5]) if (m * 10 ** e <= 1e9) TIMEBASES.push(m * 10 ** e);
 const VOLTS = [0.5, 1, 2, 5];
 
-const de = (v, d = 2) => v.toLocaleString('de-DE', { maximumFractionDigits: d });
+const de = (v, d = 2) => v.toLocaleString('en-US', { maximumFractionDigits: d });
 function fmtTime(ns) {
   const a = Math.abs(ns);
   if (a >= 1e9) return `${de(ns / 1e9, 3)} s`;
@@ -187,9 +187,9 @@ function SourceSelect({ value, onChange, signals, labels, disabled = false }) {
   const label = (pin) => (labels.has(pin) ? `${pin} – ${labels.get(pin)}` : pin);
   return (
     <select className="scope-select" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
-      <option value="">– aus –</option>
+      <option value="">– off –</option>
       {signals.length > 0 && (
-        <optgroup label="Signale dieses Versuchs">
+        <optgroup label="Signals of this experiment">
           {signals.map((s) => (
             <option key={`s-${s.pin}`} value={s.pin}>
               {label(s.pin)}
@@ -495,14 +495,14 @@ export default function Oscilloscope({ experimentId, scope }) {
   const stateText = {
     trig: 'Trig’d',
     auto: 'Auto',
-    warte: 'Warten …',
+    warte: 'Waiting …',
     stop: 'Stop',
   }[info.state];
 
   const trigColor = cfg.trigger.source === 'EXT' ? EXT_COLOR : CH_COLORS[+cfg.trigger.source.slice(2) - 1];
 
   return (
-    <Widget title="Oszilloskop" subtitle="Pegel an den Pins, 3,3-V-Logik · virtuelle Zeit der Simulation" className="scope">
+    <Widget title="Oscilloscope" subtitle="Levels at the pins, 3.3 V logic · simulated (virtual) time" className="scope">
       <div className="scope-top">
         <div className="scope-screen">
           <canvas ref={canvasRef} width={W} height={H} className="scope-canvas" />
@@ -519,7 +519,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               {cfg.trigger.source === 'EXT' ? `EXT ${cfg.trigger.ext || '–'}` : cfg.trigger.source}{' '}
               {cfg.trigger.edge === 'rising' ? '↑' : '↓'} {fmtV(cfg.trigger.level)}
             </span>
-            <span className={`scope-state ${info.state}`} title={info.state === 'warte' ? 'Warte auf Trigger' : undefined}>{renodeState === 'running' ? stateText : 'Renode steht'}</span>
+            <span className={`scope-state ${info.state}`} title={info.state === 'warte' ? 'Waiting for trigger' : undefined}>{renodeState === 'running' ? stateText : 'Renode stopped'}</span>
           </div>
         </div>
 
@@ -527,7 +527,7 @@ export default function Oscilloscope({ experimentId, scope }) {
           <fieldset className="scope-group">
             <legend>Horizontal</legend>
             <label className="scope-row">
-              <span>Zeitbasis</span>
+              <span>Time base</span>
               <select className="scope-select" value={cfg.timebase} onChange={(e) => setCfg({ ...cfg, timebase: +e.target.value })}>
                 {TIMEBASES.map((t) => (
                   <option key={t} value={t}>
@@ -537,7 +537,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               </select>
             </label>
             <label className="scope-row">
-              <span>Trigger­punkt</span>
+              <span>Trigger position</span>
               <input
                 type="range"
                 min={0}
@@ -553,7 +553,7 @@ export default function Oscilloscope({ experimentId, scope }) {
           <fieldset className="scope-group">
             <legend>Trigger</legend>
             <label className="scope-row">
-              <span>Quelle</span>
+              <span>Source</span>
               <select className="scope-select" value={cfg.trigger.source} onChange={(e) => setTrig({ source: e.target.value })}>
                 {[1, 2, 3, 4].map((n) => (
                   <option key={n} value={`CH${n}`}>
@@ -561,11 +561,11 @@ export default function Oscilloscope({ experimentId, scope }) {
                     {cfg.channels[n - 1].pin ? ` (${cfg.channels[n - 1].pin})` : ''}
                   </option>
                 ))}
-                <option value="EXT">Extern</option>
+                <option value="EXT">External</option>
               </select>
             </label>
             <label className={`scope-row ${cfg.trigger.source === 'EXT' ? '' : 'scope-disabled'}`}>
-              <span>Ext. Eingang</span>
+              <span>Ext. input</span>
               <SourceSelect
                 value={cfg.trigger.ext}
                 onChange={(p) => setTrig({ ext: p })}
@@ -575,11 +575,11 @@ export default function Oscilloscope({ experimentId, scope }) {
               />
             </label>
             <div className="scope-row">
-              <span>Flanke</span>
+              <span>Edge</span>
               <div className="scope-seg">
                 {[
-                  ['rising', '↑ steigend'],
-                  ['falling', '↓ fallend'],
+                  ['rising', '↑ rising'],
+                  ['falling', '↓ falling'],
                 ].map(([id, l]) => (
                   <button key={id} className={cfg.trigger.edge === id ? 'on' : ''} onClick={() => setTrig({ edge: id })}>
                     {l}
@@ -588,7 +588,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               </div>
             </div>
             <label className="scope-row">
-              <span>Pegel</span>
+              <span>Level</span>
               <input
                 type="range"
                 min={0}
@@ -600,12 +600,12 @@ export default function Oscilloscope({ experimentId, scope }) {
               <span className="scope-val">{fmtV(cfg.trigger.level)}</span>
             </label>
             <div className="scope-row">
-              <span>Modus</span>
+              <span>Mode</span>
               <div className="scope-seg">
                 {[
                   ['auto', 'Auto'],
                   ['normal', 'Normal'],
-                  ['single', 'Einzel'],
+                  ['single', 'Single'],
                 ].map(([id, l]) => (
                   <button
                     key={id}
@@ -626,7 +626,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               </div>
             </div>
             <button className={`btn small scope-run ${run ? 'running' : 'stopped'}`} onClick={toggleRun}>
-              {run ? 'Run – klicken für Stop' : 'Stop – klicken für Run'}
+              {run ? 'Run – click to stop' : 'Stop – click to run'}
             </button>
           </fieldset>
         </div>
@@ -652,7 +652,7 @@ export default function Oscilloscope({ experimentId, scope }) {
               </select>
             </div>
             <label className="scope-row">
-              <span>Lage</span>
+              <span>Position</span>
               <input type="range" min={-4} max={4} step={0.1} value={c.pos} onChange={(e) => setCh(n, { pos: +e.target.value })} />
             </label>
           </fieldset>
@@ -660,10 +660,10 @@ export default function Oscilloscope({ experimentId, scope }) {
       </div>
 
       <div className="scope-foot meta">
-        <span>Simulationszeit {fmtTime(info.now)}</span>
-        <span>Auflösung 1 µs · gestrichelt = Pin offen (hochohmig)</span>
-        {info.dropped > 0 && <span className="scope-warn">⚠ {info.dropped} Flanken verloren (zu viele Pegelwechsel)</span>}
-        {trigPin === '' && <span className="scope-warn">Trigger-Quelle ohne Signal</span>}
+        <span>Simulated time {fmtTime(info.now)}</span>
+        <span>Resolution 1 µs · dashed = pin open (high impedance)</span>
+        {info.dropped > 0 && <span className="scope-warn">⚠ {info.dropped} edges lost (too many level changes)</span>}
+        {trigPin === '' && <span className="scope-warn">Trigger source has no signal</span>}
       </div>
     </Widget>
   );

@@ -39,7 +39,7 @@ export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label,
   const pct = ((value - min) / (max - min)) * 100;
 
   return (
-    <Widget title={title ?? 'Distanzsensor (Ultraschall)'} subtitle={label} className="sensor">
+    <Widget title={title ?? 'Distance sensor (ultrasonic)'} subtitle={label} className="sensor">
       <div className="sensor-line">
         <div className="sensor-readout">
           <span className="sensor-value">{value}</span>
@@ -52,7 +52,7 @@ export default function DistanceSensor({ min = 0, max = 400, unit = 'cm', label,
           value={value}
           onChange={onChange}
           className="sensor-range"
-          aria-label="Distanz"
+          aria-label="Distance"
         />
       </div>
       <div className="sensor-scene">

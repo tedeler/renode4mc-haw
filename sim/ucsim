@@ -1,8 +1,8 @@
 #!/bin/bash
-# ucsim - TM4C1294-Programm (.out/.elf) im Renode-Simulator ausführen.
-#   ucsim [--debug] [--no-browser] <programm.out>
-# Umgebungsvariable RENODE: Pfad zum renode-Startskript (Standard: renode aus PATH
-# oder ~/renode/renode).
+# ucsim - run a TM4C1294 program (.out/.elf) in the Renode simulator.
+#   ucsim [--debug] [--no-browser] <program.out>
+# Environment variable RENODE: path to the renode start script (default: renode from PATH
+# or ~/renode/renode).
 set -e
 SIMDIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 DEBUG=false; BROWSER=true; ELF=""
@@ -14,23 +14,23 @@ for a in "$@"; do
     *) ELF="$a" ;;
   esac
 done
-[ -f "$ELF" ] || { echo "Fehler: Programmdatei '$ELF' nicht gefunden. Aufruf: ucsim [--debug] datei.out" >&2; exit 1; }
+[ -f "$ELF" ] || { echo "Error: program file '$ELF' not found. Usage: ucsim [--debug] file.out" >&2; exit 1; }
 ELF="$(readlink -f "$ELF")"
 RENODE="${RENODE:-$(command -v renode || true)}"
 [ -z "$RENODE" ] && [ -x "$HOME/renode/renode" ] && RENODE="$HOME/renode/renode"
-[ -x "$RENODE" ] || { echo "Fehler: renode nicht gefunden (siehe docs/INSTALL_LINUX.md, oder RENODE=... setzen)." >&2; exit 1; }
+[ -x "$RENODE" ] || { echo "Error: renode not found (see docs/INSTALL_LINUX.md, or set RENODE=...)." >&2; exit 1; }
 
 cd "$SIMDIR"
 CMD="\$elf=@$ELF; include @tm4c1294.resc"
 if $DEBUG; then
   CMD="$CMD; machine StartGdbServer 3333"
-  echo ">> Debug-Modus: GDB-Server auf localhost:3333, CPU wartet auf den Debugger (kein 'start')."
+  echo ">> Debug mode: GDB server on localhost:3333, the CPU waits for the debugger (no 'start')."
 else
   CMD="$CMD; start"
 fi
 if $BROWSER; then
   (sleep 3; xdg-open "$SIMDIR/visualizer/ek-tm4c1294xl.html" >/dev/null 2>&1 || true) &
 fi
-echo ">> Simulator läuft. Beenden mit Strg+C (oder 'quit' im Renode-Monitor)."
-# stdin offen halten, sonst beendet sich Renode sofort
+echo ">> Simulator running. Quit with Ctrl+C (or 'quit' in the Renode monitor)."
+# keep stdin open, otherwise Renode exits immediately
 exec "$RENODE" --console -e "$CMD"

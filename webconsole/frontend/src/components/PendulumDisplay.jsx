@@ -26,10 +26,10 @@ const sliderToMs = (v) => AFTERGLOW_MIN_MS * (AFTERGLOW_MAX_MS / AFTERGLOW_MIN_M
 const msToSlider = (ms) => (1000 * Math.log(ms / AFTERGLOW_MIN_MS)) / Math.log(AFTERGLOW_MAX_MS / AFTERGLOW_MIN_MS);
 
 const VIEWS = [
-  { id: 'both', label: 'Leuchtspur, beide Schwünge' },
-  { id: 'lr', label: 'Leuchtspur, nur links → rechts' },
-  { id: 'rl', label: 'Leuchtspur, nur rechts → links' },
-  { id: 'still', label: 'Standbild (letzter Schwung je Richtung)' },
+  { id: 'both', label: 'Light trail, both swings' },
+  { id: 'lr', label: 'Light trail, left → right only' },
+  { id: 'rl', label: 'Light trail, right → left only' },
+  { id: 'still', label: 'Still image (last swing per direction)' },
 ];
 
 const ledRadius = (led) => R_TIP - led * ROW_STEP;
@@ -38,7 +38,7 @@ const canvasAngle = (theta) => theta - Math.PI / 2;
 const thetaOf = (phi) => THETA_MAX * Math.sin(Math.PI * phi);
 
 const fmt = (v, digits = 1) =>
-  v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
 const fmtPeriod = (hz) => (hz < 1 ? `${fmt(1 / hz, 1)} s` : `${fmt(1000 / hz, 1)} ms`);
 const fmtMs = (ms) => (ms < 10 ? `${fmt(ms, 1)} ms` : `${fmt(ms, 0)} ms`);
 
@@ -346,7 +346,7 @@ export default function PendulumDisplay({
   }, []);
 
   return (
-    <Widget title="Pendeldisplay" subtitle={label} className="pendulum">
+    <Widget title="Pendulum display" subtitle={label} className="pendulum">
       <ScaleBox maxScale={1.8} minH={160} flowMaxH={420}>
         <div className="pendulum-stage">
           <canvas ref={canvasRef} width={W} height={H} className="pendulum-canvas" />
@@ -356,7 +356,7 @@ export default function PendulumDisplay({
         {adjustable && (
           <label className="pendulum-freq">
             <span>
-              Pendelfrequenz <b>{fmt(hz)} Hz</b> <span className="meta">(Periode {fmtPeriod(hz)})</span>
+              Pendulum frequency <b>{fmt(hz)} Hz</b> <span className="meta">(period {fmtPeriod(hz)})</span>
             </span>
             <input
               type="range"
@@ -366,15 +366,15 @@ export default function PendulumDisplay({
               value={hz}
               onChange={onFrequency}
               className="sensor-range"
-              aria-label="Pendelfrequenz"
+              aria-label="Pendulum frequency"
             />
           </label>
         )}
         <label className="pendulum-freq">
           <span>
-            Nachleuchten <b>{fmtMs(afterglowMs)}</b>{' '}
-            <span className="meta" title="So lange bleibt ein Leuchtpunkt sichtbar; das Auge: ca. 50–100 ms">
-              (Auge: ca. 50–100 ms)
+            Afterglow <b>{fmtMs(afterglowMs)}</b>{' '}
+            <span className="meta" title="How long a light spot stays visible; the human eye: approx. 50–100 ms">
+              (eye: approx. 50–100 ms)
             </span>
           </span>
           <input
@@ -385,26 +385,26 @@ export default function PendulumDisplay({
             value={Math.round(msToSlider(afterglowMs))}
             onChange={(e) => setAfterglowMs(sliderToMs(Number(e.target.value)))}
             className="sensor-range"
-            aria-label="Nachleuchtdauer"
+            aria-label="Afterglow duration"
             disabled={view === 'still'}
           />
         </label>
       </div>
       <div className="pendulum-foot">
         <span className="meta">
-          Modell: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} ·{' '}
+          Model: {modelHz ? `${fmt(modelHz, 2)} Hz` : '–'} ·{' '}
           {frozen === 'hold'
-            ? 'Simulation angehalten (Anzeige steht, wo sie war – ein Schritt zeigt den Zeitpunkt der CPU)'
+            ? 'Simulation paused (display stays where it was – a step shows the CPU time)'
             : frozen
-              ? 'Simulation angehalten: Anzeige zeigt den Zeitpunkt der CPU'
-              : 'Anzeige 0,3 s hinter der Simulation'}
+              ? 'Simulation paused: display shows the CPU time'
+              : 'Display 0.3 s behind the simulation'}
           {simRate !== null && Math.abs(simRate - 1) > 0.1 && (
             <span
               className="pendulum-slow"
-              title="Renode rechnet nicht in Echtzeit – das Pendel schwingt auf dem Bildschirm entsprechend langsamer bzw. schneller, die Zeiten in der Firmware stimmen trotzdem."
+              title="Renode does not run in real time – the pendulum on the screen swings correspondingly slower or faster, but the timing inside the firmware is still correct."
             >
               {' '}
-              · Simulation: {fmt(simRate * 100, 0)} % Echtzeit
+              · Simulation: {fmt(simRate * 100, 0)} % of real time
             </span>
           )}
         </span>

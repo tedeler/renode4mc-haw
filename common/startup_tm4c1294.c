@@ -1,26 +1,26 @@
 /*
- * startup_tm4c1294.c - Startcode und Interrupt-Vektortabelle für den TM4C1294NCPDT
+ * startup_tm4c1294.c - start-up code and interrupt vector table for the TM4C1294NCPDT
  *
- * Eigene Datei (unabhängig vom TI-Startup). Funktioniert mit TI Arm Clang (CCS)
- * und im Simulator identisch.
+ * Our own file (independent of the TI start-up file). Works the same with TI Arm Clang (CCS)
+ * and in the simulator.
  *
- * Ablauf nach Reset:  CPU liest SP und Reset-Vektor aus der Tabelle -> ResetISR
- *                     -> _c_int00 (Laufzeitsystem: .data kopieren, .bss löschen) -> main()
+ * Sequence after reset:  the CPU reads SP and the reset vector from the table -> ResetISR
+ *                        -> _c_int00 (run-time library: copy .data, clear .bss) -> main()
  *
- * Eine Interrupt-Routine schreiben Sie einfach mit dem Namen aus der Tabelle, z. B.
+ * To write an interrupt routine, simply use the name from the table, e.g.
  *     void TIMER0A_Handler(void) { ... }
- * Nicht definierte Handler sind "weak" und zeigen auf IntDefaultHandler (Endlosschleife).
+ * Handlers that you do not define are "weak" and point to IntDefaultHandler (endless loop).
  *
- * Die Plätze der Peripherie-Interrupts kommen aus tm4c1294ncpdt.h (INT_<Name> = Nummer des
- * Eintrags in dieser Tabelle; die NVIC-/IRQ-Nummer ist INT_<Name> - 16). Ein Handler steht so
- * immer an der Stelle, die die Headerdatei vorgibt. Einträge ohne INT_-Konstante sind auf diesem
- * Chip reserviert und bleiben 0.
+ * The positions of the peripheral interrupts come from tm4c1294ncpdt.h (INT_<name> = number of the
+ * entry in this table; the NVIC/IRQ number is INT_<name> - 16). This way a handler is always
+ * at the position given by the header file. Entries without an INT_ constant are reserved on this
+ * chip and stay 0.
  */
 #include <stdint.h>
 #include "tm4c1294ncpdt.h"
 
-extern void _c_int00(void);        /* Einstieg des TI-Laufzeitsystems */
-extern uint32_t __STACK_TOP;       /* vom Linker-Skript definiert */
+extern void _c_int00(void);        /* entry point of the TI run-time library */
+extern uint32_t __STACK_TOP;       /* defined by the linker script */
 
 void ResetISR(void);
 void IntDefaultHandler(void);
@@ -131,15 +131,15 @@ void I2C7_Handler(void) __attribute__((weak, alias("IntDefaultHandler")));
 void I2C8_Handler(void) __attribute__((weak, alias("IntDefaultHandler")));
 void I2C9_Handler(void) __attribute__((weak, alias("IntDefaultHandler")));
 
-/* Anzahl der Einträge: 16 Prozessor-Ausnahmen + Peripherie bis zum letzten INT_ der Headerdatei */
+/* Number of entries: 16 processor exceptions + peripherals up to the last INT_ of the header file */
 #define ANZAHL_VEKTOREN     (INT_I2C9 + 1)
 
-/* Vektortabelle: wird vom Linker-Skript an Adresse 0x0 (Flash-Anfang) gelegt. */
+/* Vector table: placed at address 0x0 (start of flash) by the linker script. */
 __attribute__((section(".intvecs"), used))
 void (* const g_pfnVectors[ANZAHL_VEKTOREN])(void) =
 {
-    /* Prozessor-Ausnahmen (ARM Cortex-M4, fest; nicht in tm4c1294ncpdt.h) */
-    [0]  = (void (*)(void))((uint32_t)&__STACK_TOP),   /* Anfangswert Stackpointer */
+    /* Processor exceptions (ARM Cortex-M4, fixed; not in tm4c1294ncpdt.h) */
+    [0]  = (void (*)(void))((uint32_t)&__STACK_TOP),   /* initial value of the stack pointer */
     [1]  = ResetISR,
     [2]  = NMI_Handler,
     [3]  = HardFault_Handler,
@@ -151,7 +151,7 @@ void (* const g_pfnVectors[ANZAHL_VEKTOREN])(void) =
     [14] = PendSV_Handler,
     [15] = SysTick_Handler,
 
-    /* Peripherie-Interrupts */
+    /* Peripheral interrupts */
     [INT_GPIOA]      = GPIOA_Handler,       /*  16: IRQ   0  GPIO Port A */
     [INT_GPIOB]      = GPIOB_Handler,       /*  17: IRQ   1  GPIO Port B */
     [INT_GPIOC]      = GPIOC_Handler,       /*  18: IRQ   2  GPIO Port C */
@@ -258,7 +258,7 @@ void ResetISR(void)
 
 void IntDefaultHandler(void)
 {
-    /* Unerwarteter Interrupt/Fault: im Debugger hier anhalten und "Call Stack" ansehen. */
+    /* Unexpected interrupt/fault: stop here in the debugger and look at the "Call Stack". */
     while(1)
     {
     }

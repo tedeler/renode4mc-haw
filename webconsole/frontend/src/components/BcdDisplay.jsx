@@ -36,7 +36,7 @@ const GEOMETRY = [
 function Digit({ ch }) {
   const mask = ch === '-' ? 0 : (SEGMENTS[ch] ?? 0);
   return (
-    <svg className="bcd-digit" viewBox="0 0 60 100" aria-label={ch === '-' ? 'dunkel' : ch}>
+    <svg className="bcd-digit" viewBox="0 0 60 100" aria-label={ch === '-' ? 'dark' : ch}>
       {GEOMETRY.map(([x, y, w, h], i) => (
         <rect key={i} x={x} y={y} width={w} height={h} rx={3} className={mask & (1 << i) ? 'seg on' : 'seg'} />
       ))}
@@ -53,12 +53,12 @@ export default function BcdDisplay({ label }) {
   const digits = bcd?.digits ?? '----';
   const en = bcd?.enable ?? '00';
   return (
-    <Widget title="7-Segment-Anzeige (BCD)" subtitle={label} className="bcd">
+    <Widget title="7-segment display (BCD)" subtitle={label} className="bcd">
       <ScaleBox maxScale={2.4} minH={90} flowMaxH={220}>
         <div className="bcd-row">
           {[0, 1].map((m) => (
             <div key={m} className="bcd-module">
-              <div className={`bcd-en ${en[m] === '1' ? 'on' : ''}`}>EN {m === 0 ? 'links' : 'rechts'}</div>
+              <div className={`bcd-en ${en[m] === '1' ? 'on' : ''}`}>EN {m === 0 ? 'left' : 'right'}</div>
               <div className="bcd-digits">
                 <Digit ch={digits[2 * m]} />
                 <Digit ch={digits[2 * m + 1]} />
@@ -68,7 +68,7 @@ export default function BcdDisplay({ label }) {
         </div>
       </ScaleBox>
       <div className="meta">
-        Datenleitungen D7..D0 = 0x{bcd?.data ?? '00'} · Ziffern {digits}
+        Data lines D7..D0 = 0x{bcd?.data ?? '00'} · digits {digits}
       </div>
     </Widget>
   );

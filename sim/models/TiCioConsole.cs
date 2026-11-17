@@ -159,7 +159,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             }
             catch(Exception ex)
             {
-                this.Log(LogLevel.Warning, "CIO: Symbole aus {0} nicht lesbar: {1}", elfPath, ex.Message);
+                this.Log(LogLevel.Warning, "CIO: cannot read symbols from {0}: {1}", elfPath, ex.Message);
             }
             return result;
         }
@@ -236,7 +236,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
                     PutInt(result, 0, (int)(machine.LocalTimeSource.ElapsedVirtualTime.TotalMicroseconds / 1000));
                     break;
                 default:
-                    this.Log(LogLevel.Warning, "CIO: unbekannter Befehl 0x{0:X2} (fd {1})", command, fd);
+                    this.Log(LogLevel.Warning, "CIO: unknown command 0x{0:X2} (fd {1})", command, fd);
                     PutShort(result, 0, -1);
                     break;
             }

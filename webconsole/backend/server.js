@@ -73,7 +73,7 @@ async function startExperiment(exp) {
   const ports = [
     // Dauerbetrieb: der Monitor-Port gehört dem laufenden Renode
     ...(cfg.renodePersistent ? [] : [{ port: cfg.renodeMonitorPort, name: 'Renode-Monitor' }]),
-    { port: cfg.renodeQueryPort, name: 'Renode-Abfrage-Port' },
+    { port: cfg.renodeQueryPort, name: 'Renode query port' },
     { port: cfg.renodeUartPort, name: 'UART-Terminal' },
   ];
   if (exp.ledBridge) ports.push({ port: Number(new URL(exp.ledBridge).port), name: 'LED-Bridge' });
@@ -103,7 +103,7 @@ const upload = multer({
   limits: { fileSize: cfg.maxUploadBytes, files: 1 },
   fileFilter: (_req, file, cb) => {
     // CCS/tiarmclang erzeugt .out, GCC meist .elf – beides ist ELF
-    if (!/\.(elf|out|axf)$/i.test(file.originalname)) return cb(new Error('Nur .out-/.elf-Dateien erlaubt'));
+    if (!/\.(elf|out|axf)$/i.test(file.originalname)) return cb(new Error('Only .out/.elf files are allowed'));
     cb(null, true);
   },
 });
@@ -134,14 +134,14 @@ app.get('/api/experiments/:id', (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
-  if (!exp) return res.status(404).json({ error: `Unbekannter Versuch: ${req.params.id}` });
+  if (!exp) return res.status(404).json({ error: `Unknown experiment: ${req.params.id}` });
   res.json({ experiment: experiments.publicView(exp), terminal: control.terminalSettings(exp) });
 });
 
 /** POST /api/terminal { experiment_id, baud, format } – Terminal-Einstellung vor dem Start merken */
 app.post('/api/terminal', express.json({ limit: '1kb' }), (req, res) => {
   const { experiment_id: id, baud, format } = req.body || {};
-  if (!experiments.isValidId(id)) return res.status(400).json({ error: 'Ungültige Versuchs-ID' });
+  if (!experiments.isValidId(id)) return res.status(400).json({ error: 'Invalid experiment ID' });
   try {
     res.json(control.rememberTerminalSettings(id, Number(baud), String(format || '').toUpperCase()));
   } catch (e) {
@@ -166,7 +166,7 @@ app.post('/upload', (req, res) => {
       cleanup();
       return res.status(400).json({ error: err.message });
     }
-    if (!req.file) return res.status(400).json({ error: 'Keine Datei (Feld "file") empfangen' });
+    if (!req.file) return res.status(400).json({ error: 'No file received (field "file")' });
 
     const id = req.body && req.body.experiment_id;
     let exp;
@@ -178,11 +178,11 @@ app.post('/upload', (req, res) => {
     }
     if (!exp) {
       cleanup();
-      return res.status(400).json({ error: `Unbekannter Versuch: ${id}` });
+      return res.status(400).json({ error: `Unknown experiment: ${id}` });
     }
     if (!isElf(tmp)) {
       cleanup();
-      return res.status(400).json({ error: 'Datei ist kein gültiges ELF-Binary' });
+      return res.status(400).json({ error: 'The file is not a valid ELF binary' });
     }
 
     try {
@@ -202,11 +202,11 @@ app.post('/upload', (req, res) => {
         await startExperiment(exp);
         activeIsSolution = false;
       });
-      console.log(`[server] Versuch "${exp.id}" läuft`);
+      console.log(`[server] experiment "${exp.id}" is running`);
       res.status(200).json({ status: 'running', experiment: experiments.publicView(exp) });
     } catch (e) {
       cleanup();
-      console.error(`[server] Start fehlgeschlagen: ${e.message}`);
+      console.error(`[server] start failed: ${e.message}`);
       const log = renode.logTail.slice(-30);
       await renode.stop().catch(() => {});
       res.status(500).json({ error: e.message, log });
@@ -226,11 +226,11 @@ app.post('/api/solution', express.json({ limit: '1kb' }), async (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
-  if (!exp) return res.status(400).json({ error: `Unbekannter Versuch: ${id}` });
-  if (!exp.solutionPath) return res.status(400).json({ error: 'Für diesen Versuch gibt es keine Musterlösung' });
+  if (!exp) return res.status(400).json({ error: `Unknown experiment: ${id}` });
+  if (!exp.solutionPath) return res.status(400).json({ error: 'There is no reference solution for this experiment' });
   if (!fs.existsSync(exp.solutionPath) || !isElf(exp.solutionPath)) {
     return res.status(404).json({
-      error: `Musterlösung nicht gebaut (${path.basename(exp.solutionPath)} fehlt). Im Repository: tools/build-solutions.sh`,
+      error: `Reference solution not built (${path.basename(exp.solutionPath)} is missing). Build it in the repository with tools/build-solutions.sh`,
     });
   }
   try {
@@ -242,10 +242,10 @@ app.post('/api/solution', express.json({ limit: '1kb' }), async (req, res) => {
       await startExperiment(exp);
       activeIsSolution = true;
     });
-    console.log(`[server] Versuch "${exp.id}" läuft mit Musterlösung`);
+    console.log(`[server] experiment "${exp.id}" is running with the reference solution`);
     res.status(200).json({ status: 'running', solution: true, experiment: experiments.publicView(exp) });
   } catch (e) {
-    console.error(`[server] Start der Musterlösung fehlgeschlagen: ${e.message}`);
+    console.error(`[server] starting the reference solution failed: ${e.message}`);
     const log = renode.logTail.slice(-30);
     await renode.stop().catch(() => {});
     res.status(500).json({ error: e.message, log });
@@ -268,18 +268,18 @@ app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
   const index = path.join(cfg.publicDir, 'index.html');
   if (fs.existsSync(index)) return res.sendFile(index);
-  res.status(404).send('Frontend nicht gebaut (public/index.html fehlt)');
+  res.status(404).send('Frontend not built (public/index.html is missing)');
 });
 
 const server = app.listen(cfg.httpPort, () => {
-  console.log(`[server] HTTP auf Port ${cfg.httpPort}`);
-  console.log(`[server] Simulator: ${cfg.simDir} (Versuche in ${cfg.experimentsSubdir}/)`);
+  console.log(`[server] HTTP on port ${cfg.httpPort}`);
+  console.log(`[server] simulator: ${cfg.simDir} (experiments in ${cfg.experimentsSubdir}/)`);
 });
 
 // Dauerbetrieb: Renode gleich starten und die Modelle übersetzen, damit schon der erste Upload schnell
 // ist (startExperiment wartet sonst darauf)
 if (cfg.renodePersistent) {
-  exclusive(() => renode.boot()).catch((e) => console.error(`[server] Renode-Vorstart fehlgeschlagen: ${e.message}`));
+  exclusive(() => renode.boot()).catch((e) => console.error(`[server] pre-starting Renode failed: ${e.message}`));
 }
 
 // ---------------------------------------------------------------------------

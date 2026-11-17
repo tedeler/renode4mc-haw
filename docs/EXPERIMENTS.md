@@ -1,100 +1,100 @@
-# Versuche beschreiben (`sim/experiments/<id>.json`)
+# Describing experiments (`sim/experiments/<id>.json`)
 
-Ein Versuch der Web-Konsole ist **eine JSON-Datei** in `sim/experiments/`. Sie zählt die Bedienelemente
-(LEDs, Taster, Keypad, Anzeigen, Sensoren …) auf und legt für jedes fest, **an welchen Pins** des
-TM4C1294 es hängt. Mehr braucht es nicht: Datei ablegen, und der Versuch erscheint in der Auswahlliste
-der Web-Konsole (nach dem Neuladen der Seite). Der Dateiname ohne `.json` ist die Versuchs-ID
-(Buchstaben, Ziffern, `_`, `-`).
+An experiment of the web console is **one JSON file** in `sim/experiments/`. It lists the controls
+and devices (LEDs, push buttons, keypad, displays, sensors …) and defines for each of them **which
+pins** of the TM4C1294 it is connected to. Nothing more is needed: put the file there and the
+experiment appears in the selection list of the web console (after reloading the page). The file
+name without `.json` is the experiment ID (letters, digits, `_`, `-`).
 
-Aus der Datei erzeugt das Backend beim Start des Versuchs die Renode-Plattform (`.repl`: Geräte und
-Verdrahtung) und das Startskript (`.resc`). Beide liegen nur im temporären Verzeichnis
-(`GENERATED_DIR`, Standard `/tmp/renode4mc-experiments`) und werden nicht von Hand bearbeitet.
+When the experiment is started, the backend generates the Renode platform (`.repl`: devices and
+wiring) and the start script (`.resc`) from the file. Both are only stored in a temporary directory
+(`GENERATED_DIR`, default `/tmp/renode4mc-experiments`) and are not edited by hand.
 
-## Prüfen
+## Checking
 
 ```bash
-node tools/check_experiment.js                    # alle Versuche in sim/experiments/
-node tools/check_experiment.js mein_versuch.json  # eine Datei, auch außerhalb des Repositorys
-node tools/check_experiment.js --types            # Elementtypen, Felder und Anschlüsse
-node tools/check_experiment.js --repl --resc lab1_gpio   # zeigen, was erzeugt wird
+node tools/check_experiment.js                       # all experiments in sim/experiments/
+node tools/check_experiment.js my_experiment.json    # one file, also outside the repository
+node tools/check_experiment.js --types               # element types, fields and terminals
+node tools/check_experiment.js --repl --resc lab1_gpio   # show what is generated
 ```
 
-Das Werkzeug macht dieselbe Prüfung wie das Backend (Code: `webconsole/backend/lib/experimentSpec.js`)
-und zusätzlich: Gibt es die Gerätemodelle in `sim/models/` und das Beispiel der Musterlösung in
-`examples/`? Exit-Code 0 = gültig (Hinweise erlaubt), 1 = Fehler. Ein ungültiger Versuch erscheint in
-der Web-Konsole nicht; der Grund steht dann im Server-Log.
+The tool performs the same check as the backend (code: `webconsole/backend/lib/experimentSpec.js`)
+and in addition: do the device models exist in `sim/models/`, and does the example of the reference
+solution exist in `examples/`? Exit code 0 = valid (notes allowed), 1 = errors. An invalid experiment
+does not appear in the web console; the reason is then in the server log.
 
-Geprüft wird unter anderem:
+Among other things, it checks:
 
-| Fehler | Beispiel |
+| Error | Example |
 |---|---|
-| Pin gibt es auf dem Chip nicht | `PN7` (Port N hat nur PN0–PN5), `PZ1` |
-| Pin doppelt belegt | `EN_R` und `D0` beide an `PK0` |
-| Pin fest belegt | RX/TX des Terminal-UARTs (Standard PA0/PA1), PC0–PC3 (JTAG), PB2/PB3 sobald ein I2C0-Gerät da ist |
-| UART-Pin nicht möglich | `"rx": "PK2"` (kein UxRx-Pin), `"rx": "PA4", "tx": "PA1"` (U3Rx und U0Tx – verschiedene UARTs) |
-| Anschluss fehlt oder unbekannt | `"EN"` statt `"EN_L"` beim BCD-Display |
-| unbekanntes Feld, Tippfehler | `"colour"` statt `"color"`, Typ `"pendel"` statt `"pendulum"` |
-| Widget mehrfach | zwei Sensoren (die Web-Konsole hat je ein Keypad, eine 7-Segment-Anzeige, ein Pendel, ein OLED, einen Sensor) |
-| I2C-Adresse doppelt | zwei Geräte an `i2c0` mit `0x70` |
-| zu viele LEDs | mehr als 8 (die LED-Brücke hat 8 Eingänge) |
+| the pin does not exist on the chip | `PN7` (port N only has PN0–PN5), `PZ1` |
+| the pin is used twice | `EN_R` and `D0` both on `PK0` |
+| the pin is reserved | RX/TX of the terminal UART (default PA0/PA1), PC0–PC3 (JTAG), PB2/PB3 as soon as there is an I2C0 device |
+| UART pin not possible | `"rx": "PK2"` (not a UxRx pin), `"rx": "PA4", "tx": "PA1"` (U3Rx and U0Tx – different UARTs) |
+| terminal missing or unknown | `"EN"` instead of `"EN_L"` for the BCD display |
+| unknown field, typo | `"colour"` instead of `"color"`, type `"pendel"` instead of `"pendulum"` |
+| widget more than once | two sensors (the web console has one keypad, one 7-segment display, one pendulum, one OLED, one sensor) |
+| I2C address used twice | two devices on `i2c0` with `0x70` |
+| too many LEDs | more than 8 (the LED bridge has 8 inputs) |
 
-Hinweise (kein Fehler): Pin ist auf dem Board schon mit einer LED/einem Taster verbunden, PD7 ist
-geschützt (GPIOLOCK nötig), Taster-Polarität passt nicht zum Pull-Widerstand, Oszilloskop-Kanal an
-einem unbenutzten Pin.
+Notes (not errors): the pin is already connected to an LED/push button on the board, PD7 is
+protected (GPIOLOCK needed), the polarity of a push button does not fit its pull resistor, an
+oscilloscope channel is on an unused pin.
 
-## Aufbau
+## Structure
 
 ```jsonc
 {
-  "title": "Mein Versuch",                 // Pflicht: Name in der Auswahlliste
+  "title": "My experiment",                // required: name in the selection list
   "description": "…",                      // optional
-  "quantumUs": 10,                         // Renode-Zeitscheibe in µs (Standard 10; 100 = Renode-Standard)
-  "uart": {                                // PC-Terminal, optional (Standard: UART0 an PA0/PA1)
-    "rx": "PA0", "tx": "PA1",             // Pins des UARTs, siehe „UART-Pins“ unten
-    "baud": 115200, "format": "8N1",      // Standard-Einstellung des Terminals
+  "quantumUs": 10,                         // Renode time slice in µs (default 10; 100 = Renode default)
+  "uart": {                                // PC terminal, optional (default: UART0 on PA0/PA1)
+    "rx": "PA0", "tx": "PA1",             // pins of the UART, see "UART pins" below
+    "baud": 115200, "format": "8N1",      // default settings of the terminal
     "label": "…", "localEcho": false, "crlf": false
   },
-  "solution": { "example": "lab01_hexkeypad_bcd", "label": "Musterlösung (…)" },   // optional
-  "elements": [ … ],                       // Pflicht: Bedienelemente, siehe unten
-  "scope": {                               // Oszilloskop, optional
-    "channels": ["PM0", "PM4", "PL0", "PL1"],  // Startbelegung CH1..CH4 (Standard: die ersten 4 Signale)
+  "solution": { "example": "lab01_hexkeypad_bcd", "label": "Reference solution (…)" },   // optional
+  "elements": [ … ],                       // required: controls and devices, see below
+  "scope": {                               // oscilloscope, optional
+    "channels": ["PM0", "PM4", "PL0", "PL1"],  // initial channels CH1..CH4 (default: the first 4 signals)
     "trigger": { "source": "PM0", "edge": "falling" },
-    "timebaseUs": 20000,                   // Start-Zeitbasis in µs/div (1-2-5-Folge, 1 … 1000000; Standard 1000)
-    "signals": [ { "pin": "PB0", "label": "eigener Name" } ]  // Beschriftungen ändern/ergänzen
+    "timebaseUs": 20000,                   // initial time base in µs/div (1-2-5 sequence, 1 … 1000000; default 1000)
+    "signals": [ { "pin": "PB0", "label": "my own name" } ]  // change/add labels
   }
 }
 ```
 
-Felder, die mit `_` beginnen, sind Kommentare und werden überall ignoriert
-(`"_pins": "LED0 ist die oberste LED"`).
+Fields that start with `_` are comments and are ignored everywhere
+(`"_pins": "LED0 is the topmost LED"`).
 
-Immer vorhanden (nicht beschreiben): ein UART mit PC-Terminal (siehe „UART-Pins“), Reset-Knopf, Simulations-Anzeige,
-Debugger, Oszilloskop. Die Oszilloskop-Auswahl „Signale dieses Versuchs“ entsteht aus den Pins der
-Elemente; mit `"labels": { "<Anschluss>": "Text" }` in einem Element oder `scope.signals` lässt sich
-die Beschriftung ändern.
+Always present (do not describe them): one UART with PC terminal (see "UART pins"), reset button,
+simulation panel, debugger, oscilloscope. The oscilloscope group "Signals of this experiment" is
+built from the pins of the elements; with `"labels": { "<terminal>": "text" }` in an element or with
+`scope.signals` you can change the labels.
 
-## Elemente
+## Elements
 
-Jedes Element hat `"type"`. Elemente mit einem Pin haben `"pin"`, Elemente mit mehreren Anschlüssen
-`"pins": { "<Anschluss>": "<Pin>" }`. Pins schreibt man wie im Datenblatt: `"PK0"`, `"PL1"`.
+Every element has a `"type"`. Elements with one pin have `"pin"`, elements with several terminals have
+`"pins": { "<terminal>": "<pin>" }`. Pins are written as in the data sheet: `"PK0"`, `"PL1"`.
 
-| Typ | Gerät | Anschlüsse | Felder (außer `type`, `pin(s)`, `labels`) |
+| Type | Device | Terminals | Fields (besides `type`, `pin(s)`, `labels`) |
 |---|---|---|---|
-| `led` | LED, HIGH = an (mehrere) | `pin` | `id` (Pflicht), `label`, `color` (`"#22c55e"`) |
-| `button` | Taster (mehrere) | `pin` | `id` (Pflicht), `label`, `activeLow` (Standard `true`: gedrückt = GND), `pull` (`"up"`, `"down"`, `"none"`) |
-| `bcd` | 7-Segment-Anzeige mit BCD-Eingängen (HAW, Lab 1) | `D0`–`D7`, `EN_R`, `EN_L` | `label` |
-| `hexkeypad` | Hex-Keypad 4×4 der HAW (aktiv LOW, Lab 1) | `X1`–`X4` (Spalten, MCU-Ausgänge), `Y1`–`Y4` (Zeilen, MCU-Eingänge) | `title`, `label`, `layout`, `riseTimeUs` (Standard 20) |
-| `keypad` | Tastenmatrix, aktiv HIGH | `R0`… (Zeilen, MCU-Ausgänge), `C0`… (Spalten, MCU-Eingänge); Anzahl nach `layout` | `title`, `label`, `layout` (Standard 4×3 Telefon) |
-| `pendulum` | LED-Pendel / Pendeldisplay | `LED0`–`LED7` (`LED0` = oberste LED an der Spitze), `SYNC` (MCU-Eingang) | `label`, `frequency`, `minFrequency`, `maxFrequency` (Hz, Schieberegler), `afterglowMs`, `syncMode` (`"position"`: HIGH = rechts; `"direction"`: HAW-Pendel, HIGH = Schwung nach rechts), `periodUs`, `columns` |
-| `hcsr04` | Ultraschall HC-SR04 (Lab 2/3) | `TRIG` (MCU-Ausgang), `ECHO` (MCU-Eingang) | `initial` (cm), `min`, `max`, `unit`, `title`, `label` |
-| `mb1242` | Ultraschall MaxBotix MB1242, I2C | – | `bus` (Standard `"i2c0"`), `address` (Standard `"0x70"`), `initial`, `min`, `max`, `unit`, `title`, `label` |
-| `oled` | OLED SSD1306, I2C | – | `bus` (Standard `"i2c0"`), `address` (Standard `"0x3C"`), `width`, `height`, `label` |
-| `cio` | printf()-Konsole wie in CCS | – | `label` |
+| `led` | LED, HIGH = on (several allowed) | `pin` | `id` (required), `label`, `color` (`"#22c55e"`) |
+| `button` | push button (several allowed) | `pin` | `id` (required), `label`, `activeLow` (default `true`: pressed = GND), `pull` (`"up"`, `"down"`, `"none"`) |
+| `bcd` | 7-segment display with BCD inputs (HAW, Lab 1) | `D0`–`D7`, `EN_R`, `EN_L` | `label` |
+| `hexkeypad` | HAW hex keypad 4×4 (active LOW, Lab 1) | `X1`–`X4` (columns, MCU outputs), `Y1`–`Y4` (rows, MCU inputs) | `title`, `label`, `layout`, `riseTimeUs` (default 20) |
+| `keypad` | key matrix, active HIGH | `R0`… (rows, MCU outputs), `C0`… (columns, MCU inputs); number depends on `layout` | `title`, `label`, `layout` (default 4×3 telephone layout) |
+| `pendulum` | LED pendulum / pendulum display | `LED0`–`LED7` (`LED0` = topmost LED at the tip), `SYNC` (MCU input) | `label`, `frequency`, `minFrequency`, `maxFrequency` (Hz, slider), `afterglowMs`, `syncMode` (`"position"`: HIGH = right; `"direction"`: HAW pendulum, HIGH = swing to the right), `periodUs`, `columns` |
+| `hcsr04` | ultrasonic sensor HC-SR04 (Lab 2/3) | `TRIG` (MCU output), `ECHO` (MCU input) | `initial` (cm), `min`, `max`, `unit`, `title`, `label` |
+| `mb1242` | ultrasonic sensor MaxBotix MB1242, I2C | – | `bus` (default `"i2c0"`), `address` (default `"0x70"`), `initial`, `min`, `max`, `unit`, `title`, `label` |
+| `oled` | OLED SSD1306, I2C | – | `bus` (default `"i2c0"`), `address` (default `"0x3C"`), `width`, `height`, `label` |
+| `cio` | printf() console as in CCS | – | `label` |
 
-### UART-Pins
+### UART pins
 
-Das PC-Terminal hängt an dem UART, zu dem `uart.rx` und `uart.tx` gehören. Welche Pins ein UART
-benutzen kann, legt der Chip fest (Datenblatt Tabelle 10-2, GPIOPCTL-Funktion 1 für alle):
+The PC terminal is connected to the UART that `uart.rx` and `uart.tx` belong to. Which pins a UART
+can use is defined by the chip (data sheet table 10-2, GPIOPCTL function 1 for all of them):
 
 | UART | RX | TX |
 |---|---|---|
@@ -107,25 +107,25 @@ benutzen kann, legt der Chip fest (Datenblatt Tabelle 10-2, GPIOPCTL-Funktion 1 
 | UART6 | PP0 | PP1 |
 | UART7 | PC4 | PC5 |
 
-RX und TX müssen zum selben UART gehören, dürfen aber an verschiedenen Ports liegen (z. B. UART2:
-RX PA6, TX PD5). Die Firmware muss genau diese Pins schalten (GPIOAFSEL, GPIODEN, GPIOPCTL = 1) und
-den UART takten; sonst kommt wie auf dem Board nichts an, und die Diagnose meldet es. Auf dem
-EK-TM4C1294XL hängt nur UART0 (PA0/PA1) am virtuellen COM-Port – für einen anderen UART braucht echte
-Hardware einen USB-Seriell-Adapter (das Prüfwerkzeug gibt einen Hinweis). Im Simulator:
-`sysbus.uart3 SetPins "PJ1" "PJ0"` (TX, RX), abfragen mit `sysbus.uart3 Pins`.
+RX and TX must belong to the same UART, but may be on different ports (e.g. UART2:
+RX PA6, TX PD5). The firmware must configure exactly these pins (GPIOAFSEL, GPIODEN, GPIOPCTL = 1)
+and enable the clock of the UART; otherwise nothing arrives, as on the board, and the Diagnostics
+panel reports it. On the EK-TM4C1294XL only UART0 (PA0/PA1) is connected to the virtual COM port –
+for a different UART, real hardware needs a USB-to-serial adapter (the check tool gives a note).
+In the simulator: `sysbus.uart3 SetPins "PJ1" "PJ0"` (TX, RX), query with `sysbus.uart3 Pins`.
 
 ```json
 "uart": { "rx": "PJ0", "tx": "PJ1", "baud": 9600, "format": "8N1" }
 ```
 
-### Timer-Pins (CCP)
+### Timer pins (CCP)
 
-Ein Timer kann einen Pin selbst treiben (Compare-Action, PWM) oder Flanken an ihm messen (Capture).
-Dafür braucht es kein eigenes Element: Eine `led` bzw. ein `button` an einem CCP-Pin genügt, die
-Firmware schaltet den Pin mit GPIOAFSEL = 1, GPIODEN = 1 und GPIOPCTL = 3 auf den Timer. Mögliche Pins
-(Datenblatt Tabelle 13-2):
+A timer can drive a pin itself (compare action, PWM) or measure edges on it (capture).
+No special element is needed for this: an `led` or a `button` on a CCP pin is enough; the
+firmware switches the pin to the timer with GPIOAFSEL = 1, GPIODEN = 1 and GPIOPCTL = 3. Possible pins
+(data sheet table 13-2):
 
-| Timer | CCP0 (Timer A) | CCP1 (Timer B) |
+| Timer | CCP0 (timer A) | CCP1 (timer B) |
 |---|---|---|
 | Timer 0 | PD0, PA0, PL4 | PD1, PA1, PL5 |
 | Timer 1 | PD2, PA2, PL6 | PD3, PA3, PL7 |
@@ -134,55 +134,56 @@ Firmware schaltet den Pin mit GPIOAFSEL = 1, GPIODEN = 1 und GPIOPCTL = 3 auf de
 | Timer 4 | PM4, PB0, PD6 | PM5, PB1, PD7 |
 | Timer 5 | PM6, PB2 | PM7, PB3 |
 
-Timer 6/7 haben im 128-Pin-Gehäuse keine CCP-Pins. Eine LED an einem PWM-Pin zeigt die Web-Konsole
-gedimmt (mittlere Helligkeit wie vom Auge gesehen). Beispiel: `example3` mit `examples/example05_timer_ccp`.
-Im Monitor: `sysbus.timer0 CcpPins` zeigt, welche Pins ein Timer gerade benutzt und ihren Pegel.
+Timers 6/7 have no CCP pins in the 128-pin package. The web console shows an LED on a PWM pin
+dimmed (average brightness as seen by the eye). Example: `example3` with `examples/example05_timer_ccp`.
+In the monitor: `sysbus.timer0 CcpPins` shows which pins a timer currently uses and their level.
 
-### Pull-Widerstände
+### Pull resistors
 
-`"pull": "up"` bei einem Taster bedeutet einen Widerstand **auf der Platine**: Losgelassen liest der Pin
-HIGH, auch wenn die Firmware GPIOPUR nicht setzt, und es gibt keine Warnung „offener Eingang“. Ohne
-`pull` (wie USR_SW1/2 auf dem EK-TM4C1294XL) muss die Firmware den internen Pull-up einschalten – der
-Simulator meldet es sonst wie bisher. Ein Pull der Firmware in die Gegenrichtung hat Vorrang.
-Im Modell: `TivaGPIOPort.ExternalPullUp` / `ExternalPullDown` (Bitmaske je Port).
+`"pull": "up"` for a push button means a resistor **on the board**: when released, the pin reads
+HIGH even if the firmware does not set GPIOPUR, and there is no warning "floating input". Without
+`pull` (like USR_SW1/2 on the EK-TM4C1294XL) the firmware must switch on the internal pull-up –
+otherwise the simulator reports it. A pull resistor set by the firmware in the opposite direction
+takes precedence. In the model: `TivaGPIOPort.ExternalPullUp` / `ExternalPullDown` (bit mask per port).
 
-Die Pull-Widerstände von Keypad (`hexkeypad`: Pull-up der Zeilen, `keypad`: Pull-down der Spalten)
-sind Teil des Gerätemodells und werden nicht angegeben.
+The pull resistors of the keypads (`hexkeypad`: pull-up of the rows, `keypad`: pull-down of the
+columns) are part of the device model and are not specified.
 
-## Beispiel
+## Example
 
 ```json
 {
-  "title": "Mein Versuch: Zähler auf der 7-Segment-Anzeige",
+  "title": "My experiment: counter on the 7-segment display",
   "quantumUs": 10,
   "uart": { "baud": 115200, "format": "8N1" },
   "elements": [
-    { "type": "bcd", "label": "D0–D7 = PK0–PK7, EN rechts = PL0, EN links = PL1",
+    { "type": "bcd", "label": "D0–D7 = PK0–PK7, EN right = PL0, EN left = PL1",
       "pins": { "D0": "PK0", "D1": "PK1", "D2": "PK2", "D3": "PK3",
                 "D4": "PK4", "D5": "PK5", "D6": "PK6", "D7": "PK7",
                 "EN_R": "PL0", "EN_L": "PL1" } },
-    { "type": "button", "id": "T1", "label": "Zählen (PE1)", "pin": "PE1", "pull": "up" },
-    { "type": "led", "id": "L1", "label": "Überlauf (PE0)", "color": "#ef4444", "pin": "PE0" },
+    { "type": "button", "id": "T1", "label": "Count (PE1)", "pin": "PE1", "pull": "up" },
+    { "type": "led", "id": "L1", "label": "Overflow (PE0)", "color": "#ef4444", "pin": "PE0" },
     { "type": "cio" }
   ],
   "scope": { "channels": ["PE1", "PL0", "PK0", "PE0"], "trigger": { "source": "PE1", "edge": "falling" } }
 }
 ```
 
-Die vorhandenen Versuche (`example1` … `example3`, `lab1_gpio` … `lab4_uart`) sind ebenfalls Vorlagen.
-Die Board-LEDs D1–D4 (PN1, PN0, PF4, PF0) und Taster USR_SW1/2 (PJ0, PJ1) sind normale `led`- bzw.
-`button`-Elemente; ein Versuch ohne sie zeigt sie nicht an.
+The existing experiments (`example1` … `example3`, `lab1_gpio` … `lab4_uart`) are also good templates.
+The board LEDs D1–D4 (PN1, PN0, PF4, PF0) and push buttons USR_SW1/2 (PJ0, PJ1) are normal `led` and
+`button` elements; an experiment without them does not show them.
 
-## Ohne Web-Konsole starten
+## Starting without the web console
 
 ```bash
 node tools/check_experiment.js --out /tmp/v lab1_gpio
 cd sim && renode --console -e "\$elf=@../sim/solutions/lab01_hexkeypad_bcd.elf; s @/tmp/v/lab1_gpio.resc"
 ```
 
-## Neuen Gerätetyp hinzufügen
+## Adding a new device type
 
-Ein neuer Typ braucht ein C#-Modell (`sim/models/`), einen Eintrag im Katalog `TYPES` in
-`webconsole/backend/lib/experimentSpec.js` (Anschlüsse mit Richtung und Index, Konstruktor-Parameter,
-Widget-Einstellungen) sowie – für ein neues Widget – Abfrage/Befehl in `lib/controlBridge.js` und die
-Komponente im Frontend (`ControlPanel.jsx`). Das Prüfwerkzeug kennt den neuen Typ dann automatisch.
+A new type needs a C# model (`sim/models/`), an entry in the catalogue `TYPES` in
+`webconsole/backend/lib/experimentSpec.js` (terminals with direction and index, constructor
+parameters, widget settings) and – for a new widget – a query/command in `lib/controlBridge.js` and
+the component in the frontend (`ControlPanel.jsx`). The check tool then knows the new type
+automatically.

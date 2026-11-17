@@ -1,17 +1,17 @@
 {
-  "title": "Lab 4 – UART: LEDs per Terminal schalten, SW1-Interrupt",
-  "description": "UART0-Terminal 9600 7N1, LEDs D1–D4, USR_SW1/2 (ohne Pull-up auf dem Board: die Firmware muss GPIOPUR setzen), printf",
+  "title": "Lab 4 – UART: switch LEDs from the terminal, SW1 interrupt",
+  "description": "UART0 terminal 9600 7N1, LEDs D1–D4, USR_SW1/2 (no pull-up on the board: the firmware must set GPIOPUR), printf",
   "uart": {
     "baud": 9600,
     "format": "7N1",
-    "label": "UART0 (PA0 RX / PA1 TX) – Terminal wie Tera Term: 9600 Bit/s 7N1, lokales Echo, Empfang CR → CR+LF",
+    "label": "UART0 (PA0 RX / PA1 TX) – terminal like Tera Term: 9600 bit/s 7N1, local echo, receive CR → CR+LF",
     "localEcho": true,
     "crlf": true
   },
   "quantumUs": 10,
   "solution": {
     "example": "lab04_uart_leds",
-    "label": "Musterlösung"
+    "label": "Reference solution"
   },
   "elements": [
     {
@@ -58,7 +58,7 @@
     },
     {
       "type": "cio",
-      "label": "printf() wie in der CCS-Konsole (TI-Laufzeitsystem, C$$IO$$)"
+      "label": "printf() as in the CCS console (TI run-time library, C$$IO$$)"
     }
   ],
   "scope": {

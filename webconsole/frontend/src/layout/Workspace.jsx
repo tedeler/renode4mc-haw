@@ -18,7 +18,7 @@ import { PanelContext } from './PanelContext.js';
  * die Spalte wechseln. So bleiben Terminal-Inhalt, Canvas-Bilder und WebSockets beim Verschieben
  * erhalten.
  *
- * Das Layout wird je Versuch im Browser gespeichert (localStorage); "↺ Standardlayout" stellt die
+ * Das Layout wird je Versuch im Browser gespeichert (localStorage); "↺ Default layout" stellt die
  * Standardanordnung wieder her, alle Panels ausgeklappt.
  */
 
@@ -373,24 +373,24 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
     <div className="ws-tools-row">
       {extraTools}
       {anyCollapsed ? (
-        <button className="btn small ghost icon" onClick={expandAll} title="Alle Panels ausklappen">
+        <button className="btn small ghost icon" onClick={expandAll} title="Expand all panels">
           ⊞
         </button>
       ) : (
-        <button className="btn small ghost icon" onClick={collapseAll} title="Alle Panels einklappen">
+        <button className="btn small ghost icon" onClick={collapseAll} title="Collapse all panels">
           ⊟
         </button>
       )}
       <button
         className="btn small ghost"
         onClick={reset}
-        title="Zurück zum Standardlayout: alle Panels sichtbar, Anordnung wie beim ersten Start (die gespeicherte Anordnung dieses Versuchs wird ersetzt)"
+        title="Back to the default layout: all panels visible, arranged as on first start (replaces the saved layout of this experiment)"
       >
-        ↺ Standardlayout
+        ↺ Default layout
       </button>
     </div>
   ) : (
-    <nav className="ws-jump" aria-label="Zu Panel springen">
+    <nav className="ws-jump" aria-label="Jump to panel">
       {extraTools}
       {order.map((id) => (
         <button
@@ -401,8 +401,8 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
           {byId[id]?.title ?? id}
         </button>
       ))}
-      <button className="chip ghost" onClick={reset} title="Zurück zum Standardlayout (alles ausgeklappt)">
-        ↺ Standardlayout
+      <button className="chip ghost" onClick={reset} title="Back to the default layout (all expanded)">
+        ↺ Default layout
       </button>
     </nav>
   );
@@ -436,7 +436,7 @@ export default function Workspace({ layoutKey, panels, extraTools = null, toolsS
                     className="ws-gutter"
                     role="separator"
                     aria-orientation="vertical"
-                    title="Ziehen: Spaltenbreite ändern · Doppelklick: beide gleich breit"
+                    title="Drag: change column width · double-click: make both equally wide"
                     onPointerDown={(e) => startResize(e, ci - 1)}
                     onDoubleClick={() => equalize(ci - 1)}
                   />

@@ -87,7 +87,7 @@ async function main() {
     send({ type: 'button', id, pressed: false });
   };
 
-  check('UART: Startmeldung', await waitFor(() => /Example 05 Timer-CCP/.test(s.uart), 15000), JSON.stringify(s.uart.slice(0, 60)));
+  check('UART: Startmeldung', await waitFor(() => /Example 05 Timer CCP/.test(s.uart), 15000), JSON.stringify(s.uart.slice(0, 60)));
   check('UART: Start mit 25 %', await waitFor(() => /PWM: 25 %/.test(s.uart)));
   send({ type: 'scope', sources: ['PL4', 'PL6', 'PM0'] });
   check('Oszilloskop: Flanken an PL4/PL6', await waitFor(() => (s.edges.PL4 || []).length > 40 && (s.edges.PL6 || []).length >= 4, 20000),
@@ -126,15 +126,15 @@ async function main() {
   check('LED3 + LED4 an (Stufe 3 = 11)', s.leds.LED3 === true && s.leds.LED4 === true, JSON.stringify(s.leds));
 
   // Taste 0 lang (> 1,05 s: Überlauf des 24-Bit-Zählers): 0 % und Dauer per Capture
-  const before = (s.uart.match(/Taste 0 gedrueckt/g) || []).length;
+  const before = (s.uart.match(/Key 0 pressed/g) || []).length;
   const pm0Before = (s.edges.PM0 || []).length;
   await press('T0', 1800);
   check('UART: Taste 0 -> 0 %', await waitFor(() => /PWM: 0 %/.test(s.uart)));
-  check('UART: Dauer von Taste 0 gemeldet', await waitFor(() => (s.uart.match(/Taste 0 gedrueckt/g) || []).length > before));
+  check('UART: Dauer von Taste 0 gemeldet', await waitFor(() => (s.uart.match(/Key 0 pressed/g) || []).length > before));
   await waitFor(() => (s.edges.PM0 || []).length >= pm0Before + 2, 4000);
   const e = (s.edges.PM0 || []).slice(pm0Before);
   const scopeMs = e.length >= 2 ? (e[1][0] - e[0][0]) / 1e6 : NaN;
-  const m = /Taste 0 gedrueckt: (\d+),(\d{3}) ms\r\n(?![\s\S]*Taste 0 gedrueckt)/.exec(s.uart);
+  const m = /Key 0 pressed: (\d+)\.(\d{3}) ms\r\n(?![\s\S]*Key 0 pressed)/.exec(s.uart);
   const uartMs = m ? +m[1] + +m[2] / 1000 : NaN;
   check('Capture: Dauer = Oszilloskop (± 20 us), > 1,05 s', Math.abs(uartMs - scopeMs) < 0.02 && uartMs > 1100,
     `UART ${uartMs} ms, Oszilloskop ${scopeMs} ms`);
@@ -151,7 +151,7 @@ async function main() {
   await sleep(300);
   const e2 = (s.edges.PM0 || []).slice(pm0b);
   const scope2 = e2.length >= 2 ? (e2[1][0] - e2[0][0]) / 1e6 : NaN;
-  const m2 = /Taste 0 gedrueckt: (\d+),(\d{3}) ms\r\n(?![\s\S]*Taste 0 gedrueckt)/.exec(s.uart);
+  const m2 = /Key 0 pressed: (\d+)\.(\d{3}) ms\r\n(?![\s\S]*Key 0 pressed)/.exec(s.uart);
   const uart2 = m2 ? +m2[1] + +m2[2] / 1000 : NaN;
   check('Capture: kurzer Druck = Oszilloskop (± 20 us)', Math.abs(uart2 - scope2) < 0.02, `UART ${uart2} ms, Oszilloskop ${scope2} ms`);
 

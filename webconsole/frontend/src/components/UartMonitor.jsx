@@ -9,9 +9,9 @@ import Widget from './Widget.jsx';
 
 const BAUD_RATES = [300, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const PARITIES = [
-  ['N', 'keine'],
-  ['E', 'gerade'],
-  ['O', 'ungerade'],
+  ['N', 'none'],
+  ['E', 'even'],
+  ['O', 'odd'],
   ['M', 'Mark (1)'],
   ['S', 'Space (0)'],
 ];
@@ -33,7 +33,7 @@ function TerminalSettings() {
   // Vorschau (keine Firmware): einstellbar, gilt beim Start
   const disabled = live && status !== 'open';
   return (
-    <div className="uart-settings" title="Einstellung des Terminalprogramms am PC">
+    <div className="uart-settings" title="Settings of the terminal program on the PC">
       <label>
         Baud
         <select value={baud} disabled={disabled} onChange={(e) => set({ baud: e.target.value })}>
@@ -46,7 +46,7 @@ function TerminalSettings() {
         </select>
       </label>
       <label>
-        Daten
+        Data
         <select value={format[0]} disabled={disabled} onChange={(e) => setFmt(0, e.target.value)}>
           {['5', '6', '7', '8'].map((d) => (
             <option key={d} value={d}>
@@ -56,7 +56,7 @@ function TerminalSettings() {
         </select>
       </label>
       <label>
-        Parität
+        Parity
         <select value={format[1]} disabled={disabled} onChange={(e) => setFmt(1, e.target.value)}>
           {PARITIES.map(([v, t]) => (
             <option key={v} value={v}>
@@ -66,7 +66,7 @@ function TerminalSettings() {
         </select>
       </label>
       <label>
-        Stopp
+        Stop
         <select value={format[2]} disabled={disabled} onChange={(e) => setFmt(2, e.target.value)}>
           {['1', '2'].map((d) => (
             <option key={d} value={d}>
@@ -108,7 +108,7 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
   const { status, send } = useReconnectingWebSocket(UART_WS_URL, {
     enabled: live,
     binaryType: 'arraybuffer',
-    onOpen: () => termRef.current?.writeln('\x1b[32m[UART verbunden]\x1b[0m'),
+    onOpen: () => termRef.current?.writeln('\x1b[32m[UART connected]\x1b[0m'),
     onMessage: (ev) => {
       const t = termRef.current;
       if (!t) return;
@@ -121,9 +121,9 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
       if (!t) return;
       if (ev.code === 4000) {
         t.reset();
-        t.writeln('\x1b[33m[Renode neu gestartet – verbinde neu …]\x1b[0m');
+        t.writeln('\x1b[33m[Renode restarted – reconnecting …]\x1b[0m');
       } else {
-        t.writeln('\x1b[31m[UART getrennt – Reconnect …]\x1b[0m');
+        t.writeln('\x1b[31m[UART disconnected – reconnecting …]\x1b[0m');
       }
     },
   });
@@ -143,7 +143,7 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
     term.open(containerRef.current);
     fit.fit();
     termRef.current = term;
-    if (!optsRef.current.live) term.writeln('\x1b[90m[Keine Firmware geladen – das Terminal verbindet sich nach dem Start]\x1b[0m');
+    if (!optsRef.current.live) term.writeln('\x1b[90m[No firmware loaded – the terminal connects after Start]\x1b[0m');
 
     const encoder = new TextEncoder();
     const sub = term.onData((d) => {
@@ -174,13 +174,13 @@ export default function UartMonitor({ label, localEcho = false, crlf = false }) 
 
   return (
     <Widget
-      title="UART-Monitor"
+      title="UART monitor"
       subtitle={label}
       status={status}
       className="uart"
       actions={
         <button className="btn small" onClick={() => termRef.current?.clear()}>
-          Leeren
+          Clear
         </button>
       }
     >

@@ -1,9 +1,9 @@
 /*
- * tm4c1294.cmd - Linker-Skript für TI Arm Clang (tiarmclang) und den TM4C1294NCPDT
+ * tm4c1294.cmd - linker script for TI Arm Clang (tiarmclang) and the TM4C1294NCPDT
  *
- * Eigenes Skript (kein TI-Original). Speicher:
- *   FLASH 1 MB ab 0x00000000, SRAM 256 KB ab 0x20000000
- * Die Vektortabelle (.intvecs) liegt am Flash-Anfang. Der Stack liegt am Ende von .bss/.data.
+ * Our own script (not a TI original). Memory:
+ *   FLASH 1 MB from 0x00000000, SRAM 256 KB from 0x20000000
+ * The vector table (.intvecs) is at the start of flash. The stack is placed after .bss/.data.
  */
 --retain=g_pfnVectors
 
@@ -13,7 +13,7 @@ MEMORY
     SRAM  (RWX): origin = 0x20000000, length = 0x00040000
 }
 
-/* Stackgröße 2 KB: muss zur Linker-Option --stack_size=2048 passen. */
+/* Stack size 2 KB: must match the linker option --stack_size=2048. */
 __STACK_SIZE = 2048;
 
 SECTIONS

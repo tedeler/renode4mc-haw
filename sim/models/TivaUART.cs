@@ -114,12 +114,12 @@ namespace Antmicro.Renode.Peripherals.UART
             if(string.IsNullOrEmpty(name)) return;
             if(name.Length != 3 || name[0] != 'P' || name[2] < '0' || name[2] > '7')
             {
-                throw new RecoverableException("Pin wie \"PJ1\" erwartet: " + name);
+                throw new RecoverableException("Pin name like \"PJ1\" expected: " + name);
             }
             IPeripheral p;
             if(!ownMachine.TryGetByName("sysbus.gpio" + name[1], out p) || !(p is TivaGPIOPort))
             {
-                throw new RecoverableException("GPIO-Port " + name[1] + " gibt es nicht: " + name);
+                throw new RecoverableException("GPIO port " + name[1] + " does not exist: " + name);
             }
             port = (TivaGPIOPort)p;
             pin = name[2] - '0';
@@ -243,7 +243,7 @@ namespace Antmicro.Renode.Peripherals.UART
                     ctl = value;
                     if((value & CtlUarten) != 0 && (value & (CtlSiren | CtlSmart)) != 0)
                     {
-                        Warn("ctlBits", "UARTCTL: IrDA (SIREN) und Smartcard (SMART) sind im Simulator nicht modelliert.");
+                        Warn("ctlBits", "UARTCTL: IrDA (SIREN) and smart card (SMART) are not modelled in the simulator.");
                     }
                     break;
                 case Ifls: ifls = value & 0x3F; break;
@@ -252,7 +252,7 @@ namespace Antmicro.Renode.Peripherals.UART
                 case Dmactl: dmactl = value & 0x7; break;
                 case Cc:
                     cc = value & 0xF;
-                    if(cc != 0 && cc != CcPiosc) Warn("cc", string.Format("UARTCC = 0x{0:X} ist reserviert (0x0 = Systemtakt, 0x5 = PIOSC/ALTCLK).", cc));
+                    if(cc != 0 && cc != CcPiosc) Warn("cc", string.Format("UARTCC = 0x{0:X} is reserved (0x0 = system clock, 0x5 = PIOSC/ALTCLK).", cc));
                     break;
                 case Fr: case Ris: case Mis: break; // nur lesbar
                 default: other[offset] = value; break;
@@ -329,14 +329,14 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             rxRecorder.Add(edges);
             ToPad(rxPort, rxPin, edges);
-            ConfigMatches("Empfangen");
+            ConfigMatches("receiving");
             if(!RxPinOk())
             {
                 if(!rxPinWarned)
                 {
                     this.Log(LogLevel.Warning,
-                        "UART{0}: Auf der Empfangsleitung kommen Zeichen an, aber {1} ist nicht als U{0}RX " +
-                        "geschaltet (GPIOAFSEL, GPIODEN, GPIOPCTL = {2}). Der UART empfängt nichts.",
+                        "UART{0}: characters arrive on the receive line, but {1} is not configured as U{0}RX " +
+                        "(GPIOAFSEL, GPIODEN, GPIOPCTL = {2}). The UART receives nothing.",
                         clockBit, PinName(rxPort, rxPin), pinFunction);
                     rxPinWarned = true;
                 }
@@ -365,7 +365,7 @@ namespace Antmicro.Renode.Peripherals.UART
             if((ctl & CtlUarten) == 0 || (ctl & CtlTxe) == 0)
             {
                 this.Log(LogLevel.Warning,
-                    "UART{0}: Zeichen 0x{1:X2} verworfen – UART bzw. Sender nicht eingeschaltet (UARTCTL: UARTEN, TXE).",
+                    "UART{0}: character 0x{1:X2} dropped – UART or transmitter not enabled (UARTCTL: UARTEN, TXE).",
                     clockBit, c);
                 return;
             }
@@ -374,7 +374,7 @@ namespace Antmicro.Renode.Peripherals.UART
             if(txWaiting.Count >= FifoDepth)
             {
                 this.Log(LogLevel.Warning,
-                    "UART{0}: Sende-FIFO voll, Zeichen 0x{1:X2} verworfen (vor dem Schreiben UARTFR.TXFF prüfen).", clockBit, c);
+                    "UART{0}: transmit FIFO full, character 0x{1:X2} dropped (check UARTFR.TXFF before writing).", clockBit, c);
                 return;
             }
             var f = CurrentFormat();
@@ -383,17 +383,17 @@ namespace Antmicro.Renode.Peripherals.UART
                 if(!formatWarned)
                 {
                     this.Log(LogLevel.Warning,
-                        "UART{0}: Zeichen 0x{1:X2} verworfen – Baudrate nicht eingestellt: UARTIBRD = 0 bzw. " +
-                        "IBRD/FBRD nicht mit einem Schreiben von UARTLCRH übernommen (Datenblatt 19.3.2).", clockBit, c);
+                        "UART{0}: character 0x{1:X2} dropped – baud rate not set: UARTIBRD = 0, or " +
+                        "IBRD/FBRD not taken over by a write to UARTLCRH (data sheet 19.3.2).", clockBit, c);
                     formatWarned = true;
                 }
                 return;
             }
             if(baudPending)
             {
-                Warn("lcrhMissing", "UARTIBRD/UARTFBRD geschrieben, aber danach UARTLCRH nicht: Datenblatt 19.3.2 – die neue Baudrate gilt erst nach dem Schreiben von UARTLCRH.");
+                Warn("lcrhMissing", "UARTIBRD/UARTFBRD written, but UARTLCRH not written afterwards: data sheet 19.3.2 – the new baud rate only takes effect after UARTLCRH is written.");
             }
-            ConfigMatches("Senden");
+            ConfigMatches("sending");
 
             if(breakActive)
             {
@@ -440,8 +440,8 @@ namespace Antmicro.Renode.Peripherals.UART
                 if(!txPinWarned)
                 {
                     this.Log(LogLevel.Warning,
-                        "UART{0}: sendet, aber {1} ist nicht als U{0}TX geschaltet (GPIOAFSEL, GPIODEN, " +
-                        "GPIOPCTL = {2}). Am Pin kommt nichts an.", clockBit, PinName(txPort, txPin), pinFunction);
+                        "UART{0}: transmitting, but {1} is not configured as U{0}TX (GPIOAFSEL, GPIODEN, " +
+                        "GPIOPCTL = {2}). Nothing appears at the pin.", clockBit, PinName(txPort, txPin), pinFunction);
                     txPinWarned = true;
                 }
                 return;
@@ -552,7 +552,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(!IsReceiveEnabled)
             {
-                this.Log(LogLevel.Debug, "UART{0}: Empfänger aus, Zeichen 0x{1:X2} verworfen", clockBit, value);
+                this.Log(LogLevel.Debug, "UART{0}: receiver off, character 0x{1:X2} dropped", clockBit, value);
                 return;
             }
             uint flags = 0;
@@ -567,7 +567,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if(!IsReceiveEnabled)
             {
-                this.Log(LogLevel.Debug, "UART{0}: Empfänger aus, Zeichen 0x{1:X2} verworfen", clockBit, value);
+                this.Log(LogLevel.Debug, "UART{0}: receiver off, character 0x{1:X2} dropped", clockBit, value);
                 return;
             }
             PushRx(value);
@@ -587,7 +587,7 @@ namespace Antmicro.Renode.Peripherals.UART
                     rxFifo.Clear();
                     foreach(var x in arr) rxFifo.Enqueue(x);
                 }
-                this.Log(LogLevel.Warning, "UART{0}: Empfangs-FIFO voll, Zeichen 0x{1:X2} verworfen (Overrun)", clockBit, entry & 0xFF);
+                this.Log(LogLevel.Warning, "UART{0}: receive FIFO full, character 0x{1:X2} dropped (overrun)", clockBit, entry & 0xFF);
                 UpdateInterrupts();
                 return;
             }
@@ -664,15 +664,15 @@ namespace Antmicro.Renode.Peripherals.UART
             {
                 lastConfigWarning = config;
                 this.Log(LogLevel.Warning,
-                    "UART{0}: Firmware ist auf {1} Baud {2} eingestellt (IBRD = {3}, FBRD = {4}, LCRH = 0x{5:X2}), das Terminal erwartet {6} Baud {7}" +
-                    " (Abweichung {8:F1} %, erlaubt {9:F1} %). Beim {10} kommt nur Zeichensalat an.",
+                    "UART{0}: the firmware is set to {1} baud {2} (IBRD = {3}, FBRD = {4}, LCRH = 0x{5:X2}), the terminal expects {6} baud {7}" +
+                    " (error {8:F1} %, allowed {9:F1} %). When {10}, only garbage arrives.",
                     clockBit, BaudRate, own.Name, latchedIbrd, latchedFbrd, lcrh, BaudText(partner), partner.Name,
                     error * 100, BaudTolerance * 100, what);
             }
             if(ok && lastConfigWarning != null && lastConfigWarning != "ok")
             {
                 lastConfigWarning = "ok";
-                this.Log(LogLevel.Warning, "UART{0}: Konfiguration jetzt korrekt ({1} Baud {2}).", clockBit, BaudRate, own.Name);
+                this.Log(LogLevel.Warning, "UART{0}: configuration is now correct ({1} baud {2}).", clockBit, BaudRate, own.Name);
             }
         }
 
@@ -680,7 +680,7 @@ namespace Antmicro.Renode.Peripherals.UART
         {
             if((ctl & CtlUarten) != 0)
             {
-                Warn("en" + reg, reg + " geändert, während der UART eingeschaltet ist (UARTEN = 1). Datenblatt 19.4: UART zuerst ausschalten.");
+                Warn("en" + reg, reg + " changed while the UART is enabled (UARTEN = 1). Data sheet 19.4: disable the UART first.");
             }
         }
 
@@ -704,7 +704,7 @@ namespace Antmicro.Renode.Peripherals.UART
 
         private static string PinName(TivaGPIOPort port, int pin)
         {
-            return port != null ? "P" + port.PortName + pin : "der Pin";
+            return port != null ? "P" + port.PortName + pin : "the pin";
         }
 
         private int FifoDepth { get { return (lcrh & LcrhFen) != 0 ? 16 : 1; } }
@@ -776,8 +776,8 @@ namespace Antmicro.Renode.Peripherals.UART
             if(!clockWarned)
             {
                 this.Log(LogLevel.Warning,
-                    "UART{0}: Zugriff (Offset 0x{1:X}) ohne Takt! RCGCUART Bit {0} muss gesetzt werden " +
-                    "(SysCtlPeripheralEnable). Auf der Hardware führt das zu einem Fault.",
+                    "UART{0}: access (offset 0x{1:X}) without clock! RCGCUART bit {0} must be set " +
+                    "(SysCtlPeripheralEnable). On real hardware this causes a fault.",
                     clockBit, offset);
                 clockWarned = true;
             }

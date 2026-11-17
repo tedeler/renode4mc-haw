@@ -36,7 +36,7 @@ namespace Antmicro.Renode.Peripherals.Miscellaneous
             state = new bool[8];
             listener = new TcpListener(IPAddress.Loopback, port);
             listener.Start();
-            this.Log(LogLevel.Info, "WebSocket-Bridge lauscht auf ws://127.0.0.1:{0}", port);
+            this.Log(LogLevel.Info, "WebSocket bridge listening on ws://127.0.0.1:{0}", port);
             var t = new Thread(AcceptLoop) { IsBackground = true };
             t.Start();
             var s = new Thread(SendLoop) { IsBackground = true, Name = "WebSocketBridge" };

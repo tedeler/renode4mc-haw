@@ -104,11 +104,11 @@ export default function App() {
       ) : (
         <div className="placeholder">
           {previewError ? (
-            <>Versuch nicht ladbar: {previewError}</>
+            <>Cannot load experiment: {previewError}</>
           ) : (
             <>
-              Versuch wählen, die von CCS bzw. <code>make</code> gebaute <code>.out</code>-Datei hochladen und{' '}
-              <b>Start</b> klicken.
+              Choose an experiment, upload the <code>.out</code> file built by CCS or <code>make</code>, and click{' '}
+              <b>Start</b>.
             </>
           )}
         </div>

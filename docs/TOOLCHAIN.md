@@ -1,162 +1,161 @@
-# Konzept: TI-Workflow beibehalten, Simulation als „Ein-Klick“-Zusatz
+# Concept: keep the TI workflow, add simulation as a "one-click" extra
 
-Ziel: Studierende arbeiten **genau wie von TI empfohlen**: Code Composer Studio (CCStudio),
-TI Arm Clang, TivaWare, TI-Linker-Script, Flashen/Debuggen über den On-Board-ICDI.
-Zusätzlich gibt es einen einfachen Weg, das von CCS gebaute Programm **unverändert** im
-Simulator zu starten. Es gibt keinen zweiten Build, kein zweites Linker-Script, keine
-Simulator-spezifischen Projekteinstellungen.
+Goal: students work **exactly as TI recommends**: Code Composer Studio (CCStudio),
+TI Arm Clang, TivaWare, TI linker script, flashing/debugging via the on-board ICDI.
+In addition there is a simple way to start the program built by CCS **unchanged** in the
+simulator. There is no second build, no second linker script and no simulator-specific
+project settings.
 
-## Grundprinzip
+## Basic principle
 
 ```
- CCS-Projekt (TivaWare, startup_ccs.c, tm4c1294ncpdt.cmd)
-        │  Build (TI Arm Clang)
+ CCS project (TivaWare, startup_ccs.c, tm4c1294ncpdt.cmd)
+        │  build (TI Arm Clang)
         ▼
-   Debug/<projekt>.out  (ELF)
-        ├─► CCS „Debug“/„Flash“  → ICDI → EK-TM4C1294XL      (TI-Standard, unverändert)
-        └─► „Simulieren“         → ucsim <projekt>.out → Renode + Browser-Visualizer
+   Debug/<project>.out  (ELF)
+        ├─► CCS "Debug"/"Flash"  → ICDI → EK-TM4C1294XL      (TI standard, unchanged)
+        └─► "Simulate"           → ucsim <project>.out → Renode + browser visualizer
 ```
 
-Der Simulator ist ein reiner **Konsument des ELF**. Er bildet das Speicherlayout des Chips ab
-(Flash `0x0`, 1 MB; SRAM `0x20000000`, 256 KB) und startet wie die Hardware: Stackpointer und
-Reset-Vektor aus der Vektortabelle bei `0x0`.
+The simulator only **consumes the ELF file**. It reproduces the memory layout of the chip
+(flash `0x0`, 1 MB; SRAM `0x20000000`, 256 KB) and starts like the hardware: stack pointer and
+reset vector from the vector table at `0x0`.
 
-### Belegt (Test)
-Das von TI mitgelieferte, vorgebaute `blinky.out` aus TivaWare
-(`examples/boards/ek-tm4c1294xl/blinky/ccs/Debug/`) wurde ohne Änderung in Renode geladen:
-Vektortabelle und Reset (`_c_int00` der TI-Runtime, SP `0x20000200`) laufen; danach greift
-`driverlib` auf Register zu, die der Simulator noch nicht kennt:
-- **Bit-Banding-Alias** (`0x42000000–0x43FFFFFF`, von `driverlib` für Peripherie-Bits genutzt)
-  → muss im Simulator ergänzt werden (neuer Punkt in M0 des `ROADMAP.md`).
-- SYSCTL/GPIO-Register → M1/M3.
+### Evidence (test)
+The pre-built `blinky.out` supplied by TI with TivaWare
+(`examples/boards/ek-tm4c1294xl/blinky/ccs/Debug/`) was loaded into Renode without any change:
+vector table and reset (`_c_int00` of the TI run-time library, SP `0x20000200`) work; after that,
+`driverlib` accesses registers that the simulator did not know yet:
+- **bit-banding alias** (`0x42000000–0x43FFFFFF`, used by `driverlib` for peripheral bits)
+  → must be added to the simulator (new item in M0 of `ROADMAP.md`).
+- SYSCTL/GPIO registers → M1/M3.
 
-Damit ist bestätigt: TI-Startup, TI-Linker-Script und `driverlib` funktionieren im Simulator,
-sobald die Peripherie-Modelle vollständig genug sind.
+This confirms: the TI start-up file, the TI linker script and `driverlib` work in the simulator
+as soon as the peripheral models are complete enough.
 
-## Was Studierende installieren
+## What students install
 
-| Komponente | Quelle | Zweck |
+| Component | Source | Purpose |
 |---|---|---|
-| **CCStudio** (Linux/macOS/Windows) inkl. TI Arm Clang | TI | Editor, Build, Debug, Flash – wie bisher |
-| **TivaWare 2.2.0** | TI | `driverlib`, Header, Beispiele |
-| **ucsim-Paket** (neu, dieses Repo) | Release-Archiv pro OS | Renode (feste Version), C#-Modelle, Plattformbeschreibung, Visualizer, Startskript `ucsim` |
+| **CCStudio** (Linux/macOS/Windows) incl. TI Arm Clang | TI | editor, build, debug, flash – as before |
+| **TivaWare 2.2.0** | TI | `driverlib`, headers, examples |
+| **ucsim package** (new, this repository) | release archive per OS | Renode (fixed version), C# models, platform description, visualizer, start script `ucsim` |
 
-Das ucsim-Paket wird pro Betriebssystem als Archiv/Installer bereitgestellt
-(Linux: `.tar.gz` + `install.sh`; Windows: `.zip` oder Installer; macOS: `.tar.gz`/`.pkg`), enthält
-Renode in einer festen Version und trägt `ucsim` in den `PATH` ein. Kein Compiler, kein
-Linker-Script, kein OpenOCD gehört dazu – das liefert alles CCS.
+The ucsim package is provided per operating system as an archive/installer
+(Linux: `.tar.gz` + `install.sh`; Windows: `.zip` or installer; macOS: `.tar.gz`/`.pkg`); it contains
+Renode in a fixed version and adds `ucsim` to the `PATH`. It contains no compiler, no linker
+script and no OpenOCD – CCS provides all of these.
 
-## Der einfache Weg zur Simulation
+## The simple way to simulate
 
-`ucsim <datei.out>` – ein Befehl, der
-1. Renode im Hintergrund startet (Plattform, Modelle, ELF laden, `start`),
-2. den Browser-Visualizer öffnet (`http://127.0.0.1:…`, siehe unten),
-3. bei erneutem Aufruf die laufende Simulation neu startet (neues ELF ohne Renode-Neustart).
+`ucsim <file.out>` – one command that
+1. starts Renode in the background (platform, models, load ELF, `start`),
+2. opens the browser visualizer (`http://127.0.0.1:…`, see below),
+3. restarts the running simulation when called again (new ELF without restarting Renode).
 
-Einbindung in CCS, in absteigender Bequemlichkeit (**vor der Festlegung auf CCS 20.x
-prüfen**, welche Variante dort verfügbar ist):
+Integration into CCS, from most to least convenient (**check which variant is available in
+CCS 20.x before committing to it**):
 
-1. **Eigener Task/Run-Befehl in CCStudio** („Simulate“), der `ucsim ${projectName}/Debug/${projectName}.out`
-   aufruft. Wird als Vorlage ins Lab-Projekt gelegt (CCStudio basiert auf Theia, Tasks im
-   VS-Code-Stil sind dort üblich).
-2. **Post-Build-Schritt** in den Projekteigenschaften (Build → Steps), der `ucsim` aufruft –
-   dann simuliert jeder Build automatisch. Nur als optionaler Schalter, weil es beim Flashen stört.
-3. **Ohne IDE-Integration:** Drag & Drop der `.out`-Datei auf das ucsim-Symbol bzw. Dateizuordnung
-   für `.out`, oder `ucsim` in der Konsole.
+1. **Own task/run command in CCStudio** ("Simulate") that calls `ucsim ${projectName}/Debug/${projectName}.out`.
+   It is put into the lab project as a template (CCStudio is based on Theia, where VS Code style
+   tasks are common).
+2. **Post-build step** in the project properties (Build → Steps) that calls `ucsim` –
+   then every build is simulated automatically. Only as an optional switch, because it gets in the way when flashing.
+3. **Without IDE integration:** drag & drop the `.out` file onto the ucsim icon, a file association
+   for `.out`, or `ucsim` in the console.
 
-Die Lab-Projekte werden als **CCS-Projekte** bereitgestellt (importierbar, auf Basis der
-TivaWare-Beispielprojekte des EK-TM4C1294XL); die Simulationsaufgabe hängt nur an der
-Ausgabedatei, nicht am Projekt.
+The lab projects are provided as **CCS projects** (importable, based on the TivaWare example
+projects of the EK-TM4C1294XL); the simulation only depends on the output file, not on the project.
 
-## Debuggen des Simulators aus CCS
+## Debugging the simulator from CCS
 
-Wunsch: Im CCS dieselbe Debug-Ansicht (Breakpoints, Einzelschritt, Variablen, Register)
-benutzen, egal ob Board oder Simulator.
+Wish: use the same debug view in CCS (breakpoints, single step, variables, registers),
+no matter whether it is the board or the simulator.
 
-### Was CCS 20.4 (lokale Installation) hergibt – geprüft
-- CCStudio 20 basiert auf Theia. In der mitgelieferten Erweiterungsliste gibt es keinen
-  GDB-Debug-Adapter (nur `ms-vscode.js-debug`), und die Installation enthält weder `gdb` noch `lldb`.
-- Der native TI-Debugger spricht über den **TI Debug Server** (`ccs_base/DebugServer`) mit
-  Treibern für echte Hardware: `libicdi_emu.so`/`libstellaris_emu.so` (ICDI per USB),
-  `libjlinkarm.so` (Segger J-Link), XDS-Treiber. Eine „Simulator“- oder „GDB-Remote“-Verbindung
-  für den TM4C1294 gibt es nicht (Verbindungen u. a. `Stellaris_ICDI_Connection.xml`, `segger_j-link_connection.xml`).
-- Renode stellt einen GDB-Server bereit (`machine StartGdbServer 3333`).
+### What CCS 20.4 (local installation) offers – checked
+- CCStudio 20 is based on Theia. The bundled extension list has no GDB debug adapter (only
+  `ms-vscode.js-debug`), and the installation contains neither `gdb` nor `lldb`.
+- The native TI debugger talks via the **TI Debug Server** (`ccs_base/DebugServer`) to drivers for
+  real hardware: `libicdi_emu.so`/`libstellaris_emu.so` (ICDI via USB), `libjlinkarm.so`
+  (Segger J-Link), XDS drivers. There is no "simulator" or "GDB remote" connection for the
+  TM4C1294 (connections include `Stellaris_ICDI_Connection.xml`, `segger_j-link_connection.xml`).
+- Renode provides a GDB server (`machine StartGdbServer 3333`).
 
-### Varianten
+### Variants
 
-| # | Variante | Aufwand/Risiko | Bewertung |
+| # | Variant | Effort/risk | Assessment |
 |---|---|---|---|
-| 1 | **GDB-Remote-Debug-Erweiterung in CCS-Theia** (z. B. Cortex-Debug oder C/C++-Debug aus Open VSX) → Renode-GDB-Server; `arm-none-eabi-gdb` bzw. `gdb-multiarch` wird im ucsim-Paket mitgeliefert | gering; hängt davon ab, ob CCS-Theia das Nachinstallieren von Erweiterungen erlaubt (**vor Festlegung testen**) | **Empfohlen.** Gleiche IDE, gleiche Projekte, ein Klick „Debug Simulator“ (`launch.json` als Vorlage im Lab-Projekt). Oberfläche ist die allgemeine VS-Code-Debugansicht, nicht TIs eigene (z. B. keine TI-Peripherieregister-Ansicht). |
-| 2 | **Standalone VS Code** mit mitgelieferter `launch.json` (Cortex-Debug) für dasselbe `.out` | gering | Fallback, falls 1 in CCS nicht geht. |
-| 3 | **Virtuelles ICDI-Gerät** (USB/IP/Gadget), damit der native TI-Debugger glaubt, ein Board zu sehen | sehr hoch: proprietäres USB-Protokoll nachbauen, Kernelmodule und Root-Rechte, nur Linux | Nicht empfohlen. |
-| 4 | **J-Link-Shim** (eigene `libjlinkarm` ersetzen) oder TI-GTI-Remote-Proxy | sehr hoch, undokumentiert, lizenzrechtlich heikel | Nicht empfohlen. |
-| 5 | Debug nur über die Renode-Konsole/GDB-CLI | minimal | Zusätzlich für Fortgeschrittene, nicht für den Regelbetrieb. |
+| 1 | **GDB remote debug extension in CCS-Theia** (e.g. Cortex-Debug or C/C++ Debug from Open VSX) → Renode GDB server; `arm-none-eabi-gdb` or `gdb-multiarch` is shipped in the ucsim package | low; depends on whether CCS-Theia allows installing extensions (**test before deciding**) | **Recommended.** Same IDE, same projects, one click "Debug Simulator" (`launch.json` as template in the lab project). The user interface is the general VS Code debug view, not TI's own (e.g. no TI peripheral register view). |
+| 2 | **Standalone VS Code** with a supplied `launch.json` (Cortex-Debug) for the same `.out` | low | Fallback if 1 does not work in CCS. |
+| 3 | **Virtual ICDI device** (USB/IP/gadget), so that the native TI debugger thinks it sees a board | very high: re-implement a proprietary USB protocol, kernel modules and root rights, Linux only | Not recommended. |
+| 4 | **J-Link shim** (replace `libjlinkarm`) or TI GTI remote proxy | very high, undocumented, legally delicate | Not recommended. |
+| 5 | Debug only via the Renode console/GDB CLI | minimal | Additionally for advanced users, not for normal use. |
 
-### Empfehlung
-Variante 1 mit Variante 2 als Rückfallebene. Ablauf für Studierende:
-`ucsim --debug` (oder Task „Debug Simulator“) startet Renode **angehalten** mit GDB-Server auf Port 3333,
-die Debug-Konfiguration verbindet sich, lädt Symbole aus dem `.out` (TI Arm Clang erzeugt DWARF)
-und hält an `main`. Bei Variante 1 sollte gleichzeitig der Board-Debug mit TIs Standardkonfiguration
-unverändert bleiben (zwei Konfigurationen im selben Projekt: „Board“ und „Simulator“).
+### Recommendation
+Variant 1 with variant 2 as fallback. Workflow for students:
+`ucsim --debug` (or the task "Debug Simulator") starts Renode **paused** with a GDB server on port 3333;
+the debug configuration connects, loads the symbols from the `.out` (TI Arm Clang produces DWARF)
+and stops at `main`. With variant 1, debugging the board with TI's standard configuration should
+stay unchanged at the same time (two configurations in the same project: "Board" and "Simulator").
 
-### Machbarkeitstest (durchgeführt)
+### Feasibility test (carried out)
 
-Getestet mit TIs vorgebautem `blinky.out` (TI Arm Clang, DWARF) aus den TivaWare-Beispielen,
+Tested with TI's pre-built `blinky.out` (TI Arm Clang, DWARF) from the TivaWare examples,
 Renode 1.17.0, `gdb-multiarch` 17.1:
 
-| Prüfung | Ergebnis |
+| Check | Result |
 |---|---|
-| Renode mit `machine StartGdbServer 3333` (ohne `start`) → GDB `target remote :3333` | ✅ verbindet; Simulation steht angehalten am Reset-Vektor (`ResetISR`, SP `0x20000200`) |
-| Symbole und Quellzeilen aus TI-Clang-DWARF | ✅ `ResetISR () at ../startup_ccs.c:207`, `main () at ../blinky.c:73` |
-| Breakpoint auf `main`, `continue`, `bt`, `info locals` | ✅ Halt an `main`, Backtrace und Variable `ui32Loop = 0` |
-| `next`, `stepi`, `x/4i $pc`, Register lesen | ✅ |
-| `monitor <Renode-Befehl>` über GDB | ✅ (z. B. Konsolenbefehle direkt aus der Debug-Sitzung) |
-| `.out` ohne Änderung, TI-Startcode `_c_int00` | ✅ |
+| Renode with `machine StartGdbServer 3333` (without `start`) → GDB `target remote :3333` | ✅ connects; the simulation is paused at the reset vector (`ResetISR`, SP `0x20000200`) |
+| symbols and source lines from TI Clang DWARF | ✅ `ResetISR () at ../startup_ccs.c:207`, `main () at ../blinky.c:73` |
+| breakpoint on `main`, `continue`, `bt`, `info locals` | ✅ stops at `main`, backtrace and variable `ui32Loop = 0` |
+| `next`, `stepi`, `x/4i $pc`, reading registers | ✅ |
+| `monitor <Renode command>` via GDB | ✅ (e.g. console commands directly from the debug session) |
+| `.out` unchanged, TI start-up code `_c_int00` | ✅ |
 
-Hinweis: Renode beendet sich, wenn seine Standardeingabe geschlossen wird; `ucsim` startet es deshalb
-mit offener Eingabe bzw. `--plain`/Skriptmodus und hält den Prozess am Leben.
-Quelldateien meldet GDB als „nicht gefunden“, weil die Pfade im `.out` relativ zum CCS-Build-Ordner
-stehen; im Debug-Konfig `substitutePath`/`sourceFileMap` auf das Projektverzeichnis setzen.
+Note: Renode exits when its standard input is closed; that is why `ucsim` starts it with an open
+input or in `--plain`/script mode and keeps the process alive.
+GDB reports the source files as "not found" because the paths in the `.out` are relative to the
+CCS build folder; set `substitutePath`/`sourceFileMap` in the debug configuration to the project folder.
 
-**CCS-Seite (nur teilweise geprüft):** Die CCS-20.4-Theia-App enthält `@theia/vsx-registry`,
-`@theia/plugin-ext-vscode` und `@theia/debug` – die Bausteine für den Extensions-Katalog (Open VSX)
-und VS-Code-Debug-Adapter sind also vorhanden, und es ist nichts dagegen konfiguriert. **Nicht
-getestet** (GUI nötig): das tatsächliche Installieren und Starten einer GDB-Debug-Erweiterung
-(Cortex-Debug / C/C++-Debug) innerhalb von CCS. Das ist der letzte offene Schritt, ca. 30 Minuten
-manuell: Extension suchen → installieren → `launch.json` mit `gdbPath`, `target remote :3333`,
-`executable: ${workspaceFolder}/Debug/<projekt>.out` → Debug starten.
+**CCS side (only partly checked):** the CCS 20.4 Theia app contains `@theia/vsx-registry`,
+`@theia/plugin-ext-vscode` and `@theia/debug` – so the building blocks for the extension catalogue
+(Open VSX) and VS Code debug adapters are there, and nothing is configured against them. **Not
+tested** (needs the GUI): actually installing and starting a GDB debug extension
+(Cortex-Debug / C/C++ Debug) inside CCS. This is the last open step, about 30 minutes of manual
+work: search for the extension → install it → `launch.json` with `gdbPath`, `target remote :3333`,
+`executable: ${workspaceFolder}/Debug/<project>.out` → start debugging.
 
-### Folgerung
-Technisch trägt die Variante „GDB-Remote gegen Renode“; was noch fehlt, ist der GUI-Test in CCS.
-Falls CCS-Theia die Erweiterung nicht annimmt, bleibt Variante 2 (VS Code mit identischer `launch.json`).
+### Conclusion
+Technically the variant "GDB remote against Renode" works; what is still missing is the GUI test in CCS.
+If CCS-Theia does not accept the extension, variant 2 remains (VS Code with an identical `launch.json`).
 
-## Unterschiede Simulator ↔ Board (den Studierenden erklären)
-- Peripherie nur im Umfang des Fahrplans (SYSCTL, SysTick, GPIO, Timer, UART, ADC); anderes loggt eine Warnung.
-- Zeitverhalten nicht zyklengenau (Busy-Loops).
-- Kein Bootloader, kein ROM-`driverlib` (`ROM_*`-Aufrufe), kein Flash-Schreiben zur Laufzeit.
-- Programme dürfen nicht von der Simulation wissen: derselbe Code läuft auf Board und Simulator.
+## Differences simulator ↔ board (explain them to the students)
+- Peripherals only as far as the roadmap goes (SYSCTL, SysTick, GPIO, timer, UART, ADC); anything else logs a warning.
+- The timing is not cycle-accurate (busy loops).
+- No boot loader, no ROM `driverlib` (`ROM_*` calls), no flash programming at run time.
+- Programs must not know about the simulation: the same code runs on the board and in the simulator.
 
-## Umsetzungsschritte
-1. Bit-Banding im Simulator ergänzen; TI-`blinky.out` und weitere TivaWare-Beispiele
-   (Timer, UART, ADC) als **Regressionstests** in Renode (`renode-test`) einsetzen.
-2. `ucsim`-Startskript (Linux zuerst) mit generischem `sim.resc` (`$ELF` als Parameter) und Visualizer-Start.
-3. CCS-Lab-Projekte und „Simulate“-/„Debug Simulator“-Tasks bauen; Verfügbarkeit in CCS 20.x klären (Machbarkeitstest GDB-Erweiterung, siehe oben).
-4. Paketierung pro OS mit fest gepinnter Renode-Version, Installationsanleitung.
-5. Test auf einem frischen Rechner (Akzeptanz: CCS-Projekt importieren, bauen, flashen **und** simulieren in < 30 min).
+## Implementation steps
+1. Add bit-banding to the simulator; use TI's `blinky.out` and further TivaWare examples
+   (timer, UART, ADC) as **regression tests** in Renode (`renode-test`).
+2. `ucsim` start script (Linux first) with a generic `sim.resc` (`$ELF` as parameter) and starting the visualizer.
+3. Build CCS lab projects and "Simulate"/"Debug Simulator" tasks; clarify availability in CCS 20.x (feasibility test of the GDB extension, see above).
+4. Packaging per OS with a pinned Renode version, installation guide.
+5. Test on a fresh computer (acceptance: import, build, flash **and** simulate a CCS project in < 30 min).
 
-## Offene Entscheidungen
-- Welche Betriebssysteme müssen zuerst funktionieren (Renode-Pakete für alle drei existieren)?
-- Reicht ein Browser-Visualizer pro Lab, oder ein universelles Board-Abbild (LEDs, Taster, UART-Konsole, ADC-Regler)?
-- Ist die allgemeine Debugansicht (GDB-Remote) im CCS akzeptabel, auch wenn sie nicht TIs eigene Debug-Oberfläche ist?
+## Open decisions
+- Which operating systems must work first (Renode packages exist for all three)?
+- Is one browser visualizer per lab enough, or a universal board picture (LEDs, push buttons, UART console, ADC slider)?
+- Is the general debug view (GDB remote) in CCS acceptable, even though it is not TI's own debug interface?
 
 
-## Nachtrag: Umsetzung in diesem Repository
+## Addendum: implementation in this repository
 
-- Startup (`common/startup_tm4c1294.c`) und Linker-Skript (`common/tm4c1294.cmd`) sind eigene
-  Dateien und werden von CCS **und** vom Makefile gleichermaßen verwendet; das erzeugte `.out`
-  läuft unverändert im Simulator.
-- Die Beispiele nutzen **reinen Registerzugriff** (Lehrkonzept: Studierende arbeiten mit dem
-  Datenblatt); TivaWare/`driverlib` ist nicht eingebunden und nicht installationspflichtig. (Der Simulator
-  unterstützt `driverlib`-Programme weiterhin: TIs `blinky.out` und eine früher auf `driverlib` basierende
-  Fassung der Labs liefen.)
-- Simulator starten: `ucsim [--debug] programm.out`; `--debug` öffnet den GDB-Server (Port 3333).
+- The start-up file (`common/startup_tm4c1294.c`) and the linker script (`common/tm4c1294.cmd`) are
+  our own files and are used by CCS **and** by the Makefile alike; the resulting `.out` runs
+  unchanged in the simulator.
+- The examples use **direct register access** (teaching concept: students work with the
+  data sheet); TivaWare/`driverlib` is not included and does not need to be installed. (The
+  simulator still supports `driverlib` programs: TI's `blinky.out` and an earlier `driverlib`-based
+  version of the labs ran.)
+- Starting the simulator: `ucsim [--debug] program.out`; `--debug` opens the GDB server (port 3333).
