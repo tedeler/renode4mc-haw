@@ -54,12 +54,17 @@ git clone https://github.com/tedeler/renode4mc-haw.git
 cd renode4mc-haw
 ```
 
-**Schritt 3 – Container bauen und starten.**
+**Schritt 3 – Container bauen und starten.** Im Hauptverzeichnis des Repositorys:
 
 ```bash
-cd webconsole
-docker compose up --build
+./StartDocker.sh          # Linux und macOS
+StartDocker.bat           # Windows (oder Doppelklick im Explorer)
 ```
+
+Das Skript prüft, ob Docker läuft, baut das Image (danach nur noch Geändertes), startet den
+Container im Hintergrund, wartet, bis die Oberfläche antwortet, und öffnet den Browser. Weitere
+Aufrufe: `stop` (anhalten), `logs` (Ausgaben ansehen), `status`. Von Hand geht es so:
+`cd webconsole && docker compose up --build`.
 
 Der erste Bau dauert einige Minuten: Er lädt das Node-Image und Renode und baut Oberfläche und
 Musterlösungen. Danach übersetzt das Backend einmalig die C#-Modelle (ca. 10 s, im Log steht
@@ -68,17 +73,17 @@ Musterlösungen. Danach übersetzt das Backend einmalig die C#-Modelle (ca. 10 s
 **Schritt 4 – Browser öffnen:** <http://localhost:3000>. Es erscheint die Kopfzeile mit der
 Versuchsauswahl. Weiter mit [2.2](#22-die-web-konsole-bedienen).
 
-**Beenden:** `Strg+C` im Terminal bzw. `docker compose down`.
-**Im Hintergrund laufen lassen:** `docker compose up --build -d`, Log mit `docker compose logs -f`.
+**Beenden:** `./StartDocker.sh stop` bzw. `StartDocker.bat stop` (von Hand: `Strg+C` im Terminal
+bzw. `docker compose down`). Der Container läuft sonst im Hintergrund weiter, auch nach einem Neustart.
 **Aktualisieren:**
 
 ```bash
 cd ~/praktikum/renode4mc-haw && git pull
-cd webconsole && docker compose up --build
+./StartDocker.sh                  # baut neu und startet
 ```
 
-Optional zeigt der Über-Dialog (Klick auf das Logo oben links) den Git-Stand an, wenn Sie ihn beim
-Bauen mitgeben:
+Der Über-Dialog (Klick auf das Logo oben links) zeigt den Git-Stand an; `StartDocker` gibt ihn
+automatisch mit, von Hand so:
 
 ```bash
 GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build

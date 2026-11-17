@@ -46,7 +46,8 @@ cd examples/example01_blinky && make && ucsim example01_blinky.out
 Web-Konsole (nur Docker nötig, Renode ist im Container):
 
 ```bash
-cd webconsole && docker compose up --build      # dann http://localhost:3000
+./StartDocker.sh            # Linux/macOS – Windows: StartDocker.bat (Doppelklick); öffnet http://localhost:3000
+./StartDocker.sh stop       # anhalten
 ```
 
 ## Inhalt

@@ -1,1 +1,3 @@
 common/tm4c1294ncpdt.h -text
+*.sh text eol=lf
+*.bat text eol=crlf
