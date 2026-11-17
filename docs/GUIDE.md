@@ -27,7 +27,7 @@ The details are in the specialised documents that are linked in each section:
 
 | I want to … | I need | Section |
 |---|---|---|
-| simulate a finished program (`.out`) in the browser | only **Docker** | [1.1](#11-web-console-with-docker-recommended) |
+| simulate a finished program (`.out`) in the browser | **Docker** (and Git) – start with `StartDocker.sh` / `StartDocker.bat` | [1.1](#11-web-console-with-docker-recommended) |
 | write and build programs | **Code Composer Studio (CCS)** or `make` with TI Arm Clang | [1.3](#13-building-programs-and-loading-them-onto-the-board-ccs) |
 | test on the real board | CCS or OpenOCD, a udev rule, the EK-TM4C1294XL board | [1.3](#13-building-programs-and-loading-them-onto-the-board-ccs) |
 | develop the web console itself | Node.js ≥ 18 and Renode 1.17.0 | [1.2](#12-web-console-without-docker-for-development) |
@@ -45,18 +45,78 @@ The details are in the specialised documents that are linked in each section:
 ### 1.1 Web console with Docker (recommended)
 
 The container contains Renode, the simulation models from `sim/`, the user interface and the
-built reference solutions. You do not need a compiler for this.
+built reference solutions. You do not need a compiler for this. Two start scripts in the main
+folder of the repository do the rest: `StartDocker.sh` for Linux and macOS, `StartDocker.bat`
+for Windows.
 
-**Step 1 – install Docker.**
-Linux: Docker Engine with the Compose plugin (<https://docs.docker.com/engine/install/>), then
-add your user to the group `docker` (`sudo usermod -aG docker $USER`, then log out and in again).
-Windows/macOS: Docker Desktop. Check:
+#### Requirements
+
+| What | Needed for | Notes |
+|---|---|---|
+| **Docker** with **Docker Compose** | building and running the web console | see [What is Docker?](#what-is-docker) and [Installing Docker](#installing-docker) |
+| **Git** (recommended) | getting and updating the repository | without Git: download the ZIP file from GitHub (button "Code" → "Download ZIP"); updating then means downloading it again |
+| a current **web browser** | the user interface | Firefox, Chrome, Edge or Safari |
+| an **internet connection** | the first build | downloads the Node.js image and Renode; later builds only download what changed |
+| **free disk space** | the Docker image | plan a few GB (images, build cache) |
+| **free ports** 3000, 3333, 3334 | user interface, terminal and control connection | see [2.5](#25-common-problems) if one is in use |
+| hardware virtualisation (Windows, macOS) | Docker Desktop runs a small Linux virtual machine | Windows: switch on "virtualisation" (Intel VT-x / AMD-V) in the BIOS/UEFI if Docker Desktop complains |
+
+#### What is Docker?
+
+Docker runs software in **containers**. A container is a sealed package that holds a program
+together with everything it needs: the operating system libraries, Renode, Node.js, the models.
+The package is described once in a recipe (here `webconsole/Dockerfile`); Docker builds an
+**image** from it and starts it as a container. So it does not matter what is installed on your
+own computer, and nothing is installed there except Docker. **Docker Compose** is the part of Docker
+that starts a container with all its settings (ports, folders) from one file, here
+`webconsole/docker-compose.yml`.
+
+Docker containers are Linux programs. On Linux they run directly. On Windows and macOS, **Docker
+Desktop** starts a small Linux virtual machine in the background and runs the containers in it.
+Docker Desktop is free for personal use, education and small companies.
+
+More: [What is Docker?](https://docs.docker.com/get-started/docker-overview/) (Docker
+documentation).
+
+#### Installing Docker
+
+**Windows 10/11** – install **Docker Desktop**:
+[Install Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+It needs Windows 10 22H2 or Windows 11 23H2 (64 bit) or newer, about 8 GB RAM and the
+**WSL 2** backend (Windows Subsystem for Linux); the installer offers to set it up. Restart Windows
+when asked. Afterwards start Docker Desktop once from the Start menu and wait until it says that it
+is running ("Engine running").
+
+**macOS** – install **Docker Desktop**:
+[Install Docker Desktop on Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+Choose the download that matches your Mac: **Apple silicon** (M1, M2, …) or **Intel** (Apple
+menu → "About This Mac" shows which). Docker Desktop supports the current macOS version and the two
+before it. Drag Docker into the Applications folder, start it once and wait until it is running.
+
+**Linux** – install **Docker Engine** with the **Compose plugin** using your distribution's
+instructions: [Install Docker Engine](https://docs.docker.com/engine/install/) (Ubuntu, Debian,
+Fedora and others; the Ubuntu and Debian instructions also work for derivatives such as Linux Mint).
+Then allow your own user to use Docker without `sudo`
+([post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/)):
+
+```bash
+sudo usermod -aG docker $USER    # then log out and in again
+```
+
+Docker Desktop also exists for Linux, but Docker Engine is enough here.
+
+**Check** (on all systems, in a terminal – on Windows: PowerShell or the command prompt):
 
 ```bash
 docker compose version          # must print a version number
+docker run --rm hello-world     # must print "Hello from Docker!"
 ```
 
-**Step 2 – get the repository.**
+**Git:** Windows: [Git for Windows](https://git-scm.com/downloads/win); macOS:
+`xcode-select --install` or [git-scm.com](https://git-scm.com/downloads/mac); Linux: package `git`
+(e.g. `sudo apt install git`).
+
+#### Getting the repository
 
 ```bash
 mkdir -p ~/lab && cd ~/lab
@@ -64,39 +124,54 @@ git clone https://github.com/tedeler/renode4mc-haw.git
 cd renode4mc-haw
 ```
 
-**Step 3 – build and start the container.** In the main folder of the repository:
+On Windows, use any folder, e.g. `C:\Users\<name>\lab`, in PowerShell or Git Bash.
+
+#### Starting
+
+In the main folder of the repository:
 
 ```bash
 ./StartDocker.sh          # Linux and macOS
 StartDocker.bat           # Windows (or double-click it in the Explorer)
 ```
 
-The script checks whether Docker is running, builds the image (afterwards only what changed) and
-runs the web console in this terminal or window, so you see its output there. As soon as the user
-interface answers, it opens the browser. `Ctrl+C` stops the web console. Further commands: `stop`
-(stop it, if it is still running, e.g. after the terminal was closed), `logs` (show the output),
-`status`. By hand it works like this: `cd webconsole && docker compose up --build`.
+The script
+
+1. checks that Docker is installed and running – if not, it says what to do (e.g. "start Docker
+   Desktop"),
+2. builds the image (`docker compose up --build`; afterwards only what changed is rebuilt),
+3. runs the web console **in this terminal or window**, so you see its output there,
+4. opens the browser at <http://localhost:3000> as soon as the user interface answers; the
+   terminal shows `>>> Web console ready: http://localhost:3000`.
 
 The first build takes a few minutes: it downloads the Node image and Renode and builds the user
 interface and the reference solutions. After that, the backend compiles the C# models once (about
 10 s; the log shows "ready: … models compiled"). From then on, every experiment starts in less than
-a second.
+a second. The page shows the header bar with the experiment selection. Continue with
+[2.2](#22-using-the-web-console).
 
-**Step 4 – open the browser:** <http://localhost:3000>. You see the header bar with the
-experiment selection. Continue with [2.2](#22-using-the-web-console).
+**Stopping:** `Ctrl+C` in the terminal or window of the script. Windows then asks "Terminate batch
+job (Y/N)?" – answer `Y`.
 
-**Stop:** `Ctrl+C` in the terminal or window of `StartDocker` (Windows then asks "Terminate batch
-job (Y/N)?" – answer `Y`). If the terminal was closed while it was running, the container may keep
-running: `./StartDocker.sh stop` or `StartDocker.bat stop` (by hand: `docker compose down`).
-**Update:**
+**Further commands of the script:**
+
+| Command | Effect |
+|---|---|
+| `./StartDocker.sh` / `StartDocker.bat` | build and start (the same as `start`) |
+| `… stop` | stop the web console if it is still running, e.g. after the terminal was closed |
+| `… logs` | show the output of a running web console (`Ctrl+C` only ends the display) |
+| `… status` | show whether the container is running |
+
+**Updating:**
 
 ```bash
 cd ~/lab/renode4mc-haw && git pull
-./StartDocker.sh                  # rebuilds and starts
+./StartDocker.sh                  # rebuilds and starts (Windows: StartDocker.bat)
 ```
 
-The About dialog (click on the logo at the top left) shows the Git version; `StartDocker` passes it
-automatically, by hand it works like this:
+**Without the script** (same result): `cd webconsole && docker compose up --build`, stopping with
+`Ctrl+C` or `docker compose down`. The About dialog (click on the logo at the top left) shows the
+Git version; the script passes it automatically, by hand it works like this:
 
 ```bash
 GIT_COMMIT=$(git rev-parse HEAD) GIT_DATE=$(git log -1 --format=%cI) docker compose up --build
@@ -218,7 +293,10 @@ login: on a network it belongs behind a reverse proxy with authentication.
 | Problem | Solution |
 |---|---|
 | `failed to map segment from shared object` | `/tmp` in the container is `noexec`. `docker compose` already sets `exec`; with `docker run` add `--tmpfs /tmp:exec,mode=1777` |
-| port 3000/3333/3334 in use | stop the other program (e.g. `ucsim --debug` uses 3333) or choose other host ports |
+| `StartDocker`: "Docker is not running" | Windows/macOS: start Docker Desktop and wait until it is running. Linux: `sudo systemctl start docker`; "permission denied" → `sudo usermod -aG docker $USER`, log out and in |
+| port 3000/3333/3334 in use | stop the other program (e.g. `ucsim --debug` uses 3333, or a web console that is still running: `StartDocker.sh stop`) or choose other host ports |
+| `./StartDocker.sh`: "Permission denied" | the file lost its execute permission (e.g. after unpacking a ZIP file): `sh StartDocker.sh` or `chmod +x StartDocker.sh` |
+| the browser does not open | open <http://localhost:3000> by hand once the terminal shows `>>> Web console ready` |
 | a new experiment does not appear | run the check tool (3.2) and reload the page; with Docker rebuild the image or mount the folder (3.3) |
 | button "Reference solution" greyed out | the reference solution is not built: `tools/build-solutions.sh` (local) or rebuild the image |
 | the terminal shows garbage or nothing | the terminal settings below the terminal do not match the firmware (read the Diagnostics panel) |
