@@ -1,8 +1,9 @@
 #!/bin/sh
 # Start the web console in Docker – Linux and macOS (Windows: StartDocker.bat).
 #
-#   ./StartDocker.sh            build (only what changed), start in the background, open the browser
-#   ./StartDocker.sh stop       stop
+#   ./StartDocker.sh            build (only what changed) and run in this terminal, open the browser;
+#                               Ctrl+C stops the web console
+#   ./StartDocker.sh stop       stop (if it is still running, e.g. after the terminal was closed)
 #   ./StartDocker.sh logs       show the output (Ctrl+C only ends the display)
 #   ./StartDocker.sh status     is the container running?
 #
@@ -52,36 +53,31 @@ if command -v git >/dev/null 2>&1 && git rev-parse HEAD >/dev/null 2>&1; then
     export GIT_COMMIT GIT_BRANCH GIT_DATE
 fi
 
-echo "Building and starting the web console (the first time this takes a few minutes) ..."
-compose up -d --build
-
-# ---- wait until the user interface answers ---------------------------------------------------------
+# ---- open the browser as soon as the user interface answers (runs alongside docker compose) ------
 ready() {
     if command -v curl >/dev/null 2>&1; then curl -fs "$URL/api/status" >/dev/null 2>&1
     elif command -v wget >/dev/null 2>&1; then wget -q -O /dev/null "$URL/api/status"
-    else return 0
+    else sleep 20     # neither curl nor wget: just wait a little
     fi
 }
-printf "Waiting for %s " "$URL"
-i=0
-until ready; do
-    i=$((i + 1))
-    [ "$i" -ge 60 ] && { echo; fail "The web console does not answer. Show the output: $0 logs"; }
-    printf "."
-    sleep 2
-done
-echo " ready."
+open_when_ready() {          # ends on its own as soon as this script has ended ($$ = this script)
+    until ready; do
+        kill -0 $$ 2>/dev/null || exit 0
+        sleep 2
+    done
+    kill -0 $$ 2>/dev/null || exit 0
+    echo
+    echo ">>> Web console ready: $URL   (Ctrl+C stops it)"
+    echo
+    case "$(uname -s)" in
+        Darwin) open "$URL" ;;
+        *)      if command -v xdg-open >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+                    xdg-open "$URL" >/dev/null 2>&1
+                fi ;;
+    esac
+}
+open_when_ready &
 
-# ---- open the browser -----------------------------------------------------------------------------
-case "$(uname -s)" in
-    Darwin) open "$URL" ;;
-    *)      if command -v xdg-open >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-                xdg-open "$URL" >/dev/null 2>&1 &
-            fi ;;
-esac
-
-echo
-echo "Web console running: $URL"
-echo "  Stop:    $0 stop"
-echo "  Output:  $0 logs"
-echo "The container keeps running in the background (also after a reboot) until you stop it."
+echo "Building and starting the web console (the first time this takes a few minutes) ..."
+echo "It runs in this terminal; Ctrl+C stops it."
+compose up --build

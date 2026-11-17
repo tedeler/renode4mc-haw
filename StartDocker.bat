@@ -1,8 +1,9 @@
 @echo off
 rem Start the web console in Docker - Windows (Linux and macOS: StartDocker.sh).
 rem
-rem   StartDocker.bat            build (only what changed), start in the background, open the browser
-rem   StartDocker.bat stop       stop
+rem   StartDocker.bat            build (only what changed) and run in this window, open the browser;
+rem                              Ctrl+C stops the web console
+rem   StartDocker.bat stop       stop (if it is still running, e.g. after the window was closed)
 rem   StartDocker.bat logs       show the output (Ctrl+C only ends the display)
 rem   StartDocker.bat status     is the container running?
 rem
@@ -50,37 +51,14 @@ if not errorlevel 1 (
     for /f "delims=" %%i in ('git log -1 --format^=%%cI 2^>nul') do set "GIT_DATE=%%i"
 )
 
+rem ---- open the browser as soon as the user interface answers (runs alongside docker compose) -----
+rem      gives up after 20 minutes, e.g. if the build fails
+start "" /b powershell -NoProfile -Command "for ($i = 0; $i -lt 600; $i++) { try { Invoke-WebRequest -UseBasicParsing '%URL%/api/status' | Out-Null; Write-Host ''; Write-Host '>>> Web console ready: %URL%   (Ctrl+C stops it)'; Write-Host ''; Start-Process '%URL%'; break } catch { Start-Sleep -Seconds 2 } }"
+
 echo Building and starting the web console (the first time this takes a few minutes) ...
-docker compose -f "%CF%" up -d --build
+echo It runs in this window; Ctrl+C stops it.
+docker compose -f "%CF%" up --build
 if errorlevel 1 goto :fail
-
-rem ---- wait until the user interface answers ------------------------------------------------------
-echo Waiting for %URL% ...
-set /a N=0
-:wait
-where curl >nul 2>nul
-if not errorlevel 1 (
-    curl -fs "%URL%/api/status" >nul 2>nul && goto :ready
-) else (
-    powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing '%URL%/api/status' | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul && goto :ready
-)
-set /a N+=1
-if %N% geq 60 (
-    echo ERROR: The web console does not answer. Show the output: StartDocker.bat logs
-    goto :fail
-)
-ping -n 3 127.0.0.1 >nul
-goto :wait
-
-:ready
-start "" "%URL%"
-echo.
-echo Web console running: %URL%
-echo   Stop:    StartDocker.bat stop
-echo   Output:  StartDocker.bat logs
-echo The container keeps running in the background (also after a reboot) until you stop it.
-echo.
-pause
 goto :end
 
 :fail

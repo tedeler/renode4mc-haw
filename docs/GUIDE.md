@@ -71,10 +71,11 @@ cd renode4mc-haw
 StartDocker.bat           # Windows (or double-click it in the Explorer)
 ```
 
-The script checks whether Docker is running, builds the image (afterwards only what changed), starts
-the container in the background, waits until the user interface answers and opens the browser.
-Further commands: `stop` (stop), `logs` (show the output), `status`. By hand it works like this:
-`cd webconsole && docker compose up --build`.
+The script checks whether Docker is running, builds the image (afterwards only what changed) and
+runs the web console in this terminal or window, so you see its output there. As soon as the user
+interface answers, it opens the browser. `Ctrl+C` stops the web console. Further commands: `stop`
+(stop it, if it is still running, e.g. after the terminal was closed), `logs` (show the output),
+`status`. By hand it works like this: `cd webconsole && docker compose up --build`.
 
 The first build takes a few minutes: it downloads the Node image and Renode and builds the user
 interface and the reference solutions. After that, the backend compiles the C# models once (about
@@ -84,8 +85,9 @@ a second.
 **Step 4 – open the browser:** <http://localhost:3000>. You see the header bar with the
 experiment selection. Continue with [2.2](#22-using-the-web-console).
 
-**Stop:** `./StartDocker.sh stop` or `StartDocker.bat stop` (by hand: `Ctrl+C` in the terminal,
-or `docker compose down`). Otherwise the container keeps running in the background, also after a reboot.
+**Stop:** `Ctrl+C` in the terminal or window of `StartDocker` (Windows then asks "Terminate batch
+job (Y/N)?" – answer `Y`). If the terminal was closed while it was running, the container may keep
+running: `./StartDocker.sh stop` or `StartDocker.bat stop` (by hand: `docker compose down`).
 **Update:**
 
 ```bash

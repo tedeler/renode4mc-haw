@@ -47,7 +47,7 @@ Web console (only Docker needed, Renode is inside the container):
 
 ```bash
 ./StartDocker.sh            # Linux/macOS – Windows: StartDocker.bat (double-click); opens http://localhost:3000
-./StartDocker.sh stop       # stop it
+                            # runs in the terminal, Ctrl+C stops it
 ```
 
 ## Contents
