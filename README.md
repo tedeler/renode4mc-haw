@@ -67,7 +67,7 @@ Web console (only Docker needed, Renode is inside the container):
 | `tools/check_header.py` | check the simulator hardware, vector table and examples against `common/tm4c1294ncpdt.h` |
 | `tools/check_experiment.js` | check experiment files `sim/experiments/*.json` (pins, usage, fields) and show the generated Renode platform |
 | `common/tm4c1294ncpdt.h` | register names and bit constants from TI (included by all examples) |
-| `docs/` | `GUIDE.md` (start here: installation, operation, new experiments), `INSTALL_LINUX.md`, `TOOLCHAIN.md` (concept, debugging the simulator from CCS), `ROADMAP.md` (further peripherals), `WEBCONSOLE.md` (web console: architecture, protocols, operation, tests), `EXPERIMENTS.md` (format of the experiment files), `LABS.md` (Lab 1–4) |
+| `docs/` | `GUIDE.md` (start here: installation, operation, new experiments), `SUPPORTED_HARDWARE.md` (modelled peripherals and limitations), `INSTALL_LINUX.md`, `TOOLCHAIN.md` (concept, debugging the simulator from CCS), `ROADMAP.md` (further peripherals), `WEBCONSOLE.md` (web console: architecture, protocols, operation, tests), `EXPERIMENTS.md` (format of the experiment files), `LABS.md` (Lab 1–4) |
 
 ## Simulated hardware
 
@@ -83,6 +83,8 @@ Web console (only Docker needed, Renode is inside the container):
 | keypad 4×3 with matrix wiring, key input in the browser | ✔ (web console) |
 | pendulum display (8 LEDs, 10 Hz, sync signal), afterglow image in the browser | ✔ (Example 2 of the web console) |
 | ADC, SysTick test | planned (`docs/ROADMAP.md`) |
+
+Details per peripheral and the differences from the real chip: [docs/SUPPORTED_HARDWARE.md](docs/SUPPORTED_HARDWARE.md).
 
 ## Tested / not tested
 
