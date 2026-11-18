@@ -33,7 +33,7 @@ Three layers in one container:
 │  Node.js / Express  (entry point: node server.js)                                           │
 │  ├─ HTTP :3000   static React SPA, POST /upload, GET /api/experiments, /api/status          │
 │  ├─ RenodeManager      starts/stops Renode as a child process (cwd = sim/)                  │
-│  ├─ UartBridge   :3333 WebSocket  ⇄  TCP 127.0.0.1:3335  (UartHostTerminal.ServeTcp, UART0) │
+│  ├─ UartBridge   :3333 WebSocket  ⇄  TCP 127.0.0.1:3335  (UartHostTerminal.ServeTcp, bytes) │
 │  └─ ControlBridge:3334 WebSocket  ⇄  TCP 127.0.0.1:1234  (Renode monitor, Telnet)           │
 │                                   ⇄  TCP 127.0.0.1:1235  (query port, TivaSysCtl)           │
 │                                   ⇠  WS  127.0.0.1:9000  (LED bridge, sim/models)           │
@@ -51,6 +51,8 @@ Three layers in one container:
 as WebSockets but as TCP sockets. These are the UART terminal (`UartHostTerminal.ServeTcp`,
 port 3335), the Telnet monitor (`--port`, 1234) and the query port (`TivaSysCtl.ServeQueries`, 1235).
 The exception is the LED bridge from `sim/models/WebSocketBridge.cs`.
+The UART terminal port carries **bytes that have already been decoded** inside Renode; the
+browser does not see the line itself (see "UART line as signal edges" in section 3).
 The backend therefore translates between the two worlds. This has two advantages:
 
 - The internal ports (1234, 1235, 3335, 9000) stay inside the container. Only 3000, 3333 and 3334 are exposed.
@@ -105,9 +107,9 @@ lines of the Renode log are then in `log` and are shown in the browser in an exp
 | Display | Source | Method |
 |---|---|---|
 | LEDs D1–D4 | `wsBridge` (`sim/models/WebSocketBridge.cs`, ws://127.0.0.1:9000) | **push**: every level change (`LED<n>=<0|1>`), with PWM also the averaged brightness (`LEDB<n>=<per mille>`, `LEDB<n>=-` = plain on/off again) |
-| UART0 | `sysbus.uart0.host` (PC terminal) → `ServeTcp 3335` | byte stream, passed through unchanged; the PC terminal decodes the line with its own settings (section "UART line as signal edges") |
-| simulation panel | `sysbus.sysctl GetStatus`, `sysbus.uart0 LineBaudRate/FrameFormat`, Renode log | **polling** every 500 ms, only while the panel is open |
-| lines (oscilloscope) | `sysbus.uart0 GetEdges` | **polling** every 100 ms, only while a browser has subscribed to the line |
+| UART terminal | `sysbus.uart<n>.host` (PC terminal on the terminal UART, default UART0) → `ServeTcp 3335` | byte stream, passed through unchanged. The bytes are produced inside Renode: the PC terminal model decodes the line edges with its own settings (section "UART line as signal edges") |
+| simulation panel | `sysbus.sysctl GetStatus`, `sysbus.uart<n> LineBaudRate/FrameFormat` (terminal UART), Renode log | **polling** every 500 ms, only while the panel is open |
+| lines (oscilloscope) | `sysbus.uart<n> GetEdges` (terminal UART) | **polling** every 100 ms, only while a browser has subscribed to the line |
 | OLED | `sysbus.i2c0.oled GetFrameIfChanged` | **polling** every 100 ms, only transferred on change |
 | LEDs with `path` (other experiments) | `<path> State` | polling every 100 ms |
 
@@ -173,14 +175,14 @@ Further devices for your own experiments (element types in [EXPERIMENTS.md](EXPE
 
 | File | Short description |
 |---|---|
-| `TivaUART.cs` | PL011-like UART of the TM4C129. DR (with FE/PE/BE/OE), RSR, FR, IBRD/FBRD/LCRH (also BRK), CTL (HSE, EOT, LBE), CC, IFLS, IM/RIS/MIS/ICR, ID registers. Transmit and receive FIFO with 16 characters, overrun. RX, RT, TX, FE, PE, BE and OE interrupts. Clock gating `RCGCUART`. Transmits signal edges with baud-rate timing (TXFF/TXFE/BUSY with correct timing), receives by sampling the edges in the middle of each bit. Checks whether PA0/PA1 are configured as U0RX/U0TX via AFSEL/DEN/PCTL. |
+| `TivaUART.cs` | PL011-like UART of the TM4C129. DR (with FE/PE/BE/OE), RSR, FR, IBRD/FBRD/LCRH (also BRK), CTL (HSE, EOT, LBE), CC, IFLS, IM/RIS/MIS/ICR, ID registers. Transmit and receive FIFO with 16 characters, overrun. RX, RT, TX, FE, PE, BE and OE interrupts. Clock gating `RCGCUART`. Transmits signal edges with baud-rate timing (TXFF/TXFE/BUSY with correct timing), receives by sampling the edges in the middle of each bit. Checks whether its TX/RX pins are configured for the UART via AFSEL/DEN/PCTL (UART0: PA1/PA0 from the platform; other pins with `SetPins`, which the generated `.resc` does for `uart.rx`/`uart.tx`), and copies the edges onto these pins for the oscilloscope. |
 | `UartLine.cs` | Common parts of the UART line: format and bit duration, encoder (byte → edges), decoder (edges → characters, framing/parity errors, break), edge buffer `SignalRecorder` for the oscilloscope, timer in ns. |
-| `UartHostTerminal.cs` | PC with a terminal program at the other end of UART0. Decodes the edges with `TerminalBaudRate`/`Format` and passes the bytes to the socket terminal; keyboard input becomes edges on U0RX. |
+| `UartHostTerminal.cs` | PC with a terminal program at the other end of the UART it is registered at (`host: UART.UartHostTerminal @ uart<n>`, default UART0). Decodes the TX edges in virtual time with `TerminalBaudRate`/`Format` and passes the bytes to its TCP terminal (`ServeTcp`); bytes typed in the browser become edges on the RX line of that UART, encoded with the same settings. |
 | `TivaI2C.cs` | I2C master: MSA, MCS, MDR, MTPR, MIMR/MRIS/MMIS/MICR, MCR, MBMON. START/RUN/STOP/ACK, repeated start, address NACK as `ERROR`+`ADRACK`, master interrupt, clock gating `RCGCI2C`. So that wait loops of the form "first wait for BUSY, then for not-BUSY" do not hang, the first read of MCS after a command returns `BUSY=1`. |
 | `SSD1306I2C.cs` | OLED controller: control byte (Co/DC), page, horizontal and vertical addressing, column and page range, display on/off, invert, segment remap (A0/A1), COM scan direction (C0/C8). `GetFrame`/`GetFrameIfChanged` return the visible image as Base64. |
 | `MaxBotixI2C.cs` | Ultrasonic sensor MB1242: writing `0x51` starts the measurement, reading 2 bytes returns cm. Property `Distance` (0–765). |
 | `PendulumDisplay.cs` | Pendulum display (Example 2): 8 LED inputs, sync output (HIGH = right), movement `sin(2·π·t/T)` in virtual time, period adjustable at run time via `PeriodUs` (0.05–100 Hz), afterglow image per swing direction. `GetFrame` returns `PD:<columns>:<period in µs>:<phase>:<LEDs>:<Base64>`. |
-| `Oscilloscope.cs` | Oscilloscope of the web console (in the base platform as `sysbus.scope`): records the level changes of selected pins in virtual time (resolution 1 µs). `Probe "PD0,PD1"` selects the pins, `GetEvents` returns `SC:<now ns>:<pins>:<levels>:<i,dt ns,level;…>:<dropped>`. The pin level is measured like with a probe (`TivaGPIOPort.PadLevel`): driven output, input driven from outside, pull-up/-down or floating. UART pins (PA0/PA1 when configured as U0RX/U0TX) show the same edges as the UART line: TX with the baud rate and format of the firmware, RX with the settings of the PC terminal. |
+| `Oscilloscope.cs` | Oscilloscope of the web console (in the base platform as `sysbus.scope`): records the level changes of selected pins in virtual time (resolution 1 µs). `Probe "PD0,PD1"` selects the pins, `GetEvents` returns `SC:<now ns>:<pins>:<levels>:<i,dt ns,level;…>:<dropped>`. The pin level is measured like with a probe (`TivaGPIOPort.PadLevel`): driven output, input driven from outside, pull-up/-down or floating. The pins of a UART (when configured as UxRX/UxTX) show the same edges as the UART line: TX with the baud rate and format of the firmware, RX with the settings of the PC terminal. |
 | `KeypadMatrix.cs` | Key matrix with real multiplexing behaviour: column = OR over (row HIGH AND key pressed). Row scanning and interrupt operation work as on hardware. `SetKey <row> <column> <true|false>`. |
 
 **Keypad multiplexing.** Clicking "5" does not send "key 5". The frontend looks the key up in its
@@ -264,8 +266,10 @@ sysbus.gpioM.pendel GetEvents          # "EV:<t>:<phase>:<LEDs>:<period>:<t,phas
 
 ### UART WebSocket (`ws://<host>:3333`)
 
-Binary frames in both directions, bytes unchanged. New clients receive the last 16 KB of the
-output. When Renode restarts, the server closes with code **4000**: the terminal is cleared and
+Binary frames in both directions, bytes unchanged. Server → browser: the characters that the PC
+terminal model has decoded from the TX line. Browser → server: the typed bytes; the PC terminal
+model turns them into edges on the RX line. Local echo and CR → CR+LF (`localEcho`, `crlf` in the
+experiment) are done in the frontend. New clients receive the last 16 KB of the output. When Renode restarts, the server closes with code **4000**: the terminal is cleared and
 the frontend reconnects immediately.
 
 ### Control WebSocket (`ws://<host>:3334`)
@@ -387,15 +391,58 @@ timeline is discarded.
 
 ### UART line as signal edges (signal stream)
 
-UART0 does not transfer bytes but level changes with time stamps in **nanoseconds of virtual time**
-(`sim/models/UartLine.cs`). The transmitter (`TivaUART`) computes the edge times from IBRD, FBRD,
-LCRH, CTL.HSE and the UART clock (system clock from RSCLKCFG/PLLFREQ or PIOSC); every edge time is
-rounded separately, so the bit spacing is correct to 1 ns. The receiver samples in the middle of
-the bit, measured from the falling edge of the start bit and with **its own** baud rate:
+A UART line (every `TivaUART`, UART0–7) does not transfer bytes but level changes with time
+stamps in **nanoseconds of virtual time** (`sim/models/UartLine.cs`). The transmitter computes the
+edge times from its settings (`UartEncoder`); every edge time is rounded separately, so the bit
+spacing is correct to 1 ns. The receiver samples in the middle of the bit, measured from the falling
+edge of the start bit and with **its own** baud rate and format (`UartLineDecoder`).
 
-- Microcontroller → PC: `UartHostTerminal` (settings in the UART monitor) decodes U0TX.
-- PC → microcontroller: keyboard input is turned into edges on U0RX with the terminal settings;
-  `TivaUART` decodes them with the settings of the firmware and reports FE/PE/BE in DR and RIS.
+Both ends of the line are models inside Renode: the UART of the chip (`TivaUART`) and the PC with
+its terminal program (`UartHostTerminal`). Encoding and decoding happen in both models, in virtual
+time. The browser only shows the decoded bytes and sends typed bytes.
+
+**Microcontroller → PC (terminal output):**
+
+1. The firmware writes UARTDR. `TivaUART` encodes the character with the firmware settings: IBRD,
+   FBRD (taken over with the next write to LCRH), LCRH, CTL.HSE and the UART clock (CC: system
+   clock from RSCLKCFG/PLLFREQ, or PIOSC 16 MHz). The frame starts when the previous one has ended.
+2. `TivaUART` checks whether its TX pin is configured for the UART (GPIOAFSEL, GPIODEN, GPIOPCTL).
+   If not, nothing appears on the line, and the Diagnostics panel reports it. With CTL.LBE
+   (loopback), the edges go to the UART's own receiver instead of the line.
+3. The edges go to the edge buffer of the line (`uart<n>.tx`, signal stream), as levels onto the TX
+   pin (oscilloscope) and **directly** to the PC terminal model (`IUartLineEndpoint.LineEdges`).
+   The terminal is not attached to the GPIO pin; it is registered at the UART.
+4. `UartHostTerminal` samples the edges with the terminal settings (`TerminalBaudRate`, `Format`;
+   set below the terminal in the browser via the control WebSocket message `uartconfig`).
+   Framing/parity errors and break are detected there and reported once per setting. Characters
+   with errors are still shown, a break produces no character.
+5. The decoded bytes go through `ServeTcp` (TCP 3335) → `UartBridge` → UART WebSocket 3333 →
+   xterm.js.
+
+**PC → microcontroller (keyboard):**
+
+1. xterm.js sends the typed bytes through UART WebSocket 3333 → `UartBridge` → TCP 3335.
+2. `UartHostTerminal` encodes each byte with the **terminal** settings into edges on the RX line of
+   the UART. The frame starts when the previous one has ended, so characters arrive at the speed
+   of the line.
+3. `TivaUART` puts the edges into the edge buffer `uart<n>.rx`, and onto the RX pin if that pin is
+   configured for the UART. If the RX pin is not configured, the UART receives nothing (Diagnostics
+   message).
+4. `TivaUART` samples the edges with the **firmware** settings. The result goes into the receive
+   FIFO with FE/PE/BE in DR and RSR, overrun when the FIFO is full, and the RX/error interrupts.
+
+The decoder only evaluates what is already fixed at the current virtual time. A transmitter
+therefore never starts a frame before the point up to which the receiver has decoded
+(`DecodedUntilNs`), so edges are never added in the past.
+
+Without a PC terminal model (a UART without `host`), `TivaUART` outputs each character as a byte at
+the end of its frame, so that a normal Renode terminal can be connected.
+
+**Which UART:** the PC terminal is registered at the UART that `uart.rx`/`uart.tx` in the experiment
+belong to (default UART0 on PA0/PA1, the virtual COM port of the board). Only the pins that the data
+sheet allows for a UART can be chosen ([EXPERIMENTS.md, "UART pins"](EXPERIMENTS.md#uart-pins)).
+The generated `.resc` sets them with `sysbus.uart<n> SetPins "<tx>" "<rx>"`. A UART implemented in
+software on an arbitrary GPIO pin (bit-banging) cannot be connected to the terminal.
 
 If the settings do not match, wrong characters appear as on real hardware (e.g. 7N1 firmware,
 terminal 8N1: 0xC8/0x86 instead of "H"). Note, this is also realistic: if you change the settings
@@ -425,8 +472,8 @@ character stream.
 The **Simulation** button shows the simulation panel (off by default): loaded firmware (name, size,
 SHA-256, time), CPU state with PC and function from the ELF file (note if the CPU is stuck in an
 endless loop of the start-up code, e.g. `IntDefaultHandler`), system clock, number of resets,
-simulated time, real time and speed (simulated time per real time), Renode version, UART0 settings
-of firmware and terminal with the error. Below there are tabs:
+simulated time, real time and speed (simulated time per real time), Renode version, settings of the
+terminal UART (firmware and terminal) with the error. Below there are tabs:
 
 - **CPU registers:** R0–R12, SP, LR, PC, xPSR (flags N Z C V, number of the running exception),
   PRIMASK, FAULTMASK, BASEPRI, CONTROL, inactive SP; changed values in yellow. While the simulation
@@ -696,7 +743,7 @@ Measuring: `node test/perf_tempo.js <firmware.elf> [0|1 panel] [seconds] [experi
 
 - **One simulation per container**, no user management, no authentication. For use on a network the
   container belongs behind a reverse proxy with login.
-- **Timing:** Renode is not cycle-accurate (see [ROADMAP.md](ROADMAP.md)). UART0 transmits with
+- **Timing:** Renode is not cycle-accurate (see [ROADMAP.md](ROADMAP.md)). The UARTs transmit with
   baud-rate timing (edges correct to 1 ns), I2C without bus delay. The ultrasonic measurement is
   finished immediately. The RX time-out interrupt (RT) is simplified ("data available"), µDMA is missing.
 - **Speed with wait loops on registers:** every register access costs some µs of computing time in
